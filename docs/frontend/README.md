@@ -22,7 +22,7 @@ MSW 2 从安装包复制原版 worker 到 `public/demo/mockServiceWorker.js`，s
 
 ## 检查
 
-首片已执行 `npm ci`、`npm run typecheck`（退出 0）。`npm run build` 与浏览器检查正在执行，未把首片声称为最终验收。
+首片 `a4868e0365d512918c88da8f286e72c616d051af`，Node 测试域修复 `1b4fc1896268def2e8e13cd7d29fcb8d14d18274`，均已 push。最终增强含桌面星图标签（窄屏由列表提供名称）与 12 秒初始化失败界限、连线悬停依据、列表关系依据、精确经验版本补读，以及平台体验助手入口。
 
 后续检查命令：
 
@@ -30,7 +30,39 @@ MSW 2 从安装包复制原版 worker 到 `public/demo/mockServiceWorker.js`，s
 node --import tsx --test tests/frontend/behavior.test.ts
 npm run typecheck
 npm run build
-npx playwright test --config tests/frontend/playwright.config.ts
+npx playwright test --config tests/frontend/playwright.config.ts journeys.spec.ts
 ```
 
-Playwright 独占本机 `127.0.0.1:3219`，数据库、Auth、助手默认关闭；截图写到系统临时目录 `gongzhi-frontend-evidence`，不进入 Git。没有实际试用者反馈、真实登录/绑定/模型调用或公开部署验证。首片允许 I 尽早合并；后续返修由同一个 B owner 持续完成。
+Playwright 独占本机 `127.0.0.1:3219`，使用本机 Chrome（本次 Chromium 152）。数据库、Auth、助手默认关闭。截图保存在 `C:\Users\DW\AppData\Local\Temp\gongzhi-frontend-evidence`：`landing-desktop.png`、`space-desktop.png`、`landing-mobile.png`、`space-mobile.png`、`story-a-accepted.png`，全部在 Git 外。星图截图等待“放大星图”可用后拍摄。
+
+已完成的验证层：
+
+- HTTP 行为：5 项通过；不可变幂等重放、版本冲突、F-B 撤回、F-C 精确引用、无真实示例密钥、未知 API/真实路径拒绝、不安全来源拒绝。
+- 默认关闭服务的浏览器流程：10 项；桌面 1440×1000、窄屏 390×844，实际三入口/三故事、草稿与数据刷新、重置隔离、真实失败无 fixture、旧结果拒采纳、来源安全、连续放大/缩小/平移、真实星点与连线点击、强制 WebGL 失败仍可发布、响应丢失后重试去重、匿名助手禁用、快照外精确经验版本读取。
+- 助手与绑定 UI：2 项，本机虚拟 Auth 与测试拦截 HTTP 回执；没有连接真实 Supabase、数据库或模型。覆盖服务失败、相同 key 重试、回执前不显示执行状态、queued/running 查询与取消，以及虚拟 Agent 凭据仅内存显示一次、不写浏览器存储。此层不能当作真实服务成功。
+- `npm run typecheck`、`npm run build` 均执行并通过；最终产物恢复登录默认关闭配置。
+
+助手 UI 测试需显式本机测试构建，避免默认测试误碰身份。可复用下面的 PowerShell 命令；这里只使用虚拟值，所有 Auth/API 响应由测试拦截：
+
+```powershell
+$env:NET_TELEMETRY_DISABLED='1'
+$env:NEXT_TELEMETRY_DISABLED='1'
+$env:NEXT_PUBLIC_GONGZHI_AUTH_ENABLED='true'
+$env:NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:3219/test-auth'
+$env:NEXT_PUBLIC_SUPABASE_ANON_KEY='local-test-public-anon'
+$env:GONGZHI_TEST_AUTH='1'
+npm run build
+npx playwright test --config tests/frontend/playwright.config.ts assistant.spec.ts
+# 完成后恢复默认关闭构建
+$env:GONGZHI_TEST_AUTH=''
+$env:NEXT_PUBLIC_GONGZHI_AUTH_ENABLED='false'
+$env:NEXT_PUBLIC_SUPABASE_URL=''
+$env:NEXT_PUBLIC_SUPABASE_ANON_KEY=''
+npm run build
+```
+
+## 平台体验助手与实际限制
+
+真实需求发起人可以显式请求助手，直接使用既有 `startRun/readRun/cancelRun`。同一需求版本按 owner 隔离保存幂等 key 与已知 run 编号；无回执只说明等待服务，不推断开始执行。收到 queued/running 后可手动查询或取消；无自动轮询、后台调度或示例替代结果。页面选择“采纳”仍由人执行。
+
+没有真实试用者反馈、真实账号登录/Agent 握手/模型调用或公开部署验证，当前属于 Agent 自动验收与主控/集成轨审阅。真实服务需 I 合入 C/D 交付，并配置本项目已授权数据库、Auth 和模型环境；外部 Agent 凭据的实际撤销须在真实环境验收。读取范围沿 Core 公告查询上限，未实现大规模分页或性能承诺。平台请求响应丢失后的外部副作用仍由服务端 run 状态决定，UI 不宣称恰好一次执行。
