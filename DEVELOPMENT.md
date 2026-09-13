@@ -6,10 +6,10 @@
 
 | 本轮轨 | 首片结果 | 状态 |
 | --- | --- | --- |
-| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | 待派发 |
-| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | 待派发 |
-| D | 扩展原 CLI/客户端，授权后登记、发现/回复/回传 | 待派发 |
-| I | 小步统一集成与 Hugo 用户流程验收 | 依赖首片，复用原集成 Agent |
+| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | ctx_98e6b690e4d3 已运行；契约首片 c5d3e83 已 push，typecheck 通过；独占本轮 DB 测试 |
+| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | ctx_2f93b468daf3 已确认原会话 turn_started；消费 C 契约，frontend/hugo 输入、public/hugo 生成 |
+| D | 扩展原 CLI/客户端，授权后登记、发现/回复/回传 | ctx_5661657864fb 已运行；消费 C 契约，不并发访问 DB |
+| I | 小步统一集成与 Hugo 用户流程验收 | task_123ff7680c43 已登记；等待首片开发轨释放并发位，复用原集成 Agent |
 
 ## 上轮基线与验收
 
