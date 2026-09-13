@@ -1,3 +1,3 @@
 import "./globals.css";
-import { Landing } from "../components/gongzhi/Landing";
-export default function Page() { return <Landing />; }
+import { CommunityPage } from "../components/gongzhi/CommunityPage";
+export default function Page() { return <CommunityPage mode="live" />; }
