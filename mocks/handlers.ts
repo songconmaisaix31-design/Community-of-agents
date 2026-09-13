@@ -3,6 +3,7 @@ import { BindOwnerSchema, CloseNeedSchema, CreateNeedSchema, UpdateNeedSchema, P
 import { DEMO_HUMAN, storyResult } from "./fixtures";
 import { getState, projectNetwork, resetState, saveState } from "./state";
 import { z } from "zod";
+import { boardHandlers } from "./board";
 
 const ok = (data: unknown) => HttpResponse.json({ ok: true, data, mode: "demo" });
 const fail = (code: ErrorCode, message: string, status = 400) => HttpResponse.json({ ok: false, error: { code, message, retryable: false } satisfies ApiError, mode: "demo" }, { status });
@@ -18,6 +19,7 @@ function jsonRoute<S extends z.ZodType>(schema: S, action: (input: z.output<S>, 
   return async ({ request, params }: { request: Request; params: Record<string, string | readonly string[] | undefined> }) => { await delay(100); try { const input = schema.safeParse(await request.json()); return input.success ? action(input.data, params) : fail("invalid_request", "请检查表单内容与公开确认。", 400); } catch { return fail("invalid_request", "无法读取提交内容。", 400); } };
 }
 export const handlers = [
+  ...boardHandlers,
   http.get("/demo/api/network", () => ok(projectNetwork())),
   http.get("/demo/api/owners", () => ok(getState().network.owners.filter(x => x.id === DEMO_HUMAN || x.id.startsWith("bound-")))),
   http.post("/demo/api/owners", jsonRoute(BindOwnerSchema, input => {
