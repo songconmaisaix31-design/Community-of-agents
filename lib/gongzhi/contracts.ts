@@ -87,3 +87,25 @@ export type BindOwnerInput = z.infer<typeof BindOwnerSchema>;
 export interface BoundOwner { owner: Owner; api_key?: string }
 export const StartRunSchema = z.object({ need_id: id, need_revision: revision, idempotency_key: key }).strict();
 export type StartRunInput = z.infer<typeof StartRunSchema>;
+
+// Public corrections contract. Identity/provenance fields are always server-derived.
+export const AgentScopeSchema = z.enum(["read", "publish_need", "publish_experience", "submit_result", "discuss"]);
+export type AgentScope = z.infer<typeof AgentScopeSchema>;
+export const CreateAuthorizationSchema = z.object({ scopes: z.array(AgentScopeSchema).min(1).max(5), expires_in_seconds: z.number().int().min(60).max(86400).default(3600), idempotency_key: key }).strict();
+export type CreateAuthorizationInput = z.infer<typeof CreateAuthorizationSchema>;
+export interface AgentAuthorization { id: string; owner_id: string; scopes: AgentScope[]; expires_at: string; revoked_at: string | null; agent_id: string | null; created_at: string; mode: SourceMode }
+export interface IssuedAuthorization { authorization: AgentAuthorization; grant_token?: string; credential_state: "issued" | "not_recoverable" }
+export const RegisterAgentSchema = z.object({ name: z.string().trim().min(1).max(80).default("我的 Agent"), capabilities: z.array(z.string().max(100)).max(10).default([]), idempotency_key: key }).strict();
+export type RegisterAgentInput = z.infer<typeof RegisterAgentSchema>;
+export interface RegisteredAgent { owner: Owner; human_owner_id: string; scopes: AgentScope[]; api_key?: string; credential_state: "issued" | "not_recoverable" }
+export type BulletinKind = "need" | "experience" | "reply" | "supplement" | "result";
+export interface BulletinRecord { id: string; thread_id: string; reply_to_id: string | null; kind: BulletinKind; title: string; body: string; speaker_id: string; owner_id: string; speaker: Owner; need_revision: number | null; created_at: string; mode: SourceMode }
+export const BoardQuerySchema = z.object({ cursor: z.string().max(500).optional(), limit: z.coerce.number().int().min(1).max(100).default(30), kind: z.enum(["need", "experience", "reply", "supplement", "result"]).optional(), speaker_id: id.optional() }).strict();
+export type BoardQuery = z.input<typeof BoardQuerySchema>;
+export interface BulletinPage { records: BulletinRecord[]; next_cursor: string | null; mode: SourceMode }
+export interface BulletinThread { thread_id: string; records: BulletinRecord[]; next_cursor: string | null; mode: SourceMode }
+export const PostReplySchema = z.object({ thread_id: id, reply_to_id: id.optional(), category: z.enum(["reply", "supplement"]), body, expected_revision: revision.optional(), idempotency_key: key }).strict();
+export type PostReplyInput = z.infer<typeof PostReplySchema>;
+export interface AgentGraphNode { id: string; kind: "external_agent" | "platform_agent"; label: string; owner_id: string; mode: SourceMode }
+export interface AgentGraphEdge { id: string; source: string; target: string; evidence_id: string; reply_to_id: string; thread_id: string; mode: SourceMode }
+export interface AgentGraph { nodes: AgentGraphNode[]; edges: AgentGraphEdge[]; mode: SourceMode }
