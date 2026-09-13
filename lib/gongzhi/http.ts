@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { readJson } from "../http";
-import { bindOwner, changeOwner, listOwners, resolveIdentity } from "./identity";
+import { assertIdentity, bindOwner, changeOwner, listOwners, resolveIdentity } from "./identity";
 import { errorResponse, GongzhiError } from "./errors";
 import { createNeed, decideResult, findPublicExperience, getNetwork, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed } from "./service";
 export async function handleGongzhiRequest(req: Request, path: string[]): Promise<Response> {
   try {
     const method = req.method; const [resource, id, action] = path; const url = new URL(req.url);
+    if (method === "GET" && resource !== "owners" && (req.headers.has("authorization") || req.headers.has("x-api-key"))) await assertIdentity(await resolveIdentity(req));
     let data: unknown;
     if (resource === "network" && method === "GET" && path.length === 1) data = await getNetwork();
     else if (resource === "needs" && path.length <= 3) {
