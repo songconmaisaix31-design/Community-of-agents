@@ -21,6 +21,6 @@ I 浏览器实际覆盖自然入口、双入口登记、Agent 唯一点、镜头
 
 I 已审阅1440/390深浅四图、接入弹窗、窄屏表单和真实失败界面：导航与双入口可读、无横溢、移动锚点露出于吸顶头下方。默认 dark，偏好跨刷新/空间/重置保留；存储拒绝仍可切换；键盘 focus 与减弱动效通过。D 专项以真实 Canvas 像素验证点/线/hover 可见，主题反复切换、刷新与新增点边保留同一 Canvas、原生 x/y/k 和点位；B 原测试保留68点至少88%独立可见阈值。公开记录数据为明确标记的 HTTP fixture，不能计作真实 Agent 执行。
 
-Git 外证据根目录 `C:/Users/DW/AppData/Local/Temp/`：`gongzhi-evomap-I-node.log`、`gongzhi-evomap-I-build-final.log`；`gongzhi-evomap-I-first/report.json`（I8）、`gongzhi-evomap-I-frontend/report.json`（B20）、`gongzhi-evomap-I-final/report.json`（最终9）。最终截图在 `gongzhi-evomap-I-final/gongzhi-evomap-evidence/`：`page-{1440|390}-{dark|light}.png`、`connect-*`、`form-*`、`live-error-light.png`、`live-disabled-dark.png`；D Canvas 截图在同级 results 附件。未发现待返修领域问题；总控独立预览已通过，等待最终管理文档合入。
+Git 外证据根目录 `C:/Users/DW/AppData/Local/Temp/`：`gongzhi-evomap-I-node.log`、`gongzhi-evomap-I-build-final.log`；`gongzhi-evomap-I-first/report.json`（I8）、`gongzhi-evomap-I-frontend/report.json`（B20）、`gongzhi-evomap-I-final/report.json`（最终9）。最终截图在 `gongzhi-evomap-I-final/gongzhi-evomap-evidence/`：`page-{1440|390}-{dark|light}.png`、`connect-*`、`form-*`、`live-error-light.png`、`live-disabled-dark.png`；D Canvas 截图在同级 results 附件。未发现待返修领域问题；总控独立预览已通过，最终管理验收 `bc2caf9` 已普通合入，见 `docs/source/evomap-style-2026-09-14.md`，仅文档收尾不重复构建。
 
 沿用 Node24.16.0/npm11.13.0、Playwright1.63.0/Chrome152.0.7977.83，根依赖与锁文件未变化，复用此前锁定安装。本轮未运行 PG、迁移、云 Auth、模型或知乎；上一轮基线的本地 PG 通过记录仅为历史证据。真实云身份、真实模型 Agent 协作仍未验证，未新增费用、公开部署或赛事提交。
