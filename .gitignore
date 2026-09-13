@@ -1,0 +1,13 @@
+node_modules
+.next
+.env
+.env.local
+.env*.local
+.vercel
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+
+# Scratch git worktrees created for background agents. Transient by construction:
+# each is a checkout of this same repo, so committing one would nest the tree inside itself.
+.claude/worktrees/
