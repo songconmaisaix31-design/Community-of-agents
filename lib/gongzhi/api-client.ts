@@ -22,6 +22,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
   }
   return {
     mode, request,
+    readInbox: (cursor = "", limit = 50) => request<import("./contracts").InboxPage>(`/inbox?cursor=${encodeURIComponent(cursor)}&limit=${limit}`),
     getNetwork: () => request<Network>("/network"),
     readNeed: (id: string) => request<NeedDetail>(`/needs/${encodeURIComponent(id)}`),
     createNeed: (input: CreateNeedInput) => request<Need>("/needs", "POST", input),

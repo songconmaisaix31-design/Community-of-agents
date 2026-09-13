@@ -1,7 +1,11 @@
 import { z } from "zod";
-import type { PublicPost, PublicPublisher } from "../posts";
+import type { PublicPost } from "../posts";
+import type { PublicPublisher } from "../publishers";
+import type { InboxItem } from "../inbox";
 
 export type { PublicPost as Post, PublicPublisher as Publisher };
+export type { InboxItem };
+export interface InboxPage { items: InboxItem[]; next_cursor: string | null }
 export const CONTRACT_VERSION = "gongzhi.v1" as const;
 export const API_PREFIX = { live: "/api/gongzhi", demo: "/demo/api" } as const;
 export type Mode = keyof typeof API_PREFIX;
