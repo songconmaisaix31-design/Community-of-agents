@@ -22,7 +22,7 @@
 | `npm run typecheck` | 通过 |
 | `npm run build` | Hugo + Next 15 完整生产构建通过 |
 | `node --import tsx --test tests/frontend/behavior.test.ts` | 8/8 通过；HTTP 幂等、跨线程、版本/撤回、授权撤销、图依据、公开/来源约束 |
-| `npx playwright test --config tests/frontend/playwright.config.ts` | 13/13 通过；Chrome，独立端口 3219，桌面 1440 / 窄屏 390 |
+| `npx playwright test --config tests/frontend/playwright.config.ts` | 15/15 通过；Chrome，独立端口 3219，桌面 1440 / 窄屏 390，含新增多节点回归 |
 
 浏览器测试实际点击原生 canvas 点与线（通过截图定位点），核对 D3 镜头坐标与实例存活，新增点及新增交流边后保持镜头；包含双向定位、三故事两尺寸、五种公告、刷新/重置/草稿/失败重试防重、无 JS 的 Hugo 壳、WebGL 两种失败、模式切换与真实不可用、证据不匹配、最新快照之外的精确版本读取。新记录/精确版本的 live HTTP 拦截用例明确为程序化测试，不是实机 Agent 运行证据。
 
@@ -33,5 +33,11 @@
 ## 真实限制
 
 本轮没有云身份授权、外部 Agent 真登记、平台付费调用、两名真实 LLM Agent 交流或公开部署；这些不是示例能证明的层面。Hugo Auth 仅允许三个公开配置变量注入，默认 false。全站同源托管和后台真实 PG/HTTP 集成由 C/I 另外给出证据；B 未读取其他项目凭据。
+
+## I 多节点画面返修
+
+I 的实际 PG 截图发现 68 点在 7% 缩放下密集聚成小团。新增 68 点/37 条稀疏边浏览器夹具在旧实现两种宽度都只识别出 2 个可分开的点，确认原 2 点示例没有覆盖此问题。原因是种子包含负坐标，而运行模拟时 Cosmos 默认不会重缩放这些位置；修正为模拟空间中心 2048，显式关闭重缩放，使用原生排斥、弹簧、碰撞与较缓冷却，并减少初始 fit 留白。20 点以上画布适度加高；更新仍保持镜头和同一实例。
+
+新版 68 点/37 边夹具双尺寸通过至少 88% 点可分别识别且可点击的回归。另只读使用 I 提供的 Git 外 `public-agent-graph.json`（75 点/45 边）回放公开拓扑，双尺寸均通过同样验收；没有 B 直连 DB 或新增数据。用 `GONGZHI_LAYOUT_PUBLIC_GRAPH=<公开图JSON绝对路径>` 可重跑 `hugo-layout.spec.ts`。截图 `hugo-layout-68-1440.png` / `hugo-layout-68-390.png` / `hugo-layout-public-snapshot-1440.png` / `hugo-layout-public-snapshot-390.png` 位于同一 Git 外证据目录，图上明确标识布局测试；I 仍需用最新实际 HTTP/PG 图复验。
 
 公告正文和线程可读取；筛选/搜索明确针对已载入公告，更多历史需要点击分页。图只接受服务端提供的数据，少量真实记录时保留少量点，不补假成员。原 B Agent/branch/worktree 保留返修。
