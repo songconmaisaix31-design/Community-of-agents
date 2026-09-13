@@ -6,9 +6,9 @@ import { resetState } from "../../mocks/state.ts";
 import { createApiClient, ApiClientError } from "../../lib/gongzhi/api-client.ts";
 const server = setupServer(...handlers);
 const api = createApiClient("demo", { fetch: (input, options) => fetch(new URL(String(input), "http://localhost"), options) });
-before(() => server.listen({ onUnhandledRequest: "error" }));
+before(() => { Object.defineProperty(globalThis, "location", { value: new URL("http://localhost/demo/space"), configurable: true }); server.listen({ onUnhandledRequest: "error" }); });
 beforeEach(() => resetState());
-after(() => server.close());
+after(() => { server.close(); Reflect.deleteProperty(globalThis, "location"); });
 const input = { title: "独立的新需求", body: "不同于固定故事的新条件", constraints: "公开资料", expected_result: "一份文字", tags: ["活动"], visibility: "public" as const, idempotency_key: "create-one" };
 test("HTTP 创建、修改、重放返回原创建快照且不新增，冲突不静默覆盖", async () => {
   const created = await api.createNeed(input);
