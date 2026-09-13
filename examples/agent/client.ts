@@ -5,11 +5,12 @@ async function confirmedWrite<T>(signal: AbortSignal, write: () => Promise<T>): 
   if (signal.aborted) throw new ApiClientError({ code: 'cancelled', message: '操作已取消，尚未发送。', retryable: false });
   try {
     const result = await write();
+    if (result === null || typeof result !== 'object') throw new Error('Missing write receipt.');
     if (signal.aborted) throw new ApiClientError({ code: 'unknown', message: '写入确认时连接已中断，请核对原请求。', retryable: false });
     return result;
   } catch (error) {
-    if (error instanceof ApiClientError && (error.status === 0 || ['upstream_failed', 'timeout', 'unknown'].includes(error.error.code))) {
-      throw new ApiClientError({ code: 'unknown', message: '写入结果尚未确认；保留原内容与幂等键，先查询记录，不要盲目重试。', retryable: false }, error.status);
+    if (!(error instanceof ApiClientError) || error.status === 0 || ['upstream_failed', 'timeout', 'unknown'].includes(error.error.code)) {
+      throw new ApiClientError({ code: 'unknown', message: '写入结果尚未确认；保留原内容与幂等键，先查询记录，不要盲目重试。', retryable: false }, error instanceof ApiClientError ? error.status : 0);
     }
     throw error;
   }
