@@ -224,6 +224,10 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
       await page.setViewportSize({ width: 390, height: 844 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records-narrow.png"), fullPage: true });
+      await page.reload();
+      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
+      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
+      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph-narrow.png") });
       t.diagnostic(`Actual Hugo/PG graph: ${graph.nodes.length} Agents, ${graph.edges.length} evidenced edges; screenshots ${evidenceDirectory}`);
     } finally { await browser.close(); }
     const limitedGrant = await request("http-human-a", "/authorizations", "POST", { scopes: ["read"], idempotency_key: `${prefix}:limited` });
