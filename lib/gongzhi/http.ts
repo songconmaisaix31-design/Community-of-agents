@@ -2,7 +2,7 @@ import { z } from "zod";
 import { readJson } from "../http";
 import { assertIdentity, bindOwner, changeOwner, listOwners, resolveIdentity } from "./identity";
 import { errorResponse, GongzhiError } from "./errors";
-import { createNeed, decideResult, findPublicExperience, getNetwork, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed } from "./service";
+import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed } from "./service";
 export async function handleGongzhiRequest(req: Request, path: string[]): Promise<Response> {
   try {
     const method = req.method; const [resource, id, action] = path; const url = new URL(req.url);
@@ -14,6 +14,7 @@ export async function handleGongzhiRequest(req: Request, path: string[]): Promis
       else if (method === "POST" && !id) data = await createNeed(await resolveIdentity(req), await readJson(req));
       else if (method === "PATCH" && id && !action) data = await updateNeed(await resolveIdentity(req), id, await readJson(req));
       else if (method === "POST" && id && action === "decisions") data = await decideResult(await resolveIdentity(req), id, await readJson(req));
+      else if (method === "POST" && id && action === "close") data = await closeNeed(await resolveIdentity(req), id, await readJson(req));
       else throw new GongzhiError(404, "not_found", "没有这个需求操作。");
     } else if (resource === "experiences" && path.length <= 2) {
       if (method === "GET") data = id ? await readExperience(id) : await findPublicExperience(z.string().max(500).parse(url.searchParams.get("q") ?? ""));

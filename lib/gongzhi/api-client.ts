@@ -6,6 +6,8 @@ export class ApiClientError extends Error {
 export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; accessToken?: () => string | undefined } = {}) {
   const fetcher = options.fetch ?? fetch;
   async function request<T>(path: string, method = "GET", input?: unknown): Promise<T> {
+    const normalized = new URL(`${API_PREFIX[mode]}${path}`, "http://gongzhi.invalid");
+    if (!path.startsWith("/") || !normalized.pathname.startsWith(`${API_PREFIX[mode]}/`)) throw new ApiClientError({ code: "mode_mismatch", message: "请求地址超出当前空间。", retryable: false });
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = mode === "live" ? options.accessToken?.() : undefined;
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -27,6 +29,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
     readNeed: (id: string) => request<NeedDetail>(`/needs/${encodeURIComponent(id)}`),
     createNeed: (input: CreateNeedInput) => request<Need>("/needs", "POST", input),
     updateNeed: (id: string, input: UpdateNeedInput) => request<Need>(`/needs/${encodeURIComponent(id)}`, "PATCH", input),
+    closeNeed: (id: string, input: import("./contracts").CloseNeedInput) => request<Need>(`/needs/${encodeURIComponent(id)}/close`, "POST", input),
     findExperience: (q = "") => request<Experience[]>(`/experiences?q=${encodeURIComponent(q)}`),
     readExperience: (id: string) => request<Experience>(`/experiences/${encodeURIComponent(id)}`),
     publishExperience: (input: PublishExperienceInput) => request<Experience>("/experiences", "POST", input),

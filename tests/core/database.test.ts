@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import postgres from "postgres";
 import { bindOwner, changeOwner, resolveIdentity } from "../../lib/gongzhi/identity.ts";
-import { createNeed, updateNeed, publishExperience, readExperience, submitResult, decideResult, readNeed, readInbox, getNetwork } from "../../lib/gongzhi/service.ts";
+import { closeNeed, createNeed, updateNeed, publishExperience, readExperience, submitResult, decideResult, readNeed, readInbox, getNetwork } from "../../lib/gongzhi/service.ts";
 import { resolveRunIdentity, claimRun, cancelRun, finishRun, getRun, submitRunResult } from "../../lib/gongzhi/runs.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
 import { handleMcpPost } from "../../lib/mcp.ts";
@@ -31,6 +31,7 @@ test("real isolated Postgres: bindings, immutable history, revision, idempotency
   await new Promise<void>((resolve) => auth.listen(0, "127.0.0.1", resolve));
   process.env.SUPABASE_URL = `http://127.0.0.1:${(auth.address() as { port: number }).port}`;
   process.env.SUPABASE_ANON_KEY = "local-test-anon-key";
+  process.env.GONGZHI_AUTH_ENABLED = "true";
   const admin = postgres(process.env.MIGRATION_DATABASE_URL!, { max: 1, onnotice: () => {} });
   t.after(async () => { auth.closeAllConnections(); await new Promise<void>((resolve) => auth.close(() => resolve())); await admin.end(); await sql().end(); });
   const req = (token: string) => new Request("http://localhost", { headers: { Authorization: `Bearer ${token}` } });
@@ -56,6 +57,11 @@ test("real isolated Postgres: bindings, immutable history, revision, idempotency
   await t.test("owner revision invalidates old result acceptance and preserves original result", async () => {
     const updated = await updateNeed(a, need.id, { ...initial, body: `${prefix} revised need`, expected_revision: 1, idempotency_key: `${prefix}:edit` }); assert.equal(updated.revision, 2);
     await assert.rejects(decideResult(a, need.id, { result_id: result.id, expected_revision: 2, decision: "accept", idempotency_key: `${prefix}:stale-accept` }), { code: "revision_conflict" });
+    const decision = { result_id: result.id, expected_revision: 2, decision: "accept", idempotency_key: `${prefix}:stale-via-http` };
+    const rest = await handleGongzhiRequest(new Request(`http://localhost/api/gongzhi/needs/${need.id}/decisions`, { method: "POST", headers: { Authorization: "Bearer test-human-a" }, body: JSON.stringify(decision) }), ["needs", need.id, "decisions"]);
+    assert.equal(rest.status, 409); assert.equal((await rest.json()).error.code, "revision_conflict");
+    const mcp = await handleMcpPost(new Request("http://localhost/mcp", { method: "POST", headers: { Authorization: "Bearer test-human-a" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "decide_result", arguments: { ...decision, need_id: need.id } } }) }));
+    assert.equal((await mcp.json()).result.structuredContent.error.code, "revision_conflict");
     assert.equal((await readNeed(a, need.id)).results[0].body, resultInput.body);
     await assert.rejects(submitResult(agent, { ...resultInput, idempotency_key: `${prefix}:stale-submit` }), { code: "revision_conflict" });
   });
@@ -126,5 +132,15 @@ test("real isolated Postgres: bindings, immutable history, revision, idempotency
   await t.test("invalid auth is 401 but Supabase outage is 503", async () => {
     await assert.rejects(bindOwner(req("bad-token"), { name: "bad", kind: "human" }), { status: 401 });
     await assert.rejects(bindOwner(req("auth-outage"), { name: "outage", kind: "human" }), { status: 503 });
+  });
+  await t.test("only human owner can close; retries preserve history and prevent new results/runs", async () => {
+    const open = await createNeed(a, { ...initial, body: `${prefix} close need`, idempotency_key: `${prefix}:close-need` });
+    const input = { expected_revision: 1, idempotency_key: `${prefix}:close` };
+    await assert.rejects(closeNeed(b, open.id, input), { code: "forbidden" });
+    assert.equal((await closeNeed(a, open.id, input)).status, "closed");
+    assert.equal((await closeNeed(a, open.id, input)).status, "closed");
+    await assert.rejects(submitResult(b, { ...resultInput, need_id: open.id, idempotency_key: `${prefix}:closed-result` }), { code: "revision_conflict" });
+    const platform = await resolveRunIdentity(humanARequest);
+    await assert.rejects(claimRun(platform, { need_id: open.id, need_revision: 1, idempotency_key: `${prefix}:closed-run` }, new Date(Date.now()+60000).toISOString()), { code: "revision_conflict" });
   });
 });
