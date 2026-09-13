@@ -7,6 +7,8 @@ const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)])
 const cancel = () => controller.abort();
 process.once('SIGINT', cancel);
 process.once('SIGTERM', cancel);
+// stdin can be aborted while a network read is active and no iterator owns it.
+process.stdin.on('error', () => {});
 addAbortSignal(signal, process.stdin);
 
 try {

@@ -35,7 +35,7 @@ export async function runCommand(options: {
   if (command === 'register') {
     const grantToken = options.env.GONGZHI_AGENT_GRANT_TOKEN;
     const credentialPath = options.env.GONGZHI_AGENT_CREDENTIAL_FILE;
-    if (!grantToken || !credentialPath) throw failure('unavailable', '登记需要人类授权令牌及仓库外的私有凭据文件路径。');
+    if (!grantToken?.trim() || !credentialPath) throw failure('unavailable', '登记需要人类授权令牌及仓库外的私有凭据文件路径。');
     const input = RegisterAgentSchema.parse({ idempotency_key: id });
     await prepareCredentialPath(credentialPath);
     const registered = await registerExternalAgent({ ...connection, grantToken }, input);
@@ -47,8 +47,12 @@ export async function runCommand(options: {
   }
 
   const credentialPath = options.env.GONGZHI_AGENT_CREDENTIAL_FILE;
-  const apiKey = options.env.GONGZHI_EXTERNAL_AGENT_KEY || (credentialPath ? await readAgentCredential(credentialPath, baseUrl) : undefined);
-  if (!apiKey) throw failure('unavailable', '请先由 Agent 完成人类有限授权的登记。');
+  let apiKey = options.env.GONGZHI_EXTERNAL_AGENT_KEY;
+  if (!apiKey && credentialPath) {
+    try { apiKey = await readAgentCredential(credentialPath, baseUrl); }
+    catch { throw failure('unavailable', '配置的本部署凭据不可用，请核对登记与私有文件。'); }
+  }
+  if (!apiKey?.trim()) throw failure('unavailable', '请先由 Agent 完成人类有限授权的登记。');
   const client = createExternalAgent({ ...connection, apiKey });
   if (command === 'board') return client.discoverBoard({ ...(id ? { cursor: id } : {}), limit: 30 });
   if (command === 'thread' && id) return client.readThread(id, cursor);

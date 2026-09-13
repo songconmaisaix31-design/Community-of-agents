@@ -17,6 +17,8 @@ test('CLI missing configuration is unavailable without any request; help is usab
   await assert.rejects(run(['board'], async () => { calls++; }, undefined, { env: {} }), e => e.error.code === 'unavailable');
   assert.match((await run(['help'], undefined, undefined, { env: {} })).usage, /register/);
   assert.equal(calls, 0);
+  await assert.rejects(run(['board'], async () => { calls++; }, undefined, { env: { GONGZHI_SELF_HOSTED_URL: env.GONGZHI_SELF_HOSTED_URL, GONGZHI_AGENT_CREDENTIAL_FILE: join(tmpdir(), 'gongzhi-nonexistent-directory', 'missing-key.json') } }), e => e.error.code === 'unavailable');
+  assert.equal(calls, 0);
 });
 
 test('CLI registers default Agent using grant and stores the one-time key without returning it', async () => {
