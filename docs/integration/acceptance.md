@@ -1,44 +1,27 @@
-# 共治集成验收
+# 共治四点纠偏增量验收
 
-2026-09-13；分支 `integration/gongzhi-mvp`。最终实现验收目标 `19aeb6cab95021d1d5c1a5ca967b097ff32d4398`，包含 Core `004404e`、Connect `97d9189`、Frontend `3d57b68`，以及中文 layout 装配与 Integration 测试。三轨实现已统一，初始检查点 `079242d` 的全量测试失败已修复；以下检查全部针对该统一实现，后继仅追加验收/管理文档。
+2026-09-13，`integration/gongzhi-mvp`。本轮基于已验收旧版 `2a0b561`，当前统一 C `fee586b`（含 `2a0078f`、0012 修复）、D `0cd2255`、B Hugo 首片 `e0f7ca0`、管理 `9971a7b`。旧星图验收不能替代本轮 Agent-only 星图与公告板验收。
 
-## 已实际执行
-
-| 命令 / 层次 | 当前结果 |
+| 实际命令 / 层次 | 当前结果 |
 | --- | --- |
-| `npm ci --prefer-offline --registry=https://registry.npmjs.org --no-audit --no-fund` | 退出 0，沿锁文件；B 后继未改依赖或锁，按总控要求未重复安装 |
-| `npm run typecheck` | 构建完成后独立复核退出 0；不要与 build 并发，重建 `.next/types` 会引发短暂 TS6053 |
-| `npm run build` | 退出 0，Next 15.5.25 生成入口、demo、network 与 API；脚本仅 `next build`，不含迁移 |
-| `npm test`，启用 Core 专用 PG 与 localhost HTTP，关闭 I HTTP DB 开关 | 101 pass / 0 fail / 1 skip；唯一跳过项在下一独立进程执行 |
-| `node --test tests/integration/live-http.test.mjs`，只启用 I HTTP DB 开关 | 7 pass / 0 fail / 0 skip；实际 Next HTTP + PG，A 发布、B 外部 Agent 读写、A 采纳、越权/旧版本/撤销拒绝、幂等及 Next 重启后记录保留；关闭的助手返回 503，无虚构 run |
-| `node node_modules/playwright/cli.js test --config tests/integration/playwright.config.ts` | 最终统一实现 8/8 通过、0 skip；桌面 1440×960 / 窄屏 390×844，截图在下述 final 目录 |
-| `node node_modules/playwright/cli.js test --config tests/frontend/playwright.config.ts journeys.spec.ts` | I 在统一分支实跑 B 的 10/10 浏览器测试；包括星点/引用连线点击、连续缩放/平移、图失败仍可发布、响应丢失后去重；其中匿名助手/快照外版本读取一项采用测试 HTTP 回执，不算真实服务读取 |
-| 浏览器用户流程 | 自然入口、三表单；F-A 预写帮助须手动触发与采纳，新需求不自动出现帮助；F-B 待回应、修改、撤回；F-C 独立经验、保存不等于引用、精确 v1 引用；刷新草稿、旧版拒采纳均通过 |
-| 浏览器边界 | 实际 SW scope `/demo/`，未知示例 API 503，示例请求真实 API 409；整页 `/network/` controller=null，真实 network 503/live 且无 fixture；两模式草稿独立，重置保留真实存储 |
-| Cosmos | 两种宽度均观察到 ready；统一分支实际验证放大/缩小/复位、平移改变位置、星点打开同一记录、版本引用连线打开依据；强制 WebGL/GPU 不可用时明确降级，列表仍可搜索与发布 |
+| `npm run build` | Hugo 0.164.0 extended + Next 15.5.25 统一构建通过；不运行迁移 |
+| `npm run typecheck` | 通过；在 build 后独立执行 |
+| `node --import tsx --test --test-concurrency=1 'tests/**/*.test.ts' 'tests/**/*.test.mjs'` | 已启用 Core 专用 PG 和 localhost HTTP：129 pass / 0 fail / 1 skip；I HTTP PG 项另起进程 |
+| `node --import tsx --test tests/integration/live-http.test.mjs` | 8/8 通过；实际 Next + PG + D 客户端 + MCP，并用 Chrome 打开实际 Hugo 公告页面读取同批持久记录 |
+| `node --env-file=<Git外scratch-correction-v2.env> scripts/check-migrations.mjs` | 新空库上游八份 SQL 两遍、实际 runner 12/12 首次应用、重入 no-op、账本时间不变、scope/RLS/七类不可变公告正文与 metadata/计数更新均通过 |
+| `node --env-file=<已授权database.env> scripts/migrate.mjs`，显式启用 DB | 原 app 库只应用新 0012 成功；未重建原库 |
+| `npx --no-install playwright test --config tests/integration/playwright.config.ts hugo-acceptance.spec.ts` | 本轮桌面/窄屏 8 项正在复验；首次 5 pass，3 项为测试定位问题（隐藏桌面导航、草稿 textarea 标签定位），不作为最终通过证据 |
 
-先执行 Core PG 套件，再执行 I HTTP PG 套件，不并发使用同一库。`live-http.test.mjs` 在两个数据库开关同时存在时明确拒绝启动；不要把 `--test-concurrency` 追加在 npm 脚本的文件列表后当作可靠串行保证。
+HTTP/PG 实际覆盖有限授权、无档案默认登记、一次凭据及幂等回执、自报 owner/scopes 拒绝、capabilities 不扩权、服务端 owner/speaker、Agent 代发、求助/经验/回复/补充/成果同一公告集合、Agent-only 唯一节点与原始交流证据、REST/MCP 一致拒绝、撤销、旧版采纳拒绝、重启持久化。Chrome 真实空间直接读取上述程序化产生的 PG 记录，未用 MSW 或 fixture。
 
-```powershell
-$env:GONGZHI_TEST_DATABASE_ENV = 'C:\Users\DW\AppData\Local\Temp\gongzhi-integration-ZP8gyl\database.env'
-$env:GONGZHI_TEST_BASE_URL = 'http://127.0.0.1:3019'
-Remove-Item Env:\GONGZHI_TEST_HTTP_DATABASE_ENV -ErrorAction SilentlyContinue
-npm test
-$env:GONGZHI_TEST_HTTP_DATABASE_ENV = $env:GONGZHI_TEST_DATABASE_ENV
-Remove-Item Env:\GONGZHI_TEST_DATABASE_ENV
-node --test tests/integration/live-http.test.mjs
-```
+数据库测试必须串行：先设置 `GONGZHI_TEST_DATABASE_ENV` 与 `GONGZHI_TEST_BASE_URL=http://127.0.0.1:3019` 跑全套；随后移除 `GONGZHI_TEST_DATABASE_ENV`，设置 `GONGZHI_TEST_HTTP_DATABASE_ENV` 跑 I HTTP 套件。两个开关不可同时设置；`--test-concurrency=1` 必须位于文件模式前。根依赖和锁未变化，复用此前 `npm ci` 安装，无重复安装。
 
-## 保留的本地体验与证据
+本轮迁移检查实际发现生成列 tsv 导致 BEFORE UPDATE 误判的问题，退 C 后由新增 0012 修复，未改历史迁移。失败 scratch 库保留；第二个唯一空库 `gongzhi_migration_1789313063691_44bfc8a7` 完成重入检查，原库及记录保留。
 
-入口：<http://127.0.0.1:3019/> → `/demo/` → `/demo/space`；真实空间 <http://127.0.0.1:3019/network/>。最终 Next PID `79920` 仅监听 `127.0.0.1:3019`，命令为 `node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3019`；数据库、Auth、助手开关均关闭，遥测关闭。中文 lang/title/description 与本地全局样式由 layout 装配，无外网字体。
+本地体验：<http://127.0.0.1:3019/> 为 Hugo 入口，页面进入 `/demo/space`；真实 `/network` 默认关闭服务并明确报错。当前自有 Next PID `64720` 仅监听 127.0.0.1，数据库/Auth/助手/遥测均关闭。专用 PG 容器 `gongzhi-integration-73b8bb40-8d6` 保留在 127.0.0.1:56406，PG17.11/vector0.8.6，原库已应用12迁移。凭据只使用获授权 Git 外配置，不在报告中包含连接值。
 
-浏览器为 Playwright 1.63.0 驱动已安装 Chrome `152.0.7977.83`，使用独立 context。最终截图/报告在 Git 外：`C:\Users\DW\AppData\Local\Temp\gongzhi-browser-I-20260913-final`，`report.json` 记录 8 项通过；`results/browser-acceptance-natural-acf1d--exact-experience-reference-{desktop,narrow}/` 包含 `landing.png`、`demo-space.png`、`human-accepted.png`、`version-reference.png`。I 已查看桌面/窄屏最终截图；B 旅程复跑截图在 `C:\Users\DW\AppData\Local\Temp\gongzhi-frontend-evidence`。总控已独立完成前一检查点首页→示例发布→真实错误/无 SW 控制体验，并通过最终桌面/窄屏截图审阅、再次验证最终首页 200/中文标题和真实 API 503；最终管理记录 `55cb978` 已合入，仅含文档变化。
+来源复用见 `docs/frontend/HUGO-SOURCES.md`：my_blog `7d1f825a72bd106ff73525e7232dcb292b91b51c` 自有 partial/样式及 We Remember `678ea3fee7479d48df0e54349615184ad760fdae` 页面结构/样式，随站点保留两份 MIT 许可；没有复制 GPL Stack 主题。
 
-保留原专用容器 `gongzhi-integration-73b8bb40-8d6`，仅 `127.0.0.1:56406`，PG 17.11 / vector 0.8.6，已应用 10 个迁移；`crier_app` 无 superuser / BYPASSRLS。本轮未重建、清空或修改其他数据库；业务测试只写随机命名记录，凭据仅使用总控已授权的上述 Git 外 env。
+Git 外证据：`C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-corrections-v2`（正在生成的新浏览器报告/截图），`C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-real-pg/actual-public-records.png`（真实 PG 公告与 Agent 选择）。工具沿用 Node24.16.0/npm11.13.0、Playwright1.63.0/Chrome152.0.7977.83。
 
-## 真实限制
-
-Supabase Auth 是本地 HTTP stub，不是云 Auth；PG 为专用真实数据库。SDK 测试使用官方 MockLanguageModelV4，知乎使用测试传输；未调用付费模型、真实知乎或读取其他项目凭据，不能据此宣称模型/云登录/真实外部 Agent 完整联机通过。示例故事为明确标识的预写内容。没有真实用户试用反馈、公开部署、生产迁移或正式赛事提交。
-
-B 另报告助手状态/同 key 重试/取消与绑定凭据一次展示 2 项测试通过，使用虚拟 Auth 构建和拦截 HTTP 回执，详见 `docs/frontend/README.md`；I 未重复该特殊 Auth 构建，保留默认关闭预览。本轨通过实际 Next HTTP + PG 确认关闭助手返回 503/unavailable 且无虚构 run，不声称助手模型实际执行成功。
+限制：Supabase 为本地 HTTP stub，真实云 Auth、收费模型、知乎均未验证；示例预写内容不代表 Agent 执行。此轮是已实现接口与本地程序化联通验收，免手填档案的真实用户接入和两名真实模型 Agent 交流属于下一轮。未公开部署、未执行生产迁移、未赛事提交。待 B 后继、浏览器最终复验及总控 ready 审阅/最终管理文档合入。

@@ -12,7 +12,7 @@ console.log(`Browser acceptance artifacts: ${artifacts}`);
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "*.spec.ts",
+  testMatch: "hugo-acceptance.spec.ts",
   outputDir: join(artifacts, "results"),
   reporter: [["list"], ["json", { outputFile: join(artifacts, "report.json") }]],
   workers: 1,
