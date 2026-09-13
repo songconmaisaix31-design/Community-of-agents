@@ -12,3 +12,5 @@ html{scroll-behavior:smooth;scroll-padding-top:24px}body{font-size:14px;line-hei
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.article-list article:hover,.gz-button:hover{transform:none}}
 
 .cli-command{white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;background:#fffdf9;border:1px solid var(--line);border-radius:10px;font-size:11px}
+
+.agent-canvas[data-size="many"]{height:360px}@media(max-width:800px){.agent-canvas[data-size="many"]{height:320px}}
