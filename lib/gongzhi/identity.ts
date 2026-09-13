@@ -4,11 +4,11 @@ import { inTransaction, sql } from "../db";
 import { bearer } from "../http";
 import { sha256 } from "../ids";
 import { registerPublisher, rotateApiKey, type PublisherRow } from "../publishers";
-import { BindOwnerSchema, type BoundOwner, type Owner } from "./contracts";
+import { BindOwnerSchema, type AgentScope, type BoundOwner, type Owner } from "./contracts";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 
 export interface Identity { readonly owner: Owner; readonly user_id: string }
-type OwnerRow = { id: string; user_id: string; publisher_id: string; kind: Owner["kind"]; capabilities: string[]; revoked_at: Date | null; created_at: Date; credential_version: number; name: string; last_seen_at: Date | null; status: string };
+export type OwnerRow = { id: string; user_id: string; publisher_id: string; kind: Owner["kind"]; capabilities: string[]; scopes: AgentScope[]; revoked_at: Date | null; created_at: Date; credential_version: number; name: string; last_seen_at: Date | null; status: string };
 const credentials = new WeakMap<Identity, number>();
 export function toOwner(row: OwnerRow): Owner {
   return { id: row.id, publisher_id: row.publisher_id, kind: row.kind, name: row.name, capabilities: row.capabilities, revoked_at: row.revoked_at?.toISOString() ?? null, last_seen_at: row.last_seen_at?.toISOString() ?? null, created_at: row.created_at.toISOString(), mode: "live" };
@@ -44,15 +44,21 @@ export async function resolveIdentity(req: Request): Promise<Identity> {
   if (!rows[0]) throw new GongzhiError(403, "unbound_identity", "此凭据尚未绑定共治发言身份。");
   return identity(rows[0]);
 }
-export async function assertIdentity(actor: Identity, lock = false): Promise<PublisherRow> {
+export async function assertIdentity(actor: Identity, lock = false, scope?: AgentScope): Promise<PublisherRow> {
   if (!credentials.has(actor)) throw new GongzhiError(403, "unbound_identity", "身份必须由服务器验证。");
   const rows = lock
     ? await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${actor.owner.id} for update of o,p`
     : await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${actor.owner.id}`;
   const row = rows[0];
   if (!row || row.user_id !== actor.user_id || row.revoked_at || row.status !== "active" || row.credential_version !== credentials.get(actor)) throw new GongzhiError(403, "revoked", "此发言身份或凭据已撤销。");
+  if (scope && row.kind !== "human" && !row.scopes.includes(scope)) throw new GongzhiError(403, "forbidden", `此 Agent 未获 ${scope} 授权。`);
   const [publisher] = await sql()<PublisherRow[]>`select * from publishers where id=${row.publisher_id}`;
   return publisher;
+}
+export async function humanOwnerId(actor: Identity): Promise<string> {
+  const [human] = await sql()`select o.id from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${actor.user_id} and o.kind='human' and o.revoked_at is null and p.status='active'`;
+  if (!human) throw new GongzhiError(403, "unbound_identity", "请先绑定授权人的身份。");
+  return human.id;
 }
 export async function bindOwner(req: Request, raw: unknown): Promise<BoundOwner> {
   const userId = await verifiedUser(req);
@@ -96,7 +102,7 @@ export async function resolvePlatformIdentity(req: Request): Promise<Identity> {
     let [row] = await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${human.user_id} and o.kind='platform_agent'`;
     if (!row) {
       const { row: pub } = await registerPublisher({ name: "平台体验助手", accept_terms: true, client: "gongzhi-platform" });
-      const [created] = await sql()<OwnerRow[]>`insert into gongzhi_owners(id,user_id,publisher_id,kind,capabilities) values(${randomUUID()},${human.user_id},${pub.id},'platform_agent',${["read_need","find_experience","submit_result"]}) returning *`;
+      const [created] = await sql()<OwnerRow[]>`insert into gongzhi_owners(id,user_id,publisher_id,kind,capabilities,scopes) values(${randomUUID()},${human.user_id},${pub.id},'platform_agent',${["read_need","find_experience","submit_result"]},${["read","submit_result"]}) returning *`;
       row = { ...created, name: pub.name, last_seen_at: null, status: "active" };
     }
     return identity(row);
