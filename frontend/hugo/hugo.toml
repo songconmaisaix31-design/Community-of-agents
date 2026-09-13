@@ -1,0 +1,22 @@
+baseURL = '/hugo/'
+locale = 'zh-CN'
+title = '共治 · 让经验流动'
+disableKinds = ['taxonomy', 'term', 'RSS', 'sitemap']
+disableHugoGeneratorInject = true
+[security.funcs]
+  getenv = ['^HUGO_', '^CI$', '^NEXT_PUBLIC_GONGZHI_AUTH_ENABLED$', '^NEXT_PUBLIC_SUPABASE_URL$', '^NEXT_PUBLIC_SUPABASE_ANON_KEY$']
+[build]
+  noJSConfigInAssets = true
+[module]
+  [[module.mounts]]
+    source = 'assets'
+    target = 'assets'
+  [[module.mounts]]
+    source = '../../components'
+    target = 'assets/components'
+  [[module.mounts]]
+    source = '../../lib'
+    target = 'assets/lib'
+  [[module.mounts]]
+    source = '../../mocks'
+    target = 'assets/mocks'

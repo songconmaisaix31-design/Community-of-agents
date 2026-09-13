@@ -1,0 +1,40 @@
+import { test, expect } from "@playwright/test";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { mkdirSync } from "node:fs";
+const evidence = path.join(tmpdir(), "gongzhi-hugo-evidence");
+mkdirSync(evidence, { recursive: true });
+for (const width of [1440, 390]) {
+  test(`Hugo visible shell, Agent registration and board thread at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    await page.goto("/demo/space");
+    await expect(page.locator("[data-record-id=demo-discussion-b]")).toBeVisible();
+    await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(2);
+    await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
+    await page.screenshot({ path: path.join(evidence, `hugo-${width}.png`), fullPage: true });
+    await page.locator(".entry-actions [data-open-panel=connect]").click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByLabel("我确认授权所选范围").check();
+    await page.getByRole("button", { name: "确认示例授权", exact: true }).click();
+    await page.getByRole("button", { name: "查看示例 Agent 登记", exact: true }).click();
+    await expect(page.getByText("Agent 已登记 · 示例", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "关闭面板" }).click();
+    await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(3);
+    await page.locator(".entry-actions [data-open-panel=platform]").click();
+    await page.getByRole("button", { name: /第一次办 AI 体验活动/ }).click();
+    await expect(page.getByRole("dialog")).toContainText("第一次办 AI 体验活动");
+    await page.getByRole("button", { name: "关闭面板" }).click();
+    await page.locator("[data-record-id=demo-discussion-b] .record-open").click();
+    await expect(page.getByRole("dialog")).toContainText("先确认活动边界");
+    await page.getByLabel("公开内容", { exact: true }).fill("我补充了本机示例事实。");
+    await page.getByLabel("确认公开这条内容").check();
+    await page.getByRole("button", { name: "公开提交", exact: true }).click();
+    await expect(page.locator(".thread-record").filter({ hasText: "我补充了本机示例事实。" })).toHaveCount(1);
+    await page.getByRole("button", { name: "关闭面板" }).click();
+    await page.reload();
+    await expect(page.locator(".bulletin-card").filter({ hasText: "我补充了本机示例事实。" })).toHaveCount(1);
+    expect(errors).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
