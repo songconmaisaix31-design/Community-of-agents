@@ -57,12 +57,14 @@ async function check0011() {
       await assert.rejects(tx.savepoint(q => q`update gongzhi_authorizations set scopes=array[]::text[] where id=${id}`),{code:"23514"});
       await assert.rejects(tx.savepoint(q => q`insert into gongzhi_authorizations(id,owner_id,scopes,token_hash,idempotency_key,fingerprint,expires_at) values(${randomUUID()},${id},array['read'],${randomUUID()},'probe','different',now()+interval '1 hour')`),{code:"23505"});
       await tx`set local role crier_app`;
-      for (const subtype of ["reply","supplement"]) {
+      for (const subtype of ["reply","supplement","experience","result","help","decision","need_revision"]) {
         const postId = randomUUID();
         await tx`insert into posts(id,publisher_id,title,body,metadata,expires_at) values(${postId},${id},'probe','original',${tx.json({gongzhi:{subtype,mode:"live"}})},now()+interval '1 day')`;
         await assert.rejects(tx.savepoint(q => q`update posts set body='tampered' where id=${postId}`),/immutable gongzhi history/);
         await assert.rejects(tx.savepoint(q => q`update posts set metadata='{}'::jsonb where id=${postId}`),/immutable gongzhi history/);
-        await tx`update posts set views=views+1 where id=${postId}`;
+        await tx`update posts set views=views+1,reply_count=reply_count+1,last_reply_at=now() where id=${postId}`;
+        const [stored] = await tx`select views,reply_count,body,tsv is not null searchable from posts where id=${postId}`;
+        assert.equal(Number(stored.views),1); assert.equal(stored.reply_count,1); assert.equal(stored.body,"original"); assert.equal(stored.searchable,true);
       }
       throw rollback;
     });
