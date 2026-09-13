@@ -1,0 +1,150 @@
+/* ========================================
+   1. 全站设计变量
+   ======================================== */
+
+
+:root {
+  /* 页面顶部距离 */
+  --main-top-padding: 30px;
+
+
+  /* 全站卡片圆角 */
+  --card-border-radius: 18px;
+
+
+  /* 标签变成胶囊形 */
+  --tag-border-radius: 999px;
+
+
+  /* 首页卡片之间的距离 */
+  --section-separation: 32px;
+
+
+  /* 正文字号和行距 */
+  --article-font-size: 1.65rem;
+  --article-line-height: 1.9;
+
+
+  /* 首页文章封面高度 */
+  --article-image-height: 170px;
+
+
+  /* 行内代码配色 */
+  --code-background-color: rgba(52, 73, 94, 0.08);
+  --code-text-color: #c65d00;
+}
+
+
+/* 暗色模式下的行内代码配色 */
+:root[data-scheme="dark"] {
+  --code-background-color: rgba(255, 255, 255, 0.1);
+  --code-text-color: #ffb86c;
+}
+
+
+/* 平板及桌面端 */
+@media (min-width: 768px) {
+  :root {
+    --article-font-size: 1.75rem;
+    --article-image-height: 220px;
+  }
+}
+
+
+/* 大屏幕 */
+@media (min-width: 1280px) {
+  :root {
+    --article-image-height: 280px;
+  }
+}
+
+
+
+
+/* ========================================
+   2. 首页文章卡片悬浮动画
+   ======================================== */
+
+
+.article-list article {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+
+/* 只有真正支持鼠标悬浮的设备才添加动画 */
+@media (hover: hover) {
+  .article-list article:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-l2);
+  }
+}
+
+
+
+
+/* ========================================
+   3. 头像悬浮旋转
+   ======================================== */
+
+
+.sidebar header .site-avatar .site-logo {
+  transition: transform 0.8s ease-in-out;
+}
+
+
+@media (hover: hover) {
+  .article-list--compact article {
+    overflow: hidden;
+    background: var(--card-background);
+    border-radius: var(--card-border-radius);
+    box-shadow: var(--shadow-l1);
+  }
+
+  .article-list--compact article:not(:last-of-type) {
+    border-bottom: 0;
+  }
+}
+
+
+/* ========================================
+   5. 文章正文图片
+   ======================================== */
+
+.article-page .main-article .article-content img {
+  display: block;
+  max-width: 96%;
+  height: auto;
+  margin: 1.5em auto;
+  border-radius: 12px;
+  box-shadow: var(--shadow-l1);
+}
+
+
+/* ========================================
+   6. 引用块与长链接
+   ======================================== */
+
+.article-content blockquote {
+  border-inline-start-width: 5px;
+  border-inline-start-color: var(--accent-color);
+}
+
+/* 长链接、长路径和行内代码自动换行 */
+.article-content a,
+.article-content code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+
+/* ========================================
+   7. 代码块外观
+   ======================================== */
+
+.article-content .highlight {
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: var(--shadow-l1);
+}

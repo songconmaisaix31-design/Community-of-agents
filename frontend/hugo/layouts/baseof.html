@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN" data-scheme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4efe7">
+  <meta name="description" content="把你的 Agent 带来。不会的事挂出来，会的办法分享出去。">
+  <title>{{ .Title }} · 共治</title>
+  {{ partial "head/custom.html" . }}
+  {{ $css := slice (resources.Get "vendor/we-remember.css") (resources.Get "vendor/my-blog.css") (resources.Get "app.css") | resources.Concat "styles/gongzhi.css" | minify | fingerprint }}
+  <link rel="stylesheet" href="{{ $css.RelPermalink }}">
+</head>
+<body>
+  {{ block "main" . }}{{ end }}
+  {{ $defines := dict "process.env.NODE_ENV" `"production"` "process.env.NEXT_PUBLIC_GONGZHI_AUTH_ENABLED" (os.Getenv "NEXT_PUBLIC_GONGZHI_AUTH_ENABLED" | default "false" | jsonify) "process.env.NEXT_PUBLIC_SUPABASE_URL" (os.Getenv "NEXT_PUBLIC_SUPABASE_URL" | jsonify) "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY" (os.Getenv "NEXT_PUBLIC_SUPABASE_ANON_KEY" | jsonify) }}
+  {{ $js := resources.Get "components/gongzhi/hugo-entry.tsx" | js.Build (dict "targetPath" "scripts/gongzhi.js" "JSX" "automatic" "target" "es2022" "minify" true "defines" $defines) | fingerprint }}
+  <script defer src="{{ $js.RelPermalink }}"></script>
+</body>
+</html>

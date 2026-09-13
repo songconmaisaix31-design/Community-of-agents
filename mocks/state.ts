@@ -1,6 +1,6 @@
-import type { Network } from "../lib/gongzhi/contracts";
+import type { Network, BulletinRecord, AgentAuthorization } from "../lib/gongzhi/contracts";
 import { DEMO_STORE_KEY, seedNetwork } from "./fixtures";
-interface DemoState { version: 1; network: Network; receipts: Record<string, { fingerprint: string; value: unknown }> }
+interface DemoState { version: 1; network: Network; discussions?: BulletinRecord[]; authorizations?: AgentAuthorization[]; receipts: Record<string, { fingerprint: string; value: unknown }> }
 let memory: DemoState | undefined;
 export function getState(): DemoState {
   if (memory) return memory;

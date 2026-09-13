@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { chromium, expect } from "@playwright/test";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { resolve } from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { createExternalAgent, registerExternalAgent } from "../../examples/agent/client.ts";
 
 const configPath = process.env.GONGZHI_TEST_HTTP_DATABASE_ENV;
 
@@ -82,7 +85,7 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
 
   async function request(token, path, method = "GET", input, expectedStatus = 200, expectedCode) {
     const response = await fetch(`${base}/api/gongzhi${path}`, {
-      method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), "content-type": "application/json" },
       ...(input === undefined ? {} : { body: JSON.stringify(input) }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -135,6 +138,112 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
   await t.test("B revokes its external Agent; further HTTP writes are rejected", async () => {
     await request("http-human-b", `/owners/${agentB.owner.id}`, "DELETE");
     await request(agentB.api_key, "/results", "POST", { ...resultInput, need_revision: 2, idempotency_key: `${prefix}:revoked` }, 403, "revoked");
+  });
+  await t.test("scoped enrollment and persisted Agent exchanges agree across SDK, REST and MCP", async () => {
+    const grantInput = { scopes: ["read", "publish_need", "publish_experience", "submit_result", "discuss"], idempotency_key: `${prefix}:grant-a` };
+    const grantA = await request("http-human-a", "/authorizations", "POST", grantInput);
+    const grantB = await request("http-human-b", "/authorizations", "POST", { ...grantInput, idempotency_key: `${prefix}:grant-b` });
+    const registration = { idempotency_key: `${prefix}:enroll-a` };
+    for (const claim of [{ owner_id: humanB.owner.id }, { scopes: ["read", "discuss"] }]) {
+      await request(grantA.grant_token, "/agents/register", "POST", { ...registration, ...claim }, 400, "invalid_request");
+    }
+    const connection = { baseUrl: base, signal: AbortSignal.timeout(60_000) };
+    const enrolledA = await registerExternalAgent({ ...connection, grantToken: grantA.grant_token }, registration);
+    const enrolledB = await registerExternalAgent({ ...connection, grantToken: grantB.grant_token }, { idempotency_key: `${prefix}:enroll-b` });
+    assert.equal(enrolledA.human_owner_id, humanA.owner.id);
+    assert.ok(enrolledA.api_key && enrolledB.api_key);
+    const replay = await registerExternalAgent({ ...connection, grantToken: grantA.grant_token }, registration);
+    assert.equal(replay.owner.id, enrolledA.owner.id);
+    assert.equal(replay.api_key, undefined);
+    assert.equal(replay.credential_state, "not_recoverable");
+    const sdkA = createExternalAgent({ ...connection, apiKey: enrolledA.api_key });
+    const sdkB = createExternalAgent({ ...connection, apiKey: enrolledB.api_key });
+    const delegated = await sdkA.createNeed({ ...initial, body: `${prefix} delegated publication`, idempotency_key: `${prefix}:delegated` });
+    assert.equal(delegated.owner_id, humanA.owner.id);
+    await request(enrolledA.api_key, "/needs", "POST", { ...initial, owner_id: humanB.owner.id }, 400, "invalid_request");
+    await request(enrolledA.api_key, "/authorizations", "POST", { ...grantInput, idempotency_key: `${prefix}:self-grant` }, 403, "forbidden");
+    const replyInput = { thread_id: delegated.id, category: "reply", body: `${prefix} B public reply`, expected_revision: 1, idempotency_key: `${prefix}:public-reply` };
+    const reply = await sdkB.postReply(replyInput);
+    assert.equal((await sdkB.postReply(replyInput)).id, reply.id);
+    const supplement = await sdkA.postReply({ ...replyInput, reply_to_id: reply.id, category: "supplement", body: `${prefix} A supplement`, idempotency_key: `${prefix}:public-supplement` });
+    const humanReply = await request("http-human-a", "/discussions", "POST", { ...replyInput, body: `${prefix} human statement`, idempotency_key: `${prefix}:human-reply` });
+    const published = await sdkA.publishExperience({ title: "HTTP 独立经验", body: `${prefix} public method`, idempotency_key: `${prefix}:public-experience` });
+    const result = await sdkB.submitResult({ ...resultInput, need_id: delegated.id, body: `${prefix} scoped result`, idempotency_key: `${prefix}:scoped-result` });
+    const board = await sdkA.discoverBoard({ limit: 100 });
+    for (const [id, kind] of [[delegated.id, "need"], [reply.id, "reply"], [supplement.id, "supplement"], [published.id, "experience"], [result.id, "result"]]) {
+      assert.equal(board.records.find(record => record.id === id)?.kind, kind);
+      assert.deepEqual(await sdkA.readRecord(id), await request("", `/records/${id}`), "Anonymous webpage and SDK read the same public record");
+    }
+    const rootRecord = await sdkA.readRecord(delegated.id);
+    assert.equal(rootRecord.speaker_id, enrolledA.owner.id);
+    assert.equal(rootRecord.owner_id, humanA.owner.id);
+    const graph = await sdkA.getAgentGraph();
+    assert.ok(graph.nodes.every(node => ["external_agent", "platform_agent"].includes(node.kind)));
+    assert.equal(new Set(graph.nodes.map(node => node.id)).size, graph.nodes.length);
+    assert.ok(!graph.nodes.some(node => [humanA.owner.id, delegated.id, reply.id].includes(node.id)));
+    const edge = graph.edges.find(item => item.evidence_id === reply.id);
+    assert.deepEqual([edge.source, edge.target, edge.reply_to_id, edge.thread_id], [enrolledB.owner.id, enrolledA.owner.id, delegated.id, delegated.id]);
+    assert.ok(graph.edges.some(item => item.evidence_id === supplement.id));
+    assert.ok(!graph.edges.some(item => item.evidence_id === humanReply.id));
+    // This is a real Hugo page reading the persisted records above, without MSW.
+    // The local auth stub is only used by the preceding programmatic enrollment.
+    const browser = await chromium.launch({ channel: "chrome", headless: true });
+    try {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      await context.route("**/*", route => ["localhost", "127.0.0.1"].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
+      const page = await context.newPage();
+      const boardResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/gongzhi/board");
+      await page.goto(`${base}/network`);
+      assert.equal((await boardResponse).fromServiceWorker(), false);
+      assert.equal(await page.evaluate(() => navigator.serviceWorker.controller), null);
+      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
+      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
+      const evidenceDirectory = resolve(tmpdir(), "gongzhi-hugo-I-real-pg");
+      await mkdir(evidenceDirectory, { recursive: true });
+      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph.png") });
+      const canvas = page.locator(".cosmos-host canvas");
+      const camera = () => canvas.evaluate(element => JSON.stringify(element.__zoom));
+      const beforeZoom = await camera();
+      await page.getByRole("button", { name: "放大点图", exact: true }).click();
+      assert.notEqual(await camera(), beforeZoom);
+      const keptCamera = await camera();
+      const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/gongzhi/agent-graph");
+      await page.getByRole("button", { name: "刷新公开记录", exact: true }).click();
+      await refreshed;
+      assert.equal(await camera(), keptCamera);
+      for (const id of [delegated.id, reply.id, supplement.id, published.id, result.id]) {
+        await expect(page.locator(`.bulletin-card[data-record-id="${id}"]`)).toHaveCount(1);
+      }
+      await page.locator(`.bulletin-card[data-record-id="${reply.id}"] .record-open`).click();
+      await expect(page.getByRole("dialog")).toContainText(reply.body);
+      await page.getByRole("button", { name: "关闭面板", exact: true }).click();
+      await page.locator(`.agent-list [data-agent-id="${enrolledA.owner.id}"]`).click();
+      await expect(page.locator(`.bulletin-card[data-record-id="${supplement.id}"]`)).toHaveCount(1);
+      await expect(page.locator(`.bulletin-card[data-record-id="${reply.id}"]`)).toHaveCount(0);
+      await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records.png"), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records-narrow.png"), fullPage: true });
+      await page.reload();
+      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
+      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
+      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph-narrow.png") });
+      t.diagnostic(`Actual Hugo/PG graph: ${graph.nodes.length} Agents, ${graph.edges.length} evidenced edges; screenshots ${evidenceDirectory}`);
+    } finally { await browser.close(); }
+    const limitedGrant = await request("http-human-a", "/authorizations", "POST", { scopes: ["read"], idempotency_key: `${prefix}:limited` });
+    const limited = await registerExternalAgent({ ...connection, grantToken: limitedGrant.grant_token }, { capabilities: ["publish_need", "discuss"], idempotency_key: `${prefix}:limited-enroll` });
+    await request(limited.api_key, "/needs", "POST", initial, 403, "forbidden");
+    const rpc = await fetch(`${base}/mcp`, { method: "POST", headers: { authorization: `Bearer ${limited.api_key}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_need", arguments: initial } }) });
+    assert.equal(rpc.status, 200);
+    const denied = (await rpc.json()).result;
+    assert.equal(denied.isError, true);
+    assert.equal(denied.structuredContent.error.code, "forbidden");
+    const rpcRead = await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "read_record", arguments: { id: reply.id } } }) });
+    assert.deepEqual((await rpcRead.json()).result.structuredContent.data, await sdkA.readRecord(reply.id));
+    await request("http-human-a", `/authorizations/${grantA.authorization.id}`, "DELETE");
+    await request(enrolledA.api_key, "/discussions", "POST", { ...replyInput, idempotency_key: `${prefix}:after-grant-revoke` }, 403, "revoked");
+    await request(grantA.grant_token, "/agents/register", "POST", registration, 403, "revoked");
+    assert.equal((await request("", `/records/${supplement.id}`)).body, supplement.body);
   });
   await t.test("accepted outcome and history survive an owned Next process restart", async () => {
     await stop();

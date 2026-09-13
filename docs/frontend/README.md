@@ -1,3 +1,5 @@
+> 当前产品为 Hugo。2026-09-13 纠偏交付和当前验收请看 [HUGO-HANDOFF.md](HUGO-HANDOFF.md)；下文保留上一轮 Next 页面交付记录。
+
 # 共治前端候选
 
 分支：`songconmaisaix31-design/gongzhi-frontend`。沿 Core `d0c8b87` 的 Next 15 / React 19、共享 contracts / API client、浏览器 Supabase 适配与锁定依赖。只有 B 写域新增内容。

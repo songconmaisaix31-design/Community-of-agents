@@ -1,29 +1,14 @@
 /**
- * Applies migrations/*.sql in order, recording what it applied in public.schema_migrations. Each
- * file runs in its own transaction, and the whole run is serialised by an advisory lock.
- *
- *   npm run migrate          apply now: local development, or by hand against production
- *   npm run migrate:deploy   the same run, but only when Vercel is building production
- *
- * The second is what package.json's `build` runs before `next build`, and it is how production
- * migrations land now. Vercel promotes a deployment only once its build has succeeded, so a
- * migration applied here is in place before the new code serves its first request, and one that
- * fails takes the deploy with it instead of shipping code that reads a table nobody has created.
- *
- * That ordering is not theoretical. On 2026-09-10 the schema for search_log landed thirteen minutes
- * after the code that reads it, and the visible half of the damage — 500s from /stats and
- * /api/v1/metrics — was the cheap half. The expensive half was silent: the new bump_search call
- * aborted the transaction it shares with the counters in lib/metrics.ts, so for those thirteen
- * minutes every search threw away its entire metrics flush and nothing said so.
+ * Apply migrations/*.sql once using public.schema_migrations and an advisory lock.
+ * Explicit developer command only: npm run migrate. Build/dev never invoke this.
+ * Production execution is disabled; use this project's explicitly authorized DB.
  */
 import postgres from "postgres";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * Only a production deploy may migrate. Preview and development builds are built from this same
- * repository but have no database of their own to point at, so for them the run stops here — before
- * it has read a connection string, let alone opened a connection to the one database that exists.
+ * Reject production flags and require explicit opt-in before reading a connection string.
  */
 if (process.argv.includes("--if-production") || process.env.VERCEL_ENV === "production") {
   console.error("migrate: production execution is disabled"); process.exit(1);
