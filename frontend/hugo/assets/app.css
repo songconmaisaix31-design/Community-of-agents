@@ -14,3 +14,4 @@ html{scroll-behavior:smooth;scroll-padding-top:24px}body{font-size:14px;line-hei
 .cli-command{white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;background:#fffdf9;border:1px solid var(--line);border-radius:10px;font-size:11px}
 
 .agent-canvas[data-size="many"]{height:360px}@media(max-width:800px){.agent-canvas[data-size="many"]{height:320px}}
+.agent-list{max-height:150px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scroll-padding-block:6px}.agent-list button:focus-visible{outline-offset:-3px}
