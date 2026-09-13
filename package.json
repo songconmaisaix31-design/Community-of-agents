@@ -5,10 +5,8 @@
   "type": "module",
   "description": "共治 Agent 互助网络",
   "scripts": {
-    "dev": "npm run build:hugo && next dev -p 3000",
-    "dev:hugo": "node scripts/hugo.mjs --watch",
-    "build": "npm run build:hugo && npm run build:backend",
-    "build:hugo": "node scripts/hugo.mjs",
+    "dev": "next dev -p 3000",
+    "build": "next build",
     "build:backend": "next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
