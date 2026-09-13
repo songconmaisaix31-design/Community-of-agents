@@ -33,7 +33,7 @@ node --test tests/integration/live-http.test.mjs
 
 入口：<http://127.0.0.1:3019/> → `/demo/` → `/demo/space`；真实空间 <http://127.0.0.1:3019/network/>。最终 Next PID `79920` 仅监听 `127.0.0.1:3019`，命令为 `node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3019`；数据库、Auth、助手开关均关闭，遥测关闭。中文 lang/title/description 与本地全局样式由 layout 装配，无外网字体。
 
-浏览器为 Playwright 1.63.0 驱动已安装 Chrome `152.0.7977.83`，使用独立 context。最终截图/报告在 Git 外：`C:\Users\DW\AppData\Local\Temp\gongzhi-browser-I-20260913-final`，`report.json` 记录 8 项通过；`results/browser-acceptance-natural-acf1d--exact-experience-reference-{desktop,narrow}/` 包含 `landing.png`、`demo-space.png`、`human-accepted.png`、`version-reference.png`。I 已查看桌面/窄屏最终截图；B 旅程复跑截图在 `C:\Users\DW\AppData\Local\Temp\gongzhi-frontend-evidence`。总控已对前一实现检查点 `c21f22a` 独立完成首页→示例发布→真实错误/无 SW 控制体验，本最终实现继续交总控复核。
+浏览器为 Playwright 1.63.0 驱动已安装 Chrome `152.0.7977.83`，使用独立 context。最终截图/报告在 Git 外：`C:\Users\DW\AppData\Local\Temp\gongzhi-browser-I-20260913-final`，`report.json` 记录 8 项通过；`results/browser-acceptance-natural-acf1d--exact-experience-reference-{desktop,narrow}/` 包含 `landing.png`、`demo-space.png`、`human-accepted.png`、`version-reference.png`。I 已查看桌面/窄屏最终截图；B 旅程复跑截图在 `C:\Users\DW\AppData\Local\Temp\gongzhi-frontend-evidence`。总控已独立完成前一检查点首页→示例发布→真实错误/无 SW 控制体验，并通过最终桌面/窄屏截图审阅、再次验证最终首页 200/中文标题和真实 API 503；最终管理记录 `55cb978` 已合入，仅含文档变化。
 
 保留原专用容器 `gongzhi-integration-73b8bb40-8d6`，仅 `127.0.0.1:56406`，PG 17.11 / vector 0.8.6，已应用 10 个迁移；`crier_app` 无 superuser / BYPASSRLS。本轮未重建、清空或修改其他数据库；业务测试只写随机命名记录，凭据仅使用总控已授权的上述 Git 外 env。
 
