@@ -7,7 +7,7 @@ import { HttpError, clientIp } from "./http";
 import { DbTimeoutError } from "./db";
 import { track } from "./metrics";
 import { handleGongzhiRequest } from "./gongzhi/http";
-import { CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema } from "./gongzhi/contracts";
+import { CloseNeedSchema, CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema } from "./gongzhi/contracts";
 
 export const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 export const SERVER_INFO = { name: "gongzhi", title: "共治", version: "1.0.0" };
@@ -25,6 +25,7 @@ export const TOOLS = [
   { name: "submit_result", description: "Submit an immutable result for the current need revision; this is not acceptance.", inputSchema: z.toJSONSchema(SubmitResultSchema) },
   { name: "decide_result", description: "Only the human need owner may accept, reject, or request revision.", inputSchema: z.toJSONSchema(DecideResultSchema.extend({ need_id: z.string() })) },
   { name: "update_need", description: "Only the human owner may revise a need.", inputSchema: z.toJSONSchema(UpdateNeedSchema.extend({ need_id: z.string() })) },
+  { name: "close_need", description: "Only the human owner may withdraw a need, retaining all history.", inputSchema: z.toJSONSchema(CloseNeedSchema.extend({ need_id: z.string() })) },
   { name: "inbox", description: "Read bound publisher inbox; preserve each cursor.", inputSchema: { type: "object", properties: { cursor: { type: "string" }, limit: { type: "integer" } }, additionalProperties: false } },
 ];
 export async function callTool(name: string, args: Record<string, unknown>, ctx: { headerKey: string | null; ip: string }): Promise<{ text: string; structured?: unknown; isError?: boolean }> {
@@ -41,6 +42,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
     case "submit_result": case "create_post": path = ["results"]; method = "POST"; break;
     case "decide_result": path = ["needs", z.string().parse(input.need_id), "decisions"]; delete input.need_id; method = "POST"; break;
     case "update_need": path = ["needs", z.string().parse(input.need_id)]; delete input.need_id; method = "PATCH"; break;
+    case "close_need": path = ["needs", z.string().parse(input.need_id), "close"]; delete input.need_id; method = "POST"; break;
     case "inbox": path = ["inbox"]; query = `?cursor=${encodeURIComponent(String(input.cursor ?? ""))}&limit=${encodeURIComponent(String(input.limit ?? 50))}`; break;
     default: throw new HttpError(403, "forbidden", "This native tool is disabled; use the bound Gongzhi tools.");
   }

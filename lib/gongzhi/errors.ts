@@ -11,7 +11,7 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof GongzhiError) { status = error.status; detail = { code: error.code as ErrorCode, message: error.message, retryable: status >= 500, ...(error.details ? { details: error.details } : {}) }; }
   else if (error instanceof z.ZodError) { status = 400; detail = { code: "invalid_request", message: "请求参数不符合约定。", retryable: false, details: { issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) } }; }
   else if (error instanceof DbTimeoutError) { status = 503; detail = { code: "timeout", message: "数据库响应超时，写入结果未知。请使用同一幂等键核对。", retryable: true }; }
-  else if (error instanceof HttpError) { status = error.status; detail = { code: status === 404 ? "not_found" : "invalid_request", message: error.message, retryable: status >= 500 }; }
+  else if (error instanceof HttpError) { status = error.status; detail = { code: status === 404 ? "not_found" : status === 429 || error.code === "capacity" ? "budget_exceeded" : "invalid_request", message: error.message, retryable: status >= 500 }; }
   return Response.json({ ok: false, error: detail, mode: "live" }, { status, headers: { "Cache-Control": "no-store" } });
 }
 export function assertDatabaseConfigured() {

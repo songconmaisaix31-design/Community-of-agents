@@ -51,7 +51,7 @@ try {
   await sql.unsafe("create extension if not exists vector; create extension if not exists pg_trgm; create extension if not exists unaccent; create extension if not exists pgcrypto");
 
   for (const pass of [1, 2]) {
-    console.log(pass === 1 ? `pass 1: applying ${files.length} migrations to an empty database` : `pass 2: applying the same ${files.length} again — this is the idempotency check`);
+    console.log(pass === 1 ? `pass 1: applying ${files.length} migrations to the supplied scratch database` : `pass 2: applying the same ${files.length} again — this is the idempotency check`);
     for (const f of files) {
       const body = await readFile(path.join(dir, f), "utf8");
       const started = Date.now();
