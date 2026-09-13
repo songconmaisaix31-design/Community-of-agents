@@ -10,6 +10,35 @@ before(() => { Object.defineProperty(globalThis, "location", { value: new URL("h
 beforeEach(() => resetState());
 after(() => { server.close(); Reflect.deleteProperty(globalThis, "location"); });
 const input = { title: "独立的新需求", body: "不同于固定故事的新条件", constraints: "公开资料", expected_result: "一份文字", tags: ["活动"], visibility: "public" as const, idempotency_key: "create-one" };
+test("公告与Agent图复用稳定记录，只有公开Agent回复形成边且去重", async () => {
+  const board = await api.discoverBoard(), graph = await api.getAgentGraph();
+  assert.equal(graph.nodes.length, 2); assert.equal(new Set(graph.nodes.map(n => n.id)).size, 2);
+  assert.ok(graph.nodes.every(n => n.kind === "external_agent" || n.kind === "platform_agent"));
+  for (const edge of graph.edges) { const source = await api.readRecord(edge.evidence_id), target = await api.readRecord(edge.reply_to_id); assert.equal(source.reply_to_id, target.id); assert.equal(source.speaker_id, edge.source); assert.equal(target.speaker_id, edge.target); assert.equal(source.thread_id, target.thread_id); assert.ok(board.records.some(r => r.id === source.id)); }
+  assert.equal(graph.edges.length, 1);
+  await api.postReply({ thread_id: "story-a", body: "人类回复不创造Agent节点或Agent间关系", category: "reply", expected_revision: 1, idempotency_key: "human-reply" });
+  assert.deepEqual(await api.getAgentGraph(), graph);
+});
+test("讨论幂等、跨线程、旧需求版本和关闭约束都由MSW HTTP执行", async () => {
+  const reply = { thread_id: "story-a", reply_to_id: "demo-discussion-b", body: "公开补充", category: "supplement" as const, expected_revision: 1, idempotency_key: "supplement-one" };
+  const created = await api.postReply(reply); assert.deepEqual(await api.postReply(reply), created);
+  await assert.rejects(api.postReply({ ...reply, body: "异文" }), (e: unknown) => e instanceof ApiClientError && e.error.code === "idempotency_conflict");
+  await assert.rejects(api.postReply({ ...reply, reply_to_id: "story-b", idempotency_key: "cross-thread" }), (e: unknown) => e instanceof ApiClientError && e.error.code === "invalid_request");
+  await api.updateNeed("story-a", { ...input, expected_revision: 1, idempotency_key: "revise-thread" });
+  await assert.rejects(api.postReply({ ...reply, idempotency_key: "old-reply" }), (e: unknown) => e instanceof ApiClientError && e.error.code === "revision_conflict");
+  await api.closeNeed("story-a", { expected_revision: 2, idempotency_key: "close-thread" });
+  await assert.rejects(api.postReply({ ...reply, expected_revision: 2, idempotency_key: "closed-reply" }), (e: unknown) => e instanceof ApiClientError && e.error.code === "immutable");
+});
+test("示例授权登记不返回凭据、重复登记不增点，撤销保留历史归属", async () => {
+  const grant = await api.createAuthorization({ scopes: ["read", "discuss"], expires_in_seconds: 3600, idempotency_key: "grant-one" });
+  assert.equal(grant.grant_token, undefined); assert.equal(grant.credential_state, "not_recoverable");
+  const registered = await api.registerAgent({ name: "我的 Agent · 示例", capabilities: ["描述不是权限"], idempotency_key: `grant:${grant.authorization.id}` });
+  assert.equal(registered.api_key, undefined); assert.deepEqual(registered.scopes, ["read", "discuss"]);
+  assert.deepEqual(await api.registerAgent({ name: "我的 Agent · 示例", capabilities: ["描述不是权限"], idempotency_key: `grant:${grant.authorization.id}` }), registered);
+  assert.equal((await api.getAgentGraph()).nodes.length, 3); const revoked = await api.revokeAuthorization(grant.authorization.id); assert.ok(revoked.revoked_at);
+  assert.ok((await api.getNetwork()).owners.find(o => o.id === registered.owner.id)?.revoked_at);
+  assert.equal((await api.getAgentGraph()).nodes.length, 3);
+});
 test("HTTP 创建、修改、重放返回原创建快照且不新增，冲突不静默覆盖", async () => {
   const created = await api.createNeed(input);
   const changed = await api.updateNeed(created.id, { ...input, title: "更新后的标题", expected_revision: 1, idempotency_key: "edit-one" });
