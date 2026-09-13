@@ -24,7 +24,7 @@ export async function verifiedUser(req: Request): Promise<string> {
   if (!token || token.startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请使用人的 Supabase 登录身份。");
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new GongzhiError(503, "unavailable", "尚未配置本项目 Supabase 身份服务。");
+  if (process.env.GONGZHI_AUTH_ENABLED !== "true" || !url || !key) throw new GongzhiError(503, "unavailable", "尚未配置本项目 Supabase 身份服务。");
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(10000) }) } });
   let result;
   try { result = await client.auth.getUser(token); }

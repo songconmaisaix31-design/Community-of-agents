@@ -6,7 +6,7 @@ import { inboxFor, clampLimit, type InboxItem } from "../inbox";
 import { createPost, getPostRow, PostInputSchema, publicPost, repliesFor, updatePost, type PostRow, type PublicPost } from "../posts";
 import { search } from "../search";
 import { assertWritable } from "../limits";
-import { CreateNeedSchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference } from "./contracts";
+import { CloseNeedSchema, CreateNeedSchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference } from "./contracts";
 import { assertIdentity, resolveIdentity, toOwner, type Identity } from "./identity";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 export { resolveIdentity };
@@ -110,6 +110,18 @@ export async function readExperience(id: string): Promise<Experience> {
   if (gongzhiMetadata(post).subtype !== "experience") throw new GongzhiError(404, "not_found", "没有找到这个经验版本。");
   return toExperience(post);
 }
+export async function closeNeed(actor: Identity, id: string, raw: unknown): Promise<Need> {
+  const input = CloseNeedSchema.parse(raw);
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor); const fp = fingerprint(`close_need:${id}`, input);
+    const existing = await previous(actor, input.idempotency_key, fp); if (existing) return currentNeed(id);
+    const need = await currentNeed(id, true); assertNeedOwner(actor, need); assertRevision(need, input.expected_revision);
+    await createPost(publisher, PostInputSchema.parse({ kind: "announcement", parent_id: id, title: "需求已撤回", body: "发布者关闭了需求；既有公告和成果保留。", tags: [], idempotency_key: input.idempotency_key, metadata: { gongzhi: metadata(actor, "need_revision", { revision: need.revision, fingerprint: fp }) } }));
+    await sql()`update gongzhi_needs set status='closed',updated_at=now() where post_id=${id}`;
+    await sql()`update gongzhi_runs set status='cancelled',updated_at=now() where need_id=${id} and status in ('queued','running')`;
+    return currentNeed(id);
+  });
+}
 export async function findExperience(actor: Identity, query: string, signal?: AbortSignal): Promise<Experience[]> {
   stopped(signal); await assertIdentity(actor); const result = await findPublicExperience(query); stopped(signal); return result;
 }
@@ -175,6 +187,7 @@ export async function decideResult(actor: Identity, needId: string, raw: unknown
     const publisher = await writePublisher(actor); const fp = fingerprint(`decide:${needId}`, input);
     const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toDecision(existing);
     const need = await currentNeed(needId, true); assertNeedOwner(actor, need); assertRevision(need, input.expected_revision);
+    if (need.status === "closed") throw new GongzhiError(409, "revision_conflict", "需求已撤回，请先重新修改需求。");
     const result = await visiblePost(input.result_id); const m = gongzhiMetadata(result);
     if (result.parent_id !== needId || m.subtype !== "result") throw new GongzhiError(400, "invalid_request", "只能对当前需求的成果作决定。");
     assertRevision(need, m.need_revision!);
