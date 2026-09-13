@@ -6,10 +6,12 @@
 
 | 本轮轨 | 首片结果 | 状态 |
 | --- | --- | --- |
-| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | ctx_98e6b690e4d3 已运行；契约首片 c5d3e83 已 push，typecheck 通过；独占本轮 DB 测试 |
-| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | ctx_2f93b468daf3 已确认原会话 turn_started；消费 C 契约，frontend/hugo 输入、public/hugo 生成 |
-| D | 扩展原 CLI/客户端，授权后登记、发现/回复/回传 | ctx_5661657864fb 已运行；消费 C 契约，不并发访问 DB |
-| I | 小步统一集成与 Hugo 用户流程验收 | task_123ff7680c43 已登记；等待首片开发轨释放并发位，复用原集成 Agent |
+| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | ctx_98e6b690e4d3；服务 6a886b7、Hugo 装配 2a0078f、迁移检查返修 69e43fc 已 push；真实 PG Core 56 项通过；已归还 DB 测试时段 |
+| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | ctx_2f93b468daf3；首片 e0f7ca0 已 push 并集成，1440/390 浏览器 smoke 2 项通过；继续镜头/联动/模式隔离/失败验收 |
+| D | 扩展原 CLI/客户端，授权后登记、发现/回复/回传 | 0cd2255660b2c31d30c35e3a88baa7dc49287417 已 push；typecheck 与 Connect 53 项通过；原 Agent 已交接保留，模拟模型与 HTTP 桩不算真实 Agent 执行 |
+| I | 小步统一集成与 Hugo 用户流程验收 | 原 Agent ctx_1ca7bdf5fa6c 已运行，已合入首片及管理记录；独占本项目 DB 验收，迁移重入检查使用同容器独立空测试库 |
+
+总控检查点：统一分支完整 Hugo + Next 构建已通过；在 `http://127.0.0.1:3019/demo/space` 独立浏览器确认 2 个示例 Agent、6 条公告，连线回读双方 2 条记录，公告定位 Agent 后仅显示该发言者记录。导航到 `/` 后真实数据库未启用提示可见、示例记录为 0、Service Worker controller 为 null；关闭 JavaScript 后仍有 Hugo 标题和两个默认入口。这是首片验收，最终镜头、故事、失败路径及迁移验收仍由 B/I 补齐。
 
 ## 上轮基线与验收
 
