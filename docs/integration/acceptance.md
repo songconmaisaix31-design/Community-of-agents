@@ -1,6 +1,6 @@
 # 共治四点纠偏增量验收
 
-2026-09-13，`integration/gongzhi-mvp`。本轮实现与测试检查点 `90b5402d06da7b55ee727a11d8d8bf8db7d223bf`，基于旧版 `2a0b561`，统一 C `10bc149`（源码 `fee586b`，含 0012 修复）、D `0cd2255`、B `c546dc2`、管理 `9971a7b`。旧星图验收不能替代本轮 Agent-only 星图与公告板验收。
+2026-09-13，`integration/gongzhi-mvp`。本轮实现与测试检查点 `90b5402d06da7b55ee727a11d8d8bf8db7d223bf`，基于旧版 `2a0b561`，统一 C `10bc149`（源码 `fee586b`，含 0012 修复）、D `0cd2255`、B `c546dc2` + 最后 CSS `7062baf`、管理 `9971a7b`。旧星图验收不能替代本轮 Agent-only 星图与公告板验收。
 
 | 实际命令 / 层次 | 当前结果 |
 | --- | --- |
@@ -20,12 +20,14 @@ HTTP/PG 实际覆盖有限授权、无档案默认登记、一次凭据及幂等
 
 本轮迁移检查实际发现生成列 tsv 导致 BEFORE UPDATE 误判的问题，退 C 后由新增 0012 修复，未改历史迁移。失败 scratch 库保留；第二个唯一空库 `gongzhi_migration_1789313063691_44bfc8a7` 完成重入检查，原库及记录保留。
 
-本地体验：<http://127.0.0.1:3019/> 为 Hugo 入口，页面进入 `/demo/space`；真实 `/network` 默认关闭服务并明确报错。最终自有 Next PID `80204` 仅监听 127.0.0.1，数据库/Auth/助手/遥测均关闭。专用 PG 容器 `gongzhi-integration-73b8bb40-8d6` 保留在 127.0.0.1:56406，PG17.11/vector0.8.6，原库已应用12迁移。凭据只使用获授权 Git 外配置，不在报告中包含连接值。
+本地体验：<http://127.0.0.1:3019/> 为 Hugo 入口，页面进入 `/demo/space`；真实 `/network` 默认关闭服务并明确报错。最终自有 Next PID `64720` 仅监听 127.0.0.1，数据库/Auth/助手/遥测均关闭。专用 PG 容器 `gongzhi-integration-73b8bb40-8d6` 保留在 127.0.0.1:56406，PG17.11/vector0.8.6，原库已应用12迁移。凭据只使用获授权 Git 外配置，不在报告中包含连接值。
 
 来源复用见 `docs/frontend/HUGO-SOURCES.md`：my_blog `7d1f825a72bd106ff73525e7232dcb292b91b51c` 自有 partial/样式及 We Remember `678ea3fee7479d48df0e54349615184ad760fdae` 页面结构/样式，随站点保留两份 MIT 许可；没有复制 GPL Stack 主题。I 逐字核对两份 LICENSE、原始 :root 样式块及 favicon partial（只替换本项目图标路径），并逐字比对三个产品 URL 与本地 Hugo 生成 HTML 一致。
 
 Git 外证据：`C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-final`（8/8 浏览器报告/截图），`C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-real-pg/` 下 `actual-agent-graph.png`、`actual-agent-graph-narrow.png`、`actual-public-records.png`、`actual-public-records-narrow.png`（真实 PG 图及同批公告）。工具沿用 Node24.16.0/npm11.13.0、Playwright1.63.0/Chrome152.0.7977.83。
 
-限制：Supabase 为本地 HTTP stub，真实云 Auth、收费模型、知乎均未验证；示例预写内容不代表 Agent 执行。此轮是已实现接口与本地程序化联通验收，免手填档案的真实用户接入和两名真实模型 Agent 交流属于下一轮。未公开部署、未执行生产迁移、未赛事提交。实际 PG 多 Agent 点过密问题已退 B，由 c546dc2 修正原生 Cosmos 坐标/参数后闭环；I 已审阅实际 PG 90 Agent / 59 边桌面及全新390窄屏图。等待总控 ready 审阅与最终管理文档合入；本轮实现验收通过。
+限制：Supabase 为本地 HTTP stub，真实云 Auth、收费模型、知乎均未验证；示例预写内容不代表 Agent 执行。此轮是已实现接口与本地程序化联通验收，免手填档案的真实用户接入和两名真实模型 Agent 交流属于下一轮。未公开部署、未执行生产迁移、未赛事提交。实际 PG 多 Agent 点过密问题已退 B，由 c546dc2 修正原生 Cosmos 坐标/参数后闭环；I 已审阅实际 PG 90 Agent / 59 边桌面及全新390窄屏图。总控已通过多节点布局审阅；本轮实现验收通过，最终管理收口见 DEVELOPMENT.md。
 
 完整 Node 测试输出保存在 Git 外 `C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-node-final.log`。所有生产构建均关闭 DB/Auth/助手与遥测；迁移另在明确授权的专用数据库中显式执行。
+
+总控最后要求的列表 CSS 已合入 `c6814aa`：`npm run build:hugo` 通过，并安全重启本项目预览。I 另起临时 loopback 服务，只读实际 PG 91 Agent，在390宽验证列表 clientHeight150 / scrollHeight1241、连续 Tab 到末项后 Enter 定位、滚动到底、公告标题及线程可达、无横向溢出、无 SW 控制，全部通过；临时服务已停止。截图为上述真实 PG 目录的 `bounded-agent-list-narrow.png` 和 `bounded-board-narrow.png`。按总控要求，此 CSS 后继未重复不变的后台/迁移全套。
