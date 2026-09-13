@@ -15,6 +15,8 @@
 
 ## 交付习惯
 
+2026-09-14 EvoMap 风格增量：详见 docs/source/evomap-style-2026-09-14.md。基线更新为 21f710703f131d96f36b601f7b11dcd962e03581。B 已在 msg_7469b7b1a755 明确交接，本轮 D 独占 components/gongzhi/AgentCanvas.tsx、tests/frontend/hugo-graph-theme.spec.ts、docs/connect/graph-theme.md；B 从本轮写域排除这两代码文件，其他前端所有权不变。B 仍独占主题和全局样式；D 仅消费 HTML data-theme 与六个 --graph-* CSS 颜色变量。C 根配置与共享契约所有权不变，I 唯一集成人。
+
 每轨固定 Orca Agent + worktree + branch；Worker 只改写域，读全仓可。阶段完成即 commit + push，交接 SHA、说明、真实检查、遗留问题。禁止 force push、覆盖他人未提交内容、修改历史迁移掩盖差异。根依赖和锁文件只有 C 可写。
 
 共享接口由 C 首批提交，其他轨等待/交接，不复制类型。前端统一 HTTP：/demo/api/* 仅 MSW，/api/gongzhi/* 真服务；真实失败禁止回退 fixture。演示存储、Service Worker scope 和身份必须与真实隔离。服务端来源标识不可由客户端自报。
