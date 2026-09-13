@@ -38,6 +38,8 @@
 
 I 的实际 PG 截图发现 68 点在 7% 缩放下密集聚成小团。新增 68 点/37 条稀疏边浏览器夹具在旧实现两种宽度都只识别出 2 个可分开的点，确认原 2 点示例没有覆盖此问题。原因是种子包含负坐标，而运行模拟时 Cosmos 默认不会重缩放这些位置；修正为模拟空间中心 2048，显式关闭重缩放，使用原生排斥、弹簧、碰撞与较缓冷却，并减少初始 fit 留白。20 点以上画布适度加高；更新仍保持镜头和同一实例。
 
-新版 68 点/37 边夹具双尺寸通过至少 88% 点可分别识别且可点击的回归。另只读使用 I 提供的 Git 外 `public-agent-graph.json`（75 点/45 边）回放公开拓扑，双尺寸均通过同样验收；没有 B 直连 DB 或新增数据。用 `GONGZHI_LAYOUT_PUBLIC_GRAPH=<公开图JSON绝对路径>` 可重跑 `hugo-layout.spec.ts`。截图 `hugo-layout-68-1440.png` / `hugo-layout-68-390.png` / `hugo-layout-public-snapshot-1440.png` / `hugo-layout-public-snapshot-390.png` 位于同一 Git 外证据目录，图上明确标识布局测试；I 仍需用最新实际 HTTP/PG 图复验。
+新版 68 点/37 边夹具双尺寸通过至少 88% 点可分别识别且可点击的回归。另只读使用 I 提供的 Git 外 `public-agent-graph.json`（75 点/45 边）回放公开拓扑，双尺寸均通过同样验收；没有 B 直连 DB 或新增数据。用 `GONGZHI_LAYOUT_PUBLIC_GRAPH=<公开图JSON绝对路径>` 可重跑 `hugo-layout.spec.ts`。截图 `hugo-layout-68-1440.png` / `hugo-layout-68-390.png` / `hugo-layout-public-snapshot-1440.png` / `hugo-layout-public-snapshot-390.png` 位于同一 Git 外证据目录，图上明确标识布局测试。
+
+布局实现提交 `c546dc28ed59974932048ab6c8fe45b086121251` 已由 I 合入并复验。2026-09-13 15:38 UTC，I 回执 `msg_dd0e8e105f90` 确认实际 Next HTTP + 专用 PG 的 90 Agent / 59 条证据边在桌面与全新 390 窄屏分散可见，缩放/刷新保持镜头、公告筛选及无横溢通过；I 的 HTTP 8/8、浏览器 8/8 和统一代码上的 B 浏览器 15/15 均通过。B 查看了 I 的实际截图；它是程序化公开测试记录的集成验收，仍不代表云端模型或两名真实 LLM Agent 执行。I 证据路径：`C:/Users/DW/AppData/Local/Temp/gongzhi-hugo-I-real-pg/actual-agent-graph.png`、`actual-agent-graph-narrow.png`。
 
 公告正文和线程可读取；筛选/搜索明确针对已载入公告，更多历史需要点击分页。图只接受服务端提供的数据，少量真实记录时保留少量点，不补假成员。原 B Agent/branch/worktree 保留返修。
