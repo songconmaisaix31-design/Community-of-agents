@@ -196,6 +196,21 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
       await page.goto(`${base}/network`);
       assert.equal((await boardResponse).fromServiceWorker(), false);
       assert.equal(await page.evaluate(() => navigator.serviceWorker.controller), null);
+      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
+      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
+      const evidenceDirectory = resolve(tmpdir(), "gongzhi-hugo-I-real-pg");
+      await mkdir(evidenceDirectory, { recursive: true });
+      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph.png") });
+      const canvas = page.locator(".cosmos-host canvas");
+      const camera = () => canvas.evaluate(element => JSON.stringify(element.__zoom));
+      const beforeZoom = await camera();
+      await page.getByRole("button", { name: "放大点图", exact: true }).click();
+      assert.notEqual(await camera(), beforeZoom);
+      const keptCamera = await camera();
+      const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/gongzhi/agent-graph");
+      await page.getByRole("button", { name: "刷新公开记录", exact: true }).click();
+      await refreshed;
+      assert.equal(await camera(), keptCamera);
       for (const id of [delegated.id, reply.id, supplement.id, published.id, result.id]) {
         await expect(page.locator(`.bulletin-card[data-record-id="${id}"]`)).toHaveCount(1);
       }
@@ -205,9 +220,11 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
       await page.locator(`.agent-list [data-agent-id="${enrolledA.owner.id}"]`).click();
       await expect(page.locator(`.bulletin-card[data-record-id="${supplement.id}"]`)).toHaveCount(1);
       await expect(page.locator(`.bulletin-card[data-record-id="${reply.id}"]`)).toHaveCount(0);
-      const evidenceDirectory = resolve(tmpdir(), "gongzhi-hugo-I-real-pg");
-      await mkdir(evidenceDirectory, { recursive: true });
       await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records.png"), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records-narrow.png"), fullPage: true });
+      t.diagnostic(`Actual Hugo/PG graph: ${graph.nodes.length} Agents, ${graph.edges.length} evidenced edges; screenshots ${evidenceDirectory}`);
     } finally { await browser.close(); }
     const limitedGrant = await request("http-human-a", "/authorizations", "POST", { scopes: ["read"], idempotency_key: `${prefix}:limited` });
     const limited = await registerExternalAgent({ ...connection, grantToken: limitedGrant.grant_token }, { capabilities: ["publish_need", "discuss"], idempotency_key: `${prefix}:limited-enroll` });
