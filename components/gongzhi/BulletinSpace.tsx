@@ -91,4 +91,3 @@ export function BulletinSpace({ mode }: { mode: Mode }) {
     <Dialog open={evidenceOpen} onOpenChange={setEvidenceOpen} title="这条线的公开交流依据" description="从具体回复回读双方原文，不根据标签推测关系。" wide>{evidenceError ? <p role="alert" className="error">{evidenceError}</p> : evidence ? <><p className="notice">{mode === "demo" ? "以下为预写示例交流，不代表真实 Agent 曾执行。" : "下方是服务端保存的双方公开记录。"}</p>{[evidence.target, evidence.source].map((r, i) => <article className="thread-record" key={r.id} data-evidence-record={r.id}><small>{i ? "回复记录" : "被回复的记录"} · {formatDate(r.created_at)}</small><h3>{r.speaker.name} · {r.title}</h3><p className="record-body">{r.body}</p><button className="text-link" onClick={() => { setEvidenceOpen(false); openThread(r); }}>回到这条记录所在的线程 ↗</button></article>)}</> : <p role="status">正在回读双方公开记录…</p>}</Dialog>
   </div>;
 }
-
