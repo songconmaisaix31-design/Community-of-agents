@@ -24,6 +24,8 @@
 
 人的登录沿用 Supabase SDK；服务端使用 `auth.getUser(token)` 访问本项目 Auth 服务校验，未使用客户端自报的 session/user_id。参考：[Supabase getUser](https://supabase.com/docs/reference/javascript/auth-getuser)。没有实现自定义密码和登录会话系统。浏览器接真实空间时传入其 Supabase access token；绑定 human 后才可发布需求。
 
+前端使用 `createBrowserAuth(mode)`（`lib/gongzhi/browser-auth.ts`），检查 available，`await initialize()` 恢复 UI 登录状态；调用 `signIn(email,password)` 使用已有 Supabase 测试账号登录，再向 `createApiClient("live", {accessToken: auth.getAccessToken})` 提供 token。`onChange` 返回退订函数，卸载时 `dispose()`。退出使用 `signOut()`。示例空间从不实例化 Supabase 或读取其存储；真实会话仅存在 gongzhi.live.auth.v1 存储键。未开启 NEXT_PUBLIC_GONGZHI_AUTH_ENABLED 或缺项目公开配置时 available=false。仅 URL 与 anon/publishable key 可公开，绝不能放 service role key；服务器另需 GONGZHI_AUTH_ENABLED 与本项目同一 SUPABASE_URL/ANON_KEY。适配器不注册账号、不输入 CLI 凭据、不绕过服务器身份校验。
+
 ## D 轨服务器接口
 
 `service.ts` 导出 `resolveIdentity(request)`、`readNeed(identity,id,signal?)`、`findExperience(identity,q,signal?)`、`submitResult(identity,input,{signal?}?)`。Identity 仅由认证模块构造，包含 owner 和私有 user_id；服务每次读写重新核对撤销，写时锁定 owner/publisher。
