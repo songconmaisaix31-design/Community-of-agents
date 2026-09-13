@@ -2,16 +2,30 @@
 
 ## 当前纠偏轮
 
-用户最新要求见 [四点纠偏](docs/source/corrections-2026-09-13.md)。当前基线 `2a0b5617b5dc5030894bde6541ddcb6bc469c24a`，首轮只以可操作 Hugo 页面、Agent-only 星图和公告板为交付验收；免手填接入与两名 Agent 的真实交流留作下一轮独立验证。原 B/C/D/I 续用各自 Agent、worktree 与分支，I 为唯一集成人，精确写域见 AGENTS.md。C 先发布最小契约，B 前端与 D 接入并行；旧验收不替代本轮验收。
+用户最新要求见 [四点纠偏](docs/source/corrections-2026-09-13.md)。本轮从 `2a0b5617b5dc5030894bde6541ddcb6bc469c24a` 增量推进，首轮可操作 Hugo 页面、Agent-only 星图和公告板已验收；免手填接入与两名 Agent 的真实交流留作下一轮独立验证。原 B/C/D/I 续用各自 Agent、worktree 与分支，I 为唯一集成人，精确写域见 AGENTS.md。C 先发布最小契约，B 前端与 D 接入并行；旧验收不替代本轮验收。
 
 | 本轮轨 | 首片结果 | 状态 |
 | --- | --- | --- |
-| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | ctx_98e6b690e4d3；服务 6a886b7、Hugo 装配 2a0078f、迁移检查返修 69e43fc 已 push；真实 PG Core 56 项通过；已归还 DB 测试时段 |
-| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | ctx_2f93b468daf3；首片 e0f7ca0 已 push 并集成，1440/390 浏览器 smoke 2 项通过；继续镜头/联动/模式隔离/失败验收 |
+| C | 公告/Agent 图共享契约、授权代发与讨论服务、MCP | 最终 10bc149d57071bf38e1103c689ea7359272e7427 已 push；0012 修复与实际迁移重入验收闭环，原 Agent 已交接保留 |
+| B | 复用 my_blog 与 We Remember 的 Hugo 页面、Agent 点图、公告板 | 最后源码 7062baf726a099656a9a62127bac361c3b176456 已 push 并集成；15 项浏览器、实际多 Agent 图及四行列表键盘操作通过 |
 | D | 扩展原 CLI/客户端，授权后登记、发现/回复/回传 | 0cd2255660b2c31d30c35e3a88baa7dc49287417 已 push；typecheck 与 Connect 53 项通过；原 Agent 已交接保留，模拟模型与 HTTP 桩不算真实 Agent 执行 |
-| I | 小步统一集成与 Hugo 用户流程验收 | 原 Agent ctx_1ca7bdf5fa6c 已运行，已合入首片及管理记录；独占本项目 DB 验收，迁移重入检查使用同容器独立空测试库 |
+| I | 小步统一集成与 Hugo 用户流程验收 | 实现验收 9b4be46329e98383899c5b9d54754a44e38ec500 已 push；统一构建、132 项 Node、8 项独立 HTTP/PG、23 项浏览器通过，后继合入本管理记录 |
 
-总控检查点：统一分支完整 Hugo + Next 构建已通过；在 `http://127.0.0.1:3019/demo/space` 独立浏览器确认 2 个示例 Agent、6 条公告，连线回读双方 2 条记录，公告定位 Agent 后仅显示该发言者记录。导航到 `/` 后真实数据库未启用提示可见、示例记录为 0、Service Worker controller 为 null；关闭 JavaScript 后仍有 Hugo 标题和两个默认入口。这是首片验收，最终镜头、故事、失败路径及迁移验收仍由 B/I 补齐。
+本轮结果：Hugo 保留可见导航与两种 Agent 入口，复用 my_blog 自有模板/样式及 We Remember UI，完整许可和固定来源见 [Hugo 来源](docs/frontend/HUGO-SOURCES.md)。cosmos.gl 仅画唯一 Agent 小点，以公开交流记录生成边并保留更新镜头；公告板显示求助、经验、回复、补充、成果，保留线程、草稿、版本与采纳操作。原 Crier/Next 身份、存储、模型服务以及 CLI/客户端/MCP 均保留并增量扩展。
+
+| 本轮统一检查 | 实际结果 |
+| --- | --- |
+| `npm run build`、`npm run typecheck` | Hugo + Next 完整构建及独立类型检查通过；构建不执行迁移 |
+| `node --import tsx --test --test-concurrency=1 'tests/**/*.test.ts' 'tests/**/*.test.mjs'` | 专用 PG 与本地 HTTP 环境：132 通过、0 失败、1 个独立 HTTP 套件条件跳过，由下一命令覆盖 |
+| `node --import tsx --test tests/integration/live-http.test.mjs` | 8/8，实际 Next/PG、CLI 客户端/REST/MCP 与 Hugo 页面同批记录、有限授权/撤销、owner/speaker、版本与幂等；身份验证为本地 HTTP stub |
+| `npx --no-install playwright test --config tests/integration/playwright.config.ts` 与 `tests/frontend/playwright.config.ts` | 分别 8/8 与 15/15，桌面/窄屏、三故事与公告五类、原生点线点击/双向定位、增量镜头、隔离/失败/图形降级、多节点分布 |
+| `node --env-file=<Git外scratch配置> scripts/check-migrations.mjs` | 专用容器新空库上游 SQL 两遍、实际 runner 全部 12 份迁移、再次执行 no-op、scope/RLS/不可变正文与合法计数更新通过；原 app 库仅追加 0011/0012 |
+| 总控独立检查 | 关闭 JS 仍有 Hugo 标题和两入口；示例 2 Agent/6 公告、连线双方原文、公告定位通过；转真实空间 0 fixture、SW controller=null、明确不可用；68 点双尺寸与实际 PG 90 Agent/59 证据边分布审阅通过 |
+| 最后纯 CSS 后继 | `npm run build:hugo` 通过；I 只读实际 PG 91 Agent，在 390 宽验证列表 150px 内滚动、连续 Tab 至末项后 Enter 定位、公告与线程可达、无横向溢出；未重复不变的后端/迁移全套 |
+
+可体验地址：<http://127.0.0.1:3019/demo/space>，首页 <http://127.0.0.1:3019/>；默认数据库、Auth、助手关闭，真实失败明确显示，不使用示例成功回退。详细命令、环境、截图和验证边界见 [本轮集成验收](docs/integration/acceptance.md)。本地 PG 与 Git 外测试证据保留；原工作分支和 Agent 保留，最终交付推送到 `integration/gongzhi-mvp`。
+
+下一轮尚未执行：真实用户在有效云身份下免手填档案接入、两名真实模型 Agent 的交流与执行回执；本轮的程序化 HTTP/PG 记录和示例故事均不替代它们。云 Auth、付费模型、知乎及公网部署未验证；未扩大授权、新增付费服务、执行生产迁移或正式赛事提交。main 仍保留原历史。
 
 ## 上轮基线与验收
 
