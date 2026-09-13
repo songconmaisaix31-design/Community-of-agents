@@ -16,6 +16,8 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
   skip: configPath ? false : "Set GONGZHI_TEST_HTTP_DATABASE_ENV after npm run build",
   timeout: 120_000,
 }, async (t) => {
+  assert.equal(process.env.GONGZHI_TEST_DATABASE_ENV, undefined,
+    "Run the HTTP database suite after npm test, with GONGZHI_TEST_DATABASE_ENV unset, so DB suites cannot overlap");
   const configuration = Object.fromEntries((await readFile(configPath, "utf8"))
     .split(/\r?\n/).flatMap((line) => {
       const match = /^([A-Z_]+)=(.*)$/.exec(line);
@@ -89,6 +91,7 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
     assert.equal(envelope.mode, "live");
     assert.equal(envelope.ok, expectedStatus < 400);
     if (expectedCode) assert.equal(envelope.error.code, expectedCode);
+    if (expectedStatus >= 400) assert.equal("data" in envelope, false, "A failure must not invent a successful record");
     return envelope.data;
   }
   const prefix = randomUUID();
@@ -104,6 +107,9 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
   const resultInput = { need_id: need.id, need_revision: 1, title: "外部 Agent 成果", body: `${prefix} result`, subtype: "result", sources: [], method_refs: [], idempotency_key: `${prefix}:result` };
   const oldResult = await request(agentB.api_key, "/results", "POST", resultInput);
 
+  await t.test("disabled assistant returns unavailable over actual HTTP without a fabricated run", async () => {
+    await request("http-human-a", "/runs", "POST", { need_id: need.id, need_revision: 1, idempotency_key: `${prefix}:disabled-assistant` }, 503, "unavailable");
+  });
   await t.test("B and its external Agent cannot adopt A's result", async () => {
     for (const token of ["http-human-b", agentB.api_key]) {
       await request(token, `${path}/decisions`, "POST", { result_id: oldResult.id, expected_revision: 1, decision: "accept", idempotency_key: randomUUID() }, 403, "forbidden");
