@@ -1,3 +1,5 @@
+> 当前产品为 Hugo。2026-09-13 纠偏交付和当前验收请看 [HUGO-HANDOFF.md](HUGO-HANDOFF.md)；下文保留上一轮 Next 页面交付记录。
+
 # 共治前端候选
 
 分支：`songconmaisaix31-design/gongzhi-frontend`。沿 Core `d0c8b87` 的 Next 15 / React 19、共享 contracts / API client、浏览器 Supabase 适配与锁定依赖。只有 B 写域新增内容。
@@ -66,3 +68,4 @@ npm run build
 真实需求发起人可以显式请求助手，直接使用既有 `startRun/readRun/cancelRun`。同一需求版本按 owner 隔离保存幂等 key 与已知 run 编号；无回执只说明等待服务，不推断开始执行。收到 queued/running 后可手动查询或取消；无自动轮询、后台调度或示例替代结果。页面选择“采纳”仍由人执行。
 
 没有真实试用者反馈、真实账号登录/Agent 握手/模型调用或公开部署验证，当前属于 Agent 自动验收与主控/集成轨审阅。真实服务需 I 合入 C/D 交付，并配置本项目已授权数据库、Auth 和模型环境；外部 Agent 凭据的实际撤销须在真实环境验收。读取范围沿 Core 公告查询上限，未实现大规模分页或性能承诺。平台请求响应丢失后的外部副作用仍由服务端 run 状态决定，UI 不宣称恰好一次执行。
+

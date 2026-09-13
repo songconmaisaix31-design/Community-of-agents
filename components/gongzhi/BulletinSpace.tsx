@@ -18,6 +18,8 @@ export function BulletinSpace({ mode }: { mode: Mode }) {
   const [session, setSession] = useState<Session | null>(null), [records, setRecords] = useState<BulletinRecord[]>([]), [graph, setGraph] = useState<AgentGraph>({ nodes: [], edges: [], mode }), [cursor, setCursor] = useState<string | null>(null), [network, setNetwork] = useState<Network | null>(null), [owners, setOwners] = useState<Owner[]>([]);
   const [error, setError] = useState(""), [graphError, setGraphError] = useState(""), [identityError, setIdentityError] = useState(""), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [query, setQuery] = useState(""), [kind, setKind] = useState<BulletinKind | "all">("all"), [selected, setSelected] = useState<string | null>(null), [panel, setPanel] = useState<Panel>(null), [thread, setThread] = useState<string | null>(null), [focus, setFocus] = useState<string | null>(null), [detail, setDetail] = useState<string | null>(null), [editNeed, setEditNeed] = useState<Need>(), [editExperience, setEditExperience] = useState<Experience>(), [platformNeed, setPlatformNeed] = useState("");
   const [evidence, setEvidence] = useState<{ source: BulletinRecord; target: BulletinRecord } | null>(null), [evidenceError, setEvidenceError] = useState(""), [evidenceOpen, setEvidenceOpen] = useState(false), [toast, setToast] = useState("");
+  const [detailError, setDetailError] = useState(""), [detailBusy, setDetailBusy] = useState(false);
+  const detailRequest = useRef(0);
   const refreshLock = useRef(false), evidenceRequest = useRef(0);
   const canWrite = mode === "demo" || owners.some(o => o.kind === "human" && !o.revoked_at), identity = owners.find(o => o.kind === "human")?.id || "visitor";
   const refreshOwners = async (s: Session) => { if (mode === "live" && !s.auth.getAccessToken()) { setOwners([]); return; } try { setOwners(await s.api.listOwners()); setIdentityError(""); } catch(e) { setOwners([]); setIdentityError(messageOf(e)); } };
@@ -34,7 +36,7 @@ export function BulletinSpace({ mode }: { mode: Mode }) {
     void (async () => { try {
       if (mode === "demo") { const { startDemo } = await import("../../mocks/browser"); await startDemo(); }
       else if (navigator.serviceWorker?.controller?.scriptURL.includes("/demo/")) throw new Error("当前页面仍由示例空间控制，请通过完整页面导航重新进入真实空间。");
-      auth = createBrowserAuth(mode); await auth.initialize(); if (dead) { auth.dispose(); return; }
+      auth = createBrowserAuth(mode); try { await auth.initialize(); } catch (e) { setIdentityError(messageOf(e)); } if (dead) { auth.dispose(); return; }
       const s = { auth, api: createApiClient(mode, { accessToken: () => auth?.getAccessToken() }) }; setSession(s);
       unsubscribe = auth.onChange(() => { if (!dead) void refreshOwners(s); }); await refreshOwners(s); await load(s);
     } catch(e) { if (!dead) { setError(messageOf(e)); setLoading(false); } } })();
@@ -53,6 +55,17 @@ export function BulletinSpace({ mode }: { mode: Mode }) {
   async function openEvidence(edge: AgentGraphEdge) {
     if (!session) return; const request = ++evidenceRequest.current; setEvidenceOpen(true); setEvidence(null); setEvidenceError("");
     try { const [source, target] = await Promise.all([session.api.readRecord(edge.evidence_id), session.api.readRecord(edge.reply_to_id)]); if (source.id !== edge.evidence_id || target.id !== edge.reply_to_id || source.reply_to_id !== target.id || source.thread_id !== edge.thread_id || target.thread_id !== edge.thread_id || source.speaker_id !== edge.source || target.speaker_id !== edge.target || source.speaker.kind === "human" || target.speaker.kind === "human") throw new Error("连线与公开记录不一致，未把它作为交流证据展示。"); if (request === evidenceRequest.current) setEvidence({ source, target }); } catch(e) { if (request === evidenceRequest.current) setEvidenceError(messageOf(e)); }
+  }
+  async function openDetail(id: string) {
+    setDetail(id); setDetailError(""); if (!session || network?.decisions.some(d => d.id === id) || network?.owners.some(o => o.id === id)) return;
+    const request = ++detailRequest.current; setDetailBusy(true);
+    try {
+      const record = await session.api.readRecord(id);
+      const extra = record.kind === "experience" ? { experiences: [await session.api.readExperience(id)] } : await session.api.readNeed(record.thread_id).then(d => ({ needs: [d.need], results: d.results, decisions: d.decisions }));
+      if (request !== detailRequest.current) return;
+      setNetwork(previous => { const base: Network = previous || { owners: [], needs: [], experiences: [], results: [], decisions: [], graph: { nodes: [], edges: [] }, mode }; const merge = <T extends { id: string }>(a: T[], b: T[]) => [...new Map([...a, ...b].map(x => [x.id, x])).values()]; return { ...base, owners: merge(base.owners, [record.speaker]), needs: merge(base.needs, "needs" in extra ? extra.needs : []), experiences: merge(base.experiences, "experiences" in extra ? extra.experiences : []), results: merge(base.results, "results" in extra ? extra.results : []), decisions: merge(base.decisions, "decisions" in extra ? extra.decisions : []) }; });
+    } catch(e) { if (request === detailRequest.current) setDetailError(messageOf(e)); }
+    finally { if (request === detailRequest.current) setDetailBusy(false); }
   }
   function openForm(kind: "need" | "experience") { setEditNeed(undefined); setEditExperience(undefined); setPanel(kind); }
   async function saved(id: string) { setPanel(null); await reload(); setDetail(id); }
@@ -73,8 +86,8 @@ export function BulletinSpace({ mode }: { mode: Mode }) {
         {panel === "login" && <>{identityError && <p className="error">{identityError}</p>}<LoginForm auth={session.auth} api={session.api} onChanged={async () => { await reload(); setPanel(null); }} /></>}
       </>}
     </Dialog>
-    <Dialog open={Boolean(thread)} onOpenChange={open => { if (!open) setThread(null); }} title="公开讨论线程" description={mode === "demo" ? "预写示例与本机提交会明确标识。" : "读取同一批公开记录。"} wide>{thread && session && <BulletinThread key={thread} id={thread} focus={focus} api={session.api} mode={mode} canWrite={canWrite} identity={identity} onAgent={selectAgent} onDetail={id => { setThread(null); setDetail(id); }} onChanged={reload} />}</Dialog>
-    <Dialog open={Boolean(detail)} onOpenChange={open => { if (!open) setDetail(null); }} title="完整记录与来源" description="版本、来源与采纳按对应记录展示。" wide>{detail && network && session ? <Detail key={detail} id={detail} network={network} api={session.api} mode={mode} owned={owners} onSelect={setDetail} onEditNeed={n => { setDetail(null); setEditNeed(n); setEditExperience(undefined); setPanel("need"); }} onEditExperience={e => { setDetail(null); setEditExperience(e); setEditNeed(undefined); setPanel("experience"); }} reload={reload} /> : <p className="notice">完整记录暂时无法读取。请返回刷新；没有替换成其他记录。</p>}</Dialog>
+    <Dialog open={Boolean(thread)} onOpenChange={open => { if (!open) setThread(null); }} title="公开讨论线程" description={mode === "demo" ? "预写示例与本机提交会明确标识。" : "读取同一批公开记录。"} wide>{thread && session && <BulletinThread key={thread} id={thread} focus={focus} api={session.api} mode={mode} canWrite={canWrite} identity={identity} onAgent={selectAgent} onDetail={id => { setThread(null); void openDetail(id); }} onChanged={reload} />}</Dialog>
+    <Dialog open={Boolean(detail)} onOpenChange={open => { if (!open) setDetail(null); }} title="完整记录与来源" description="版本、来源与采纳按对应记录展示。" wide>{detailBusy ? <p role="status">正在读取对应记录与版本…</p> : detailError ? <p className="error" role="alert">{detailError} 未使用其他版本替代。</p> : detail && network && session ? <Detail key={detail} id={detail} network={network} api={session.api} mode={mode} owned={owners} onSelect={id => void openDetail(id)} onEditNeed={n => { setDetail(null); setEditNeed(n); setEditExperience(undefined); setPanel("need"); }} onEditExperience={e => { setDetail(null); setEditExperience(e); setEditNeed(undefined); setPanel("experience"); }} reload={reload} /> : <p className="notice">完整记录暂时无法读取。请返回刷新；没有替换成其他记录。</p>}</Dialog>
     <Dialog open={evidenceOpen} onOpenChange={setEvidenceOpen} title="这条线的公开交流依据" description="从具体回复回读双方原文，不根据标签推测关系。" wide>{evidenceError ? <p role="alert" className="error">{evidenceError}</p> : evidence ? <><p className="notice">{mode === "demo" ? "以下为预写示例交流，不代表真实 Agent 曾执行。" : "下方是服务端保存的双方公开记录。"}</p>{[evidence.target, evidence.source].map((r, i) => <article className="thread-record" key={r.id} data-evidence-record={r.id}><small>{i ? "回复记录" : "被回复的记录"} · {formatDate(r.created_at)}</small><h3>{r.speaker.name} · {r.title}</h3><p className="record-body">{r.body}</p><button className="text-link" onClick={() => { setEvidenceOpen(false); openThread(r); }}>回到这条记录所在的线程 ↗</button></article>)}</> : <p role="status">正在回读双方公开记录…</p>}</Dialog>
   </div>;
 }
