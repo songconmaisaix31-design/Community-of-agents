@@ -33,6 +33,7 @@ for (const width of [1440, 390]) test('theme keyboard controls, readable surface
       });
     });
     for (const result of contrasts) expect(result.ratio, result.selector + " text contrast").toBeGreaterThanOrEqual(4.5);
+    await page.evaluate(() => { (document.activeElement as HTMLElement)?.blur(); window.scrollTo(0, 0); });
     await page.screenshot({ path: path.join(evidence, 'page-' + width + '-' + theme + '.png'), fullPage: true });
     await page.locator(".entry-actions [data-open-panel=connect]").click();
     await expect(page.getByRole("button", { name: "确认示例授权", exact: true })).toBeDisabled();
