@@ -137,6 +137,8 @@ export async function submitResult(actor: Identity, raw: unknown, options: { run
   const input = SubmitResultSchema.parse(raw); stopped(options.signal);
   return inTransaction(async () => {
     const publisher = await writePublisher(actor); const fp = fingerprint("submit_result", { ...input, run_id: options.run_id });
+    if (options.run_id && actor.owner.kind !== "platform_agent") throw new GongzhiError(403, "forbidden", "只有平台身份可以关联平台任务。");
+    const need = await currentNeed(input.need_id, true);
     // A platform actor can write only through a still-active persisted run.
     if (actor.owner.kind === "platform_agent") {
       if (!options.run_id) throw new GongzhiError(403, "forbidden", "平台结果必须属于正在执行的任务。");
@@ -144,10 +146,11 @@ export async function submitResult(actor: Identity, raw: unknown, options: { run
       if (!run || run.need_id !== input.need_id || run.need_revision !== input.need_revision) throw new GongzhiError(403, "forbidden", "结果不属于这个平台任务。");
       const prior = await previous(actor, input.idempotency_key, fp);
       if (prior && run.result_id === prior.id) return toResult(prior);
+      if (run.result_id) throw new GongzhiError(409, "idempotency_conflict", "此任务已有成果，不能使用另一幂等键再次提交。");
       if (run.status !== "running" || new Date(run.deadline_at).getTime() <= Date.now()) throw new GongzhiError(409, "cancelled", "平台任务已停止或超过期限。");
     }
     const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toResult(existing);
-    const need = await currentNeed(input.need_id, true); assertRevision(need, input.need_revision);
+    assertRevision(need, input.need_revision);
     if (["accepted", "closed"].includes(need.status)) throw new GongzhiError(409, "revision_conflict", "此需求已结束，请先重新修改需求。");
     const refs = [];
     for (const ref of input.method_refs) {
@@ -159,7 +162,10 @@ export async function submitResult(actor: Identity, raw: unknown, options: { run
     const { post } = await createPost(publisher, PostInputSchema.parse({ kind: "announcement", title: input.title, body: input.body, tags: [], parent_id: input.need_id, idempotency_key: input.idempotency_key, metadata: { gongzhi: metadata(actor, input.subtype, { need_revision: input.need_revision, sources: input.sources, method_refs: input.method_refs, fingerprint: fp, run_id: options.run_id }) } }));
     for (const { ref, digest } of refs) await sql()`insert into gongzhi_links(id,result_id,experience_id,experience_revision,content_digest,usage) values(${randomUUID()},${post.id},${ref.experience_id},${ref.revision},${digest},${ref.usage}) on conflict do nothing`;
     await sql()`update gongzhi_needs set status='helping',updated_at=now() where post_id=${need.id}`;
-    if (options.run_id) await sql()`update gongzhi_runs set result_id=${post.id},updated_at=now() where id=${options.run_id} and status='running'`;
+    if (options.run_id) {
+      const guarded = await sql()`update gongzhi_runs set result_id=${post.id},updated_at=now() where id=${options.run_id} and owner_id=${actor.owner.id} and status='running' and deadline_at>clock_timestamp() returning id`;
+      if (!guarded.length) throw new GongzhiError(409, "cancelled", "任务在提交过程中停止或超时，结果已回滚。");
+    }
     stopped(options.signal); return toResult(post);
   });
 }

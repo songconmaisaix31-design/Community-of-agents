@@ -11,7 +11,7 @@ type RunRow = Omit<Run, "mode" | "deadline_at" | "created_at" | "updated_at"> & 
 export type FinishRunInput = { status: "succeeded" | "failed" | "cancelled" | "timed_out" | "unknown"; result_id: string | null; error: ApiError | null; usage: Run["usage"] };
 function toRun(row: RunRow): Run { return { ...row, deadline_at: row.deadline_at.toISOString(), created_at: row.created_at.toISOString(), updated_at: row.updated_at.toISOString(), mode: "live" }; }
 async function expireRuns(needId: string) {
-  await sql()`update gongzhi_runs set status='timed_out', updated_at=now(), error=${sql().json({ code: "timeout", message: "任务已超过期限。", retryable: false })} where need_id=${needId} and status in ('queued','running') and deadline_at<=now()`;
+  await sql()`update gongzhi_runs set status='timed_out', updated_at=now(), error=${sql().json({ code: "timeout", message: "任务已超过期限。", retryable: false })} where need_id=${needId} and status in ('queued','running') and deadline_at<=clock_timestamp()`;
 }
 function platform(actor: Identity) { if (actor.owner.kind !== "platform_agent") throw new GongzhiError(403, "forbidden", "此操作只适用于本人平台助手。"); }
 export async function claimRun(actor: Identity, raw: StartRunInput, deadline_at: string): Promise<{ run: Run; created: boolean }> {
@@ -64,11 +64,22 @@ export async function finishRun(actor: Identity, id: string, input: FinishRunInp
   return inTransaction(async () => {
     const row = await authorizedRun(actor, id, true); await expireRuns(row.need_id);
     const current = await authorizedRun(actor, id);
-    if (!["queued", "running"].includes(current.status)) return toRun(current);
+    for (const value of Object.values(input.usage)) if (value !== null && (!Number.isInteger(value) || value < 0)) throw new GongzhiError(400, "invalid_request", "用量必须为非负整数或未知。");
+    // A late settlement may add observed usage, but never change a terminal
+    // outcome or replace its result. Counts are monotonic, never added twice.
+    const usage: Run["usage"] = {
+      model_steps: Math.max(current.usage.model_steps, input.usage.model_steps),
+      zhihu_queries: Math.max(current.usage.zhihu_queries, input.usage.zhihu_queries),
+      input_tokens: current.usage.input_tokens === null && input.usage.input_tokens === null ? null : Math.max(current.usage.input_tokens ?? 0, input.usage.input_tokens ?? 0),
+      output_tokens: current.usage.output_tokens === null && input.usage.output_tokens === null ? null : Math.max(current.usage.output_tokens ?? 0, input.usage.output_tokens ?? 0),
+    };
+    if (!["queued", "running"].includes(current.status)) {
+      const [settled] = await sql()<RunRow[]>`update gongzhi_runs set usage=${sql().json(usage)},updated_at=now() where id=${id} returning *`;
+      return toRun(settled);
+    }
     if (input.status === "succeeded" && (!input.result_id || current.result_id !== input.result_id)) throw new GongzhiError(409, "invalid_request", "成功状态需要本任务已提交的真实结果。");
     if (input.result_id && current.result_id !== input.result_id) throw new GongzhiError(403, "forbidden", "不能关联其他任务的结果。");
-    for (const value of Object.values(input.usage)) if (value !== null && (!Number.isInteger(value) || value < 0)) throw new GongzhiError(400, "invalid_request", "用量必须为非负整数或未知。");
-    const [updated] = await sql()<RunRow[]>`update gongzhi_runs set status=${input.status}, result_id=${input.result_id ?? current.result_id},error=${input.error ? sql().json(input.error as never) : null},usage=${sql().json(input.usage)},updated_at=now() where id=${id} and status in ('queued','running') returning *`;
+    const [updated] = await sql()<RunRow[]>`update gongzhi_runs set status=${input.status}, result_id=${input.result_id ?? current.result_id},error=${input.error ? sql().json(input.error as never) : null},usage=${sql().json(usage)},updated_at=now() where id=${id} and status in ('queued','running') returning *`;
     return toRun(updated);
   });
 }
