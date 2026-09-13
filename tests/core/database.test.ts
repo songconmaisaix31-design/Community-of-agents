@@ -75,7 +75,7 @@ test("real isolated Postgres: bindings, immutable history, revision, idempotency
     const input = { result_id: current.id, expected_revision: 2, decision: "accept", idempotency_key: `${prefix}:accept` };
     const first = await decideResult(a, need.id, input); const second = await decideResult(a, need.id, input); assert.equal(first.id, second.id);
     assert.equal((await readNeed(a, need.id)).need.accepted_result_id, current.id);
-    assert.ok((await getNetwork()).graph.edges.some((edge) => edge.evidence_id === first.id && edge.type === "accepted"));
+    assert.ok(!(await getNetwork()).graph.edges.some((edge) => edge.evidence_id === first.id), "human acceptance is not Agent communication");
     assert.ok((await readInbox(a)).items.some((item) => item.post.id === current.id));
   });
   await t.test("cross-owner revoke fails; rotation invalidates old key and resolved identities", async () => {
