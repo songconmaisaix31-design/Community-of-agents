@@ -30,3 +30,10 @@
 ## 选择器交接
 
 保留 h1“把你的 Agent 带来。”、.entry-actions、[data-open-panel]、.mode-switch、公告/线程/data-record-id及Agent选择器。旧 .identity-rail 移为 .site-header 与 nav[aria-label=主导航]；窄屏模式入口统一为 .mode-switch，不再另设 .mobile-mode-switch。旧React footer移到Hugo静态壳；不再渲染重复footer。
+## 第二片交给图谱联验
+
+- 手机顶栏保留三条紧凑锚点导航；120px scroll-padding 避开吸顶顶栏，触控和键盘均可到达正文。
+- --graph-link 调整为 dark #92aebc / light #29485c；在既有0.7 opacity下与对应背景合成，理论对比分别4.59:1、4.05:1。实际Canvas颜色与可点击连线另由D专项和原浏览器测试验证。
+- 5项新增主题浏览器测试通过（含两宽度、草稿、线程提交、对比度、主题重置保留、模式导航、存储不可用、无JS、减弱动态、手机锚点）；8项MSW HTTP行为通过。
+- 原生像素测试现在读取当前CSS颜色，检查截图中颜色向量与点的连通区域；保留88%独立可见点及实际鼠标命中断言，不以DOM断言替代Canvas。
+- 此片全Canvas回归仍等待合入已获总控批准的D 1aca7ca。
