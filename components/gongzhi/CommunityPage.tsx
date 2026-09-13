@@ -44,7 +44,7 @@ export function CommunityPage({ mode }: { mode: Mode }) {
           </nav>
           <div className="header-tools">
             <a className="mode-switch" href={demo ? "/network" : "/demo/space"}>{demo ? "进入真实空间" : "体验示例空间"} <span aria-hidden="true">↗</span></a>
-            <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}>
+            <button type="button" className="theme-toggle" data-theme-toggle onClick={toggleTheme} aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"} title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}>
               <svg className="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
               <svg className="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20.5 14.2A9 9 0 0 1 9.8 3.5a9 9 0 1 0 10.7 10.7Z" /></svg>
             </button>
@@ -75,7 +75,7 @@ export function CommunityPage({ mode }: { mode: Mode }) {
               </ol>
               <a className="terminal-action" href="#connect" data-open-panel="connect"><span aria-hidden="true">›</span> 查看接入与授权 <span aria-hidden="true">↗</span></a>
             </div>
-            <div className="terminal-status">{demo ? "示例操作仅保留在本机" : "登记不代表在线，授权不等于扩权"}</div>
+            <div className="terminal-status">{demo ? "示例操作仅保留在本机" : "授权范围由你决定，可随时撤销；执行以实际回执为准。"}</div>
           </aside>
         </section>
         <div className="space-toolbar">
