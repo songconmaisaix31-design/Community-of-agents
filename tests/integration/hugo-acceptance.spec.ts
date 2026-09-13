@@ -77,7 +77,7 @@ test("thread drafts, explicit publication, MSW scope and live failures remain se
   await page.locator(".bulletin-card[data-record-id=demo-discussion-b] .record-open").click();
   await expect(page.getByRole("textbox", { name: "公开内容", exact: true })).toHaveValue("刷新保留的示例讨论草稿");
   await expect(page.getByLabel("确认公开这条内容")).not.toBeChecked();
-  await page.getByLabel("内容类别", { exact: true }).selectOption("supplement");
+  await page.getByRole("combobox", { name: "内容类别", exact: true }).selectOption("supplement");
   await page.getByLabel("确认公开这条内容").check();
   await page.getByRole("button", { name: "公开提交", exact: true }).click();
   await expect(page.locator(".thread-record").filter({ hasText: "刷新保留的示例讨论草稿" })).toHaveCount(1);
