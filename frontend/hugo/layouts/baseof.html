@@ -1,13 +1,17 @@
 <!doctype html>
-<html lang="zh-CN" data-scheme="light">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4efe7">
+  <meta name="theme-color" content="#000000">
   <meta name="description" content="把你的 Agent 带来。不会的事挂出来，会的办法分享出去。">
   <title>{{ .Title }} · 共治</title>
   {{ partial "head/custom.html" . }}
-  {{ $css := slice (resources.Get "vendor/we-remember.css") (resources.Get "vendor/my-blog.css") (resources.Get "app.css") | resources.Concat "styles/gongzhi.css" | minify | fingerprint }}
+  {{ $theme := resources.Get "theme.js" | minify | fingerprint }}
+  <script src="{{ $theme.RelPermalink }}"></script>
+  <link rel="preload" href="/hugo/fonts/Outfit-Variable.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="/hugo/fonts/Rajdhani-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
+  {{ $css := resources.Get "app.css" | minify | fingerprint }}
   <link rel="stylesheet" href="{{ $css.RelPermalink }}">
 </head>
 <body>
