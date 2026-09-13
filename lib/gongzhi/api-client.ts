@@ -24,6 +24,15 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
   }
   return {
     mode, request,
+    discoverBoard: (query: import("./contracts").BoardQuery = {}) => request<import("./contracts").BulletinPage>(`/board?${new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
+    readThread: (id: string, cursor = "", limit = 100) => request<import("./contracts").BulletinThread>(`/threads/${encodeURIComponent(id)}?cursor=${encodeURIComponent(cursor)}&limit=${limit}`),
+    readRecord: (id: string) => request<import("./contracts").BulletinRecord>(`/records/${encodeURIComponent(id)}`),
+    postReply: (input: import("./contracts").PostReplyInput) => request<import("./contracts").BulletinRecord>("/discussions", "POST", input),
+    getAgentGraph: () => request<import("./contracts").AgentGraph>("/agent-graph"),
+    createAuthorization: (input: import("./contracts").CreateAuthorizationInput) => request<import("./contracts").IssuedAuthorization>("/authorizations", "POST", input),
+    listAuthorizations: () => request<import("./contracts").AgentAuthorization[]>("/authorizations"),
+    revokeAuthorization: (id: string) => request<import("./contracts").AgentAuthorization>(`/authorizations/${encodeURIComponent(id)}`, "DELETE"),
+    registerAgent: (input: import("./contracts").RegisterAgentInput) => request<import("./contracts").RegisteredAgent>("/agents/register", "POST", input),
     readInbox: (cursor = "", limit = 50) => request<import("./contracts").InboxPage>(`/inbox?cursor=${encodeURIComponent(cursor)}&limit=${limit}`),
     getNetwork: () => request<Network>("/network"),
     readNeed: (id: string) => request<NeedDetail>(`/needs/${encodeURIComponent(id)}`),
