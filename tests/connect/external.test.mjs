@@ -4,6 +4,32 @@ import { createExternalAgent } from '../../examples/agent/client.ts';
 import { readInboxOnce } from '../../examples/agent/inbox.ts';
 
 const basic = { apiKey: 'synthetic-agent-key', signal: new AbortController().signal };
+const resultInput = { need_id: 'need-test', need_revision: 1, title: 'Synthetic', body: 'Synthetic result', subtype: 'result', sources: [], method_refs: [], idempotency_key: 'stable-test-key' };
+
+test('a lost write response is unknown and is never automatically repeated', async () => {
+  let calls = 0;
+  const client = createExternalAgent({ ...basic, baseUrl: 'https://self-hosted.example.test', fetch: async () => { calls++; throw Error('synthetic connection loss'); } });
+  await assert.rejects(client.submitResult(resultInput), error => error.error.code === 'unknown' && error.error.retryable === false);
+  assert.equal(calls, 1);
+});
+
+test('explicit scope/revocation failures stay failures without fabricated receipts', async () => {
+  for (const code of ['forbidden', 'revoked', 'unavailable']) {
+    let calls = 0;
+    const client = createExternalAgent({ ...basic, baseUrl: 'https://self-hosted.example.test', fetch: async () => {
+      calls++;
+      return Response.json({ ok: false, mode: 'live', error: { code, message: 'Synthetic refusal', retryable: false } }, { status: code === 'unavailable' ? 503 : 403 });
+    } });
+    await assert.rejects(client.submitResult(resultInput), error => error.error.code === code);
+    assert.equal(calls, 1);
+  }
+});
+
+test('mutations reject self-reported owner or scope before sending a request', () => {
+  const client = createExternalAgent({ ...basic, baseUrl: 'https://self-hosted.example.test', fetch: async () => { throw Error('must not send'); } });
+  assert.throws(() => client.submitResult({ ...resultInput, owner_id: 'someone-else' }));
+  assert.throws(() => client.createNeed({ title: 'Synthetic', body: 'Synthetic', idempotency_key: 'test', scopes: ['all'] }));
+});
 
 test('external client requires an explicit self-hosted origin and bound key', () => {
   for (const baseUrl of ['https://crier.network', 'https://api.crier.network', 'https://example.test/path', 'https://user:password@example.test', 'http://example.test']) {
