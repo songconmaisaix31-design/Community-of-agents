@@ -2,15 +2,17 @@ import { test, expect, type Page } from "@playwright/test";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
+import { canvasPoints } from "./canvas-pixels";
 const evidence = path.join(tmpdir(), "gongzhi-hugo-evidence");
 mkdirSync(evidence, { recursive: true });
 async function demo(page: Page) { await page.goto("/demo/space"); await expect(page.locator("[data-record-id=demo-discussion-b]")).toBeVisible(); }
 async function close(page: Page) { await page.getByRole("button", { name: "关闭面板", exact: true }).click(); }
 async function camera(page: Page) { return page.locator(".cosmos-host canvas").evaluate(el => { const z = (el as HTMLCanvasElement & { __zoom: { x: number; y: number; k: number } }).__zoom; return { x: z.x, y: z.y, k: z.k }; }); }
 async function pixels(page: Page) {
-  const canvas = page.locator(".cosmos-host canvas"), png = (await canvas.screenshot({ scale: "css" })).toString("base64"), bounds = (await canvas.boundingBox())!;
-  const points = await page.evaluate(async data => { const img = new Image(); img.src = `data:image/png;base64,${data}`; await img.decode(); const c = document.createElement("canvas"); c.width = img.width; c.height = img.height; const ctx = c.getContext("2d")!; ctx.drawImage(img, 0, 0); const bytes = ctx.getImageData(0, 0, c.width, c.height).data; const groups: { x: number; y: number; count: number }[] = [{ x: 0, y: 0, count: 0 }, { x: 0, y: 0, count: 0 }]; for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const i = (y * c.width + x) * 4, r = bytes[i], g = bytes[i + 1], b = bytes[i + 2]; const which = r < 120 && g > r + 10 && g > b + 5 ? 0 : r > 180 && g > 90 && g < 170 && b < 120 ? 1 : -1; if (which >= 0) { groups[which].x += x; groups[which].y += y; groups[which].count++; } } return groups.map(g => ({ x: g.x / g.count, y: g.y / g.count, count: g.count })); }, png);
-  expect(points.every(p => p.count > 0)).toBe(true); return points.map(p => ({ x: bounds.x + p.x, y: bounds.y + p.y }));
+  const { points, bounds } = await canvasPoints(page);
+  const external = points.filter(p => p.kind === 0), platform = points.filter(p => p.kind === 1);
+  expect(external).toHaveLength(1); expect(platform).toHaveLength(1);
+  return [external[0], platform[0]].map(p => ({ x: bounds.x + p.x, y: bounds.y + p.y }));
 }
 for (const width of [1440, 390]) {
   test(`Hugo visible shell, Agent registration and board thread at ${width}`, async ({ page }) => {
@@ -48,7 +50,7 @@ for (const width of [1440, 390]) {
 }
 
 test("Hugo emits the actual navigation and default entries before JavaScript", async ({ browser, request }) => {
-  const html = await (await request.get("/")).text(); expect(html).toContain('class="identity-rail surface"'); expect(html).toContain('data-open-panel="connect"'); expect(html).not.toContain('self.__next_f');
+  const html = await (await request.get("/")).text(); expect(html).toContain('class="site-header"'); expect(html).toContain('data-open-panel="connect"'); expect(html).not.toContain('self.__next_f');
   const context = await browser.newContext({ javaScriptEnabled: false }); const page = await context.newPage(); await page.goto("/"); await expect(page.getByRole("heading", { name: "把你的 Agent 带来。" })).toBeVisible(); await expect(page.locator(".entry-actions a")).toHaveCount(2); await context.close();
 });
 
