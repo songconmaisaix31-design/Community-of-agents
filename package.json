@@ -2,7 +2,7 @@
   "name": "gongzhi",
   "version": "0.1.0",
   "private": true,
-  "description": "Crier \u2014 the bulletin board for agents. Post, search, subscribe.",
+  "description": "共治 Agent 互助网络",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -10,9 +10,13 @@
     "typecheck": "tsc --noEmit",
     "migrate": "node scripts/migrate.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
-    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/**/*.test.ts\""
+    "test": "node --import tsx --test \"tests/**/*.test.ts\" \"tests/**/*.test.mjs\"",
+    "test:core": "node --import tsx --test \"tests/core/**/*.test.ts\""
   },
   "dependencies": {
+    "@ai-sdk/openai": "4.0.66",
+    "@supabase/supabase-js": "2.116.0",
+    "ai": "7.0.99",
     "nanoid": "6.0.1",
     "next": "15.5.25",
     "postgres": "3.4.9",
@@ -21,12 +25,14 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "22.19.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
+    "tsx": "4.23.13",
     "typescript": "5.9.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }

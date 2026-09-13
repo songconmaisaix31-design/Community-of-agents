@@ -1,0 +1,211 @@
+import { randomUUID } from "node:crypto";
+import { inTransaction, sql } from "../db";
+import { rateLimit } from "../http";
+import { sha256 } from "../ids";
+import { inboxFor, clampLimit, type InboxItem } from "../inbox";
+import { createPost, getPostRow, PostInputSchema, publicPost, repliesFor, updatePost, type PostRow, type PublicPost } from "../posts";
+import { search } from "../search";
+import { assertWritable } from "../limits";
+import { CreateNeedSchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference } from "./contracts";
+import { assertIdentity, resolveIdentity, toOwner, type Identity } from "./identity";
+import { assertDatabaseConfigured, GongzhiError } from "./errors";
+export { resolveIdentity };
+export type { Identity };
+
+type Metadata = { subtype: string; owner_id: string; owner_kind: Owner["kind"]; mode: "live"; revision: number; need_revision?: number; constraints?: string; expected_result?: string; applicability?: string; previous_version_id?: string; sources?: Source[]; method_refs?: MethodReference[]; fingerprint?: string; decision?: Decision["decision"]; result_id?: string; run_id?: string };
+type NeedRow = { revision: number; status: Need["status"]; accepted_result_id: string | null; updated_at: Date };
+export function gongzhiMetadata(post: Pick<PublicPost, "metadata">): Metadata { return post.metadata.gongzhi as Metadata; }
+function stopped(signal?: AbortSignal) { if (signal?.aborted) throw new GongzhiError(409, "cancelled", "操作已取消。"); }
+function metadata(actor: Identity, subtype: string, extra: Partial<Metadata> = {}): Metadata {
+  return { subtype, owner_id: actor.owner.id, owner_kind: actor.owner.kind, mode: "live", revision: 1, ...extra };
+}
+function toNeed(post: PublicPost, row: NeedRow): Need {
+  const m = gongzhiMetadata(post);
+  return { id: post.id, owner_id: m.owner_id, publisher_id: post.publisher.id, title: post.title, body: post.body, constraints: m.constraints ?? "", expected_result: m.expected_result ?? "", tags: post.tags, visibility: "public", revision: row.revision, status: row.status, accepted_result_id: row.accepted_result_id, expires_at: post.expires_at, created_at: post.created_at, updated_at: row.updated_at.toISOString(), mode: "live" };
+}
+export function toResult(post: PublicPost): Result {
+  const m = gongzhiMetadata(post);
+  return { id: post.id, need_id: post.parent_id!, need_revision: m.need_revision!, owner_id: m.owner_id, publisher_id: post.publisher.id, title: post.title, body: post.body, subtype: m.subtype as "help" | "result", sources: m.sources ?? [], method_refs: m.method_refs ?? [], created_at: post.created_at, mode: "live" };
+}
+function toExperience(post: PublicPost): Experience {
+  const m = gongzhiMetadata(post);
+  return { id: post.id, owner_id: m.owner_id, publisher_id: post.publisher.id, title: post.title, body: post.body, applicability: m.applicability ?? "", tags: post.tags, revision: m.revision, previous_version_id: m.previous_version_id ?? null, sources: m.sources ?? [], visibility: "public", created_at: post.created_at, mode: "live" };
+}
+function toDecision(post: PublicPost): Decision {
+  const m = gongzhiMetadata(post);
+  return { id: post.id, need_id: post.parent_id!, need_revision: m.need_revision!, result_id: m.result_id!, decision: m.decision!, note: post.body, owner_id: m.owner_id, created_at: post.created_at, mode: "live" };
+}
+function fingerprint(action: string, input: unknown) { return sha256(JSON.stringify({ action, input })); }
+async function previous(actor: Identity, key: string, expected: string): Promise<PublicPost | null> {
+  const row = await getPostRow(null, { publisherId: actor.owner.publisher_id, idempotencyKey: key });
+  if (!row) return null;
+  const post = publicPost(row);
+  if (gongzhiMetadata(post)?.fingerprint !== expected) throw new GongzhiError(409, "idempotency_conflict", "同一幂等键已用于不同请求。");
+  return post;
+}
+async function visiblePost(id: string): Promise<PublicPost> {
+  const row = await getPostRow(id);
+  if (!row || row.deleted_at || row.hidden_at || !row.metadata.gongzhi) throw new GongzhiError(404, "not_found", "没有找到这条公告。");
+  return publicPost(row);
+}
+export async function currentNeed(id: string, lock = false): Promise<Need> {
+  const [row] = lock
+    ? await sql()<NeedRow[]>`select * from gongzhi_needs where post_id=${id} for update`
+    : await sql()<NeedRow[]>`select * from gongzhi_needs where post_id=${id}`;
+  if (!row) throw new GongzhiError(404, "not_found", "没有找到这个需求。");
+  return toNeed(await visiblePost(id), row);
+}
+export function assertRevision(need: Need, revision: number) {
+  if (need.revision !== revision) throw new GongzhiError(409, "revision_conflict", "需求已更新，请读取当前版本后重试。", { expected_revision: revision, current_revision: need.revision });
+}
+function assertNeedOwner(actor: Identity, need: Need) {
+  if (actor.owner.kind !== "human" || need.owner_id !== actor.owner.id) throw new GongzhiError(403, "forbidden", "只有发布需求的人可以修改或决定采纳。");
+}
+async function writePublisher(actor: Identity) {
+  assertWritable();
+  const publisher = await assertIdentity(actor, true);
+  await rateLimit(`gongzhi:write:${actor.owner.id}`, 60, 3600, "writes");
+  return publisher;
+}
+export async function readNeed(actor: Identity, id: string, signal?: AbortSignal): Promise<NeedDetail> {
+  stopped(signal); await assertIdentity(actor);
+  const value = await readPublicNeed(id); stopped(signal); return value;
+}
+export async function readPublicNeed(id: string): Promise<NeedDetail> {
+  assertDatabaseConfigured();
+  const need = await currentNeed(id);
+  const replies = (await repliesFor(id, 100)).posts;
+  return { need, results: replies.filter((p) => ["help", "result"].includes(gongzhiMetadata(p)?.subtype)).map(toResult), decisions: replies.filter((p) => gongzhiMetadata(p)?.subtype === "decision").map(toDecision) };
+}
+export async function createNeed(actor: Identity, raw: unknown): Promise<Need> {
+  const input = CreateNeedSchema.parse(raw);
+  if (actor.owner.kind !== "human") throw new GongzhiError(403, "forbidden", "需求由人发布。");
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor);
+    const fp = fingerprint("create_need", input);
+    const existing = await previous(actor, input.idempotency_key, fp);
+    if (existing) return currentNeed(existing.id);
+    const { post } = await createPost(publisher, PostInputSchema.parse({ ...input, kind: "request", expires_at: new Date(Date.now() + 365 * 86400000).toISOString(), metadata: { gongzhi: metadata(actor, "need", { constraints: input.constraints, expected_result: input.expected_result, fingerprint: fp }) } }));
+    await sql()`insert into gongzhi_needs(post_id) values(${post.id})`;
+    return currentNeed(post.id);
+  });
+}
+export async function updateNeed(actor: Identity, id: string, raw: unknown): Promise<Need> {
+  const input = UpdateNeedSchema.parse(raw);
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor);
+    const fp = fingerprint(`update_need:${id}`, input);
+    const existing = await previous(actor, input.idempotency_key, fp);
+    if (existing) return currentNeed(id);
+    const need = await currentNeed(id, true); assertNeedOwner(actor, need); assertRevision(need, input.expected_revision);
+    // Immutable snapshot of the previous revision, including its original text.
+    await createPost(publisher, PostInputSchema.parse({ kind: "announcement", parent_id: id, title: need.title, body: need.body, tags: [], idempotency_key: input.idempotency_key, metadata: { gongzhi: metadata(actor, "need_revision", { revision: need.revision, constraints: need.constraints, expected_result: need.expected_result, fingerprint: fp }) } }));
+    await updatePost(publisher, id, { title: input.title, body: input.body, tags: input.tags, metadata: { gongzhi: metadata(actor, "need", { revision: need.revision + 1, constraints: input.constraints, expected_result: input.expected_result, fingerprint: gongzhiMetadata(await visiblePost(id)).fingerprint }) } });
+    await sql()`update gongzhi_needs set revision=revision+1,status='open',accepted_result_id=null,updated_at=now() where post_id=${id}`;
+    return currentNeed(id);
+  });
+}
+export async function readExperience(id: string): Promise<Experience> {
+  assertDatabaseConfigured(); const post = await visiblePost(id);
+  if (gongzhiMetadata(post).subtype !== "experience") throw new GongzhiError(404, "not_found", "没有找到这个经验版本。");
+  return toExperience(post);
+}
+export async function findExperience(actor: Identity, query: string, signal?: AbortSignal): Promise<Experience[]> {
+  stopped(signal); await assertIdentity(actor); const result = await findPublicExperience(query); stopped(signal); return result;
+}
+export async function findPublicExperience(query: string): Promise<Experience[]> {
+  assertDatabaseConfigured();
+  const result = await search({ q: query, tags: "experience", kind: "offer", limit: 100, include_expired: "true", rerank: "false" }, { track: false });
+  return result.posts.filter((p) => gongzhiMetadata(p)?.subtype === "experience").map(toExperience);
+}
+export async function publishExperience(actor: Identity, raw: unknown): Promise<Experience> {
+  const input = PublishExperienceSchema.parse(raw);
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor); const fp = fingerprint("publish_experience", input);
+    const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toExperience(existing);
+    let revision = 1;
+    if (input.previous_version_id) {
+      const before = await readExperience(input.previous_version_id);
+      if (before.owner_id !== actor.owner.id) throw new GongzhiError(403, "forbidden", "不能为他人的经验发布替代版本。");
+      revision = before.revision + 1;
+    }
+    const { post } = await createPost(publisher, PostInputSchema.parse({ ...input, kind: "offer", tags: [...new Set([...input.tags, "experience"])], metadata: { gongzhi: metadata(actor, "experience", { revision, applicability: input.applicability, previous_version_id: input.previous_version_id, sources: input.sources, fingerprint: fp }) } }));
+    return toExperience(post);
+  });
+}
+export async function submitResult(actor: Identity, raw: unknown, options: { run_id?: string; signal?: AbortSignal } = {}): Promise<Result> {
+  const input = SubmitResultSchema.parse(raw); stopped(options.signal);
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor); const fp = fingerprint("submit_result", { ...input, run_id: options.run_id });
+    // A platform actor can write only through a still-active persisted run.
+    if (actor.owner.kind === "platform_agent") {
+      if (!options.run_id) throw new GongzhiError(403, "forbidden", "平台结果必须属于正在执行的任务。");
+      const [run] = await sql()`select * from gongzhi_runs where id=${options.run_id} and owner_id=${actor.owner.id} for update`;
+      if (!run || run.need_id !== input.need_id || run.need_revision !== input.need_revision) throw new GongzhiError(403, "forbidden", "结果不属于这个平台任务。");
+      const prior = await previous(actor, input.idempotency_key, fp);
+      if (prior && run.result_id === prior.id) return toResult(prior);
+      if (run.status !== "running" || new Date(run.deadline_at).getTime() <= Date.now()) throw new GongzhiError(409, "cancelled", "平台任务已停止或超过期限。");
+    }
+    const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toResult(existing);
+    const need = await currentNeed(input.need_id, true); assertRevision(need, input.need_revision);
+    if (["accepted", "closed"].includes(need.status)) throw new GongzhiError(409, "revision_conflict", "此需求已结束，请先重新修改需求。");
+    const refs = [];
+    for (const ref of input.method_refs) {
+      const experience = await readExperience(ref.experience_id);
+      if (experience.revision !== ref.revision) throw new GongzhiError(409, "revision_conflict", "经验引用版本不一致。");
+      refs.push({ ref, digest: sha256(experience.body) });
+    }
+    stopped(options.signal);
+    const { post } = await createPost(publisher, PostInputSchema.parse({ kind: "announcement", title: input.title, body: input.body, tags: [], parent_id: input.need_id, idempotency_key: input.idempotency_key, metadata: { gongzhi: metadata(actor, input.subtype, { need_revision: input.need_revision, sources: input.sources, method_refs: input.method_refs, fingerprint: fp, run_id: options.run_id }) } }));
+    for (const { ref, digest } of refs) await sql()`insert into gongzhi_links(id,result_id,experience_id,experience_revision,content_digest,usage) values(${randomUUID()},${post.id},${ref.experience_id},${ref.revision},${digest},${ref.usage}) on conflict do nothing`;
+    await sql()`update gongzhi_needs set status='helping',updated_at=now() where post_id=${need.id}`;
+    if (options.run_id) await sql()`update gongzhi_runs set result_id=${post.id},updated_at=now() where id=${options.run_id} and status='running'`;
+    stopped(options.signal); return toResult(post);
+  });
+}
+export async function decideResult(actor: Identity, needId: string, raw: unknown): Promise<Decision> {
+  const input = DecideResultSchema.parse(raw);
+  return inTransaction(async () => {
+    const publisher = await writePublisher(actor); const fp = fingerprint(`decide:${needId}`, input);
+    const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toDecision(existing);
+    const need = await currentNeed(needId, true); assertNeedOwner(actor, need); assertRevision(need, input.expected_revision);
+    const result = await visiblePost(input.result_id); const m = gongzhiMetadata(result);
+    if (result.parent_id !== needId || m.subtype !== "result") throw new GongzhiError(400, "invalid_request", "只能对当前需求的成果作决定。");
+    assertRevision(need, m.need_revision!);
+    const { post } = await createPost(publisher, PostInputSchema.parse({ kind: "announcement", title: `决定：${input.decision}`, body: input.note || input.decision, tags: [], parent_id: needId, idempotency_key: input.idempotency_key, metadata: { gongzhi: metadata(actor, "decision", { need_revision: need.revision, result_id: result.id, decision: input.decision, fingerprint: fp }) } }));
+    const status = input.decision === "accept" ? "accepted" : input.decision === "request_revision" ? "needs_revision" : "open";
+    await sql()`update gongzhi_needs set status=${status},accepted_result_id=${input.decision === "accept" ? result.id : null},updated_at=now() where post_id=${needId}`;
+    return toDecision(post);
+  });
+}
+export async function readInbox(actor: Identity, cursor?: string, limit = 50): Promise<{ items: InboxItem[]; next_cursor: string | null }> {
+  const publisher = await assertIdentity(actor); return inboxFor(publisher, cursor, clampLimit(limit));
+}
+export async function getNetwork(): Promise<Network> {
+  assertDatabaseConfigured();
+  const posts = (await search({ limit: 100, include_replies: "true", include_expired: "true", sort: "newest", rerank: "false" }, { track: false })).posts.filter((p) => gongzhiMetadata(p)?.mode === "live");
+  const needs: Need[] = []; const experiences: Experience[] = []; const results: Result[] = []; const decisions: Decision[] = [];
+  for (const post of posts) {
+    switch (gongzhiMetadata(post).subtype) {
+      case "need": needs.push(await currentNeed(post.id)); break;
+      case "experience": experiences.push(toExperience(post)); break;
+      case "help": case "result": results.push(toResult(post)); break;
+      case "decision": decisions.push(toDecision(post)); break;
+    }
+  }
+  const ownerRows = await sql()`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id order by o.created_at desc limit 100`;
+  const owners = ownerRows.map((r) => toOwner(r as Parameters<typeof toOwner>[0]));
+  const graph: Graph = { nodes: [], edges: [] };
+  for (const owner of owners) graph.nodes.push({ id: owner.id, type: "owner", label: owner.name, mode: "live" });
+  for (const [type, list] of [["need", needs], ["experience", experiences], ["result", results]] as const) for (const item of list) {
+    graph.nodes.push({ id: item.id, type, label: item.title, mode: "live" });
+    graph.edges.push({ id: `published:${item.id}`, source: item.owner_id, target: item.id, type: "published", evidence_id: item.id, mode: "live" });
+  }
+  for (const result of results) {
+    graph.edges.push({ id: `reply:${result.id}`, source: result.id, target: result.need_id, type: "replied", evidence_id: result.id, mode: "live" });
+    for (const ref of result.method_refs) graph.edges.push({ id: `ref:${result.id}:${ref.experience_id}`, source: result.id, target: ref.experience_id, type: "referenced", evidence_id: result.id, mode: "live" });
+  }
+  for (const decision of decisions.filter((d) => d.decision === "accept")) graph.edges.push({ id: `accepted:${decision.id}`, source: decision.need_id, target: decision.result_id, type: "accepted", evidence_id: decision.id, mode: "live" });
+  const ids = new Set(graph.nodes.map((n) => n.id)); graph.edges = graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { owners, needs, experiences, results, decisions, graph, mode: "live" };
+}
