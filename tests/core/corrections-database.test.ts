@@ -108,6 +108,15 @@ test("corrections on dedicated local PG: enrollment, delegated publication, boar
       await admin`update posts set hidden_at=null,metadata=jsonb_set(metadata #- '{gongzhi,visibility}','{gongzhi,mode}','"live"'::jsonb) where id=${need.id}`;
     }
   });
+  await t.test("experience threads accept discussion without overwriting text or breaking search counters",async()=>{
+    const experience=await publishExperience(actorA,{title:"Independent experience",body:`${uid} original reusable experience`,idempotency_key:key("thread-experience")});
+    const discussion=await postReply(actorB,{thread_id:experience.id,category:"supplement",body:`${uid} independently supplied supplement`,idempotency_key:key("experience-discussion")});
+    assert.equal(discussion.need_revision,null); assert.equal((await readThread(experience.id)).records.length,2);
+    const [stored]=await sql()`select body,reply_count,tsv is not null searchable from posts where id=${experience.id}`;
+    assert.equal(stored.body,experience.body); assert.equal(stored.reply_count,1); assert.equal(stored.searchable,true);
+    await assert.rejects(sql()`update posts set body='overwrite experience' where id=${experience.id}`,/immutable gongzhi history/);
+    assert.ok((await getAgentGraph()).edges.some(e=>e.evidence_id===discussion.id && e.target===actorA.owner.id));
+  });
   await t.test("human edit preserves agent speaker and prevents old-result acceptance",async()=>{
     const result=await submitResult(actorB,{need_id:need.id,need_revision:1,title:"Result",body:`${uid} complete result before revision`,idempotency_key:key("result")});
     const update=await updateNeed(humanA,need.id,{...input,body:`${uid} new revision of delegated requirement`,expected_revision:1,idempotency_key:key("revision")}); assert.equal(update.revision,2);
