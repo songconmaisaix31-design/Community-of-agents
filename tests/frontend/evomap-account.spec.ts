@@ -45,10 +45,8 @@ test("同账号会话刷新不得清空尚未提交的身份称呼", async ({ pa
   await stubClientModule(page);
   await page.route("**/api/gongzhi/owners", r => r.fulfill({ json: { ok: true, mode: "live", data: [] } }));
   await page.goto(`${origin}/zh/connect/`);
-  await page.locator('[data-cm-account] input[type=email]').fill("fixture@example.com");
-  await page.locator('[data-cm-account] input[type=password]').fill("fixture-password");
   const owners = page.waitForResponse(r => r.url().endsWith("/owners"));
-  await page.locator('[data-cm-account]').getByRole("button", { name: "登录", exact: true }).click();
+  await page.locator('[data-cm-account]').getByRole("button", { name: "使用知乎登录", exact: true }).click();
   await owners;
   const name = page.locator('[data-cm-account] input[type=text]');
   await name.fill("只点一次登记的公开称呼");
@@ -118,14 +116,14 @@ export async function createGongzhiBrowserClient() {
   let user = null; const cbs = [];
   const auth = {
     available: true,
-    initialize: async () => { if (!user) { try { const e = localStorage.getItem("fixture-user"); if (e) user = { email: e }; } catch (_) {} } return user; },
-    signIn: async (email, password) => {
-      if (password === "bad") throw new ApiClientError({ code: "unauthenticated", message: "登录信息无效，请重试。", retryable: false });
-      user = { email }; try { localStorage.setItem("fixture-user", email); } catch (_) {}
+    initialize: async () => { if (!user) { try { user = JSON.parse(localStorage.getItem("fixture-user") || "null"); } catch (_) {} } return user; },
+    startSignIn: async () => {
+      if (window.__fixtureLoginFailure) throw new ApiClientError({ code: "upstream_failed", message: "fixture upstream failure", retryable: true });
+      user = { id: window.__fixtureUserId || "fixture-human", provider: "zhihu", name: "知乎会话 fixture", avatar_url: null }; try { localStorage.setItem("fixture-user", JSON.stringify(user)); } catch (_) {}
       cbs.forEach(c => c(user)); return user;
     },
     signOut: async () => { user = null; try { localStorage.removeItem("fixture-user"); } catch (_) {} cbs.forEach(c => c(null)); },
-    getAccessToken: () => (user ? "fixture-token" : undefined),
+    getAccessToken: () => undefined,
     onChange: cb => { cbs.push(cb); return () => {}; },
     dispose: () => {},
   };
@@ -182,9 +180,8 @@ async function login(page: Page, name = "阿治") {
     return r.fulfill({ json: { ok: true, mode: "live", data: { owner: bound } } });
   });
   await page.goto(`${origin}/zh/connect/`);
-  await page.locator("[data-cm-account] input[type=email]").fill("me@example.com");
-  await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
-  await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+  await page.evaluate(() => { (window as any).__fixtureLoginFailure = false; });
+  await page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" }).click();
   await expect(page.locator("[data-cm-account]")).toContainText("发言身份登记中");
   await page.locator("[data-cm-account] input[type=text]").fill(name);
   await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click();
@@ -224,14 +221,13 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     });
     await page.route("**/api/gongzhi/authorizations/*", r => { grants[0] = { ...grants[0], revoked_at: time }; return r.fulfill({ json: { ok: true, mode: "live", data: grants[0] } }); });
     await page.goto(`${origin}/zh/connect/`);
-    // 登录失败路径
-    await page.locator("[data-cm-account] input[type=email]").fill("me@example.com");
-    await page.locator("[data-cm-account] input[type=password]").fill("bad");
-    await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
-    await expect(page.locator("[data-cm-account] .cm-form-error")).toContainText("登录信息无效");
-    // 成功登录（已有人身份，无需再登记）
-    await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
-    await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+    // 明确 BrowserAuth 测试替身：模拟上游拒绝，未调用官方 OAuth
+    await page.evaluate(() => { (window as any).__fixtureLoginFailure = true; });
+    await page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" }).click();
+    await expect(page.locator("[data-cm-account] .cm-form-error")).toContainText("知乎登录服务暂时无法响应");
+    // 测试替身返回可信会话（非官方 OAuth 验收）
+    await page.evaluate(() => { (window as any).__fixtureLoginFailure = false; });
+    await page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" }).click();
     await expect(page.locator("[data-cm-account]")).toContainText("阿治");
     // 签发授权：第一次 500，同一幂等键重试成功
     await page.locator('.cm-check input[value="read"]').check();
@@ -250,7 +246,7 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await expect(page.locator(".cm-grant")).toContainText("已撤销");
     // 退出后敏感 UI 清理
     await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
-    await expect(page.locator("[data-cm-account] input[type=email]")).toBeVisible();
+    await expect(page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" })).toBeVisible();
     await expect(page.locator("[data-cm-grants] .cm-grant-form")).toHaveCount(0);
     await page.screenshot({ path: path.join(evidence, "grant-flow.png"), fullPage: true });
   });
@@ -418,9 +414,8 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await page.route("**/api/gongzhi/discussions", r => { seen.push(r.request().postDataJSON()); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r10" } } }); });
     // 登录（绑定公开称呼）
     await page.goto(`${origin}/zh/connect/`);
-    await page.locator("[data-cm-account] input[type=email]").fill("me@example.com");
-    await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
-    await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+    await page.evaluate(() => { (window as any).__fixtureLoginFailure = false; });
+    await page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" }).click();
     await page.locator("[data-cm-account] input[type=text]").fill("阿治");
     await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click();
     await expect(page.locator("[data-cm-account]")).toContainText("阿治");
@@ -460,14 +455,14 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
       return new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: { authorization: { id: "g1", owner_id: "human-b", scopes: ["read"], expires_at: "2026-09-14T01:00:00.000Z", revoked_at: null, agent_id: null, created_at: time, mode: "live" }, grant_token: "gongzhi_grant_b_secret", credential_state: "issued" } } })), 1500));
     });
     await page.goto(`${origin}/zh/connect/`);
-    const signIn = async (email: string) => {
-      await page.locator("[data-cm-account] input[type=email]").fill(email);
-      await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
-      await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+    const signIn = async (id: string) => {
+      await page.evaluate(id => { (window as any).__fixtureUserId = id; }, id);
+      await page.evaluate(() => { (window as any).__fixtureLoginFailure = false; });
+      await page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" }).click();
     };
     const signOut = async () => {
       await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
-      await expect(page.locator("[data-cm-account] input[type=email]")).toBeVisible();
+      await expect(page.locator("[data-cm-account]").getByRole("button", { name: "使用知乎登录" })).toBeVisible();
     };
     // 甲的 listOwners 在途中就退出换乙；迟到响应到达时乙仍在会话中，身份不得变成甲
     await signIn("a@example.com");

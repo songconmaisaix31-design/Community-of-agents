@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { WEB_AUTH_ENDPOINTS } from "../../lib/gongzhi/contracts";
 
 // HTTP fixtures only. Uses Core's generated client and content schema, no live identity/model claims.
 let server: Server, origin: string;
@@ -25,20 +26,14 @@ const content = { action: "publish_experience", payload: { title: "测试经验"
 const exp = { id: "exp-fixture", revision: 3, title: "固定版本经验", body: "本机执行参考文本", applicability: "限本机验证", tags: [], sources: [], visibility: "public", mode: "live" };
 async function setup(page: Page, authenticated = false) {
   const writes: unknown[] = [];
-  if (authenticated) await page.route("**/community/assets/gongzhi-client.js", r => r.fulfill({ contentType: "text/javascript", body: `
-    export * from "/community/assets/gongzhi-client.js?core";
-    import {createApiClient} from "/community/assets/gongzhi-client.js?core";
-    export async function createGongzhiBrowserClient(){
-      const user={id:"fixture-user"}, callbacks=[];
-      const auth={available:true,initialize:async()=>user,onChange:cb=>callbacks.push(cb),signOut:async()=>callbacks.forEach(cb=>cb(null))};
-      window.__experienceSignOut=()=>auth.signOut();
-      return {config:{},auth,api:createApiClient("live")};
-    }` }));
-  await page.route("**/api/gongzhi/**", async r => {
+  let sessionActive = authenticated;
+  await page.context().route("**/api/gongzhi/**", async r => {
     const p = new URL(r.request().url()).pathname;
     if (r.request().method() !== "GET") writes.push(r.request().postDataJSON());
     let data: unknown;
-    if (p.endsWith("/config")) data = { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: false, url: null, public_key: null } };
+    if (p.endsWith("/config")) data = { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: true, provider: "zhihu", url: null, public_key: null, endpoints: WEB_AUTH_ENDPOINTS } };
+    else if (p === WEB_AUTH_ENDPOINTS.session) data = { user: sessionActive ? { id: "11111111-1111-4111-8111-111111111111", provider: "zhihu", name: "审核者 fixture", avatar_url: null } : null, expires_at: sessionActive ? "2099-01-01T00:00:00Z" : null };
+    else if (p === WEB_AUTH_ENDPOINTS.logout) { sessionActive = false; data = { signed_out: true }; }
     else if (p.endsWith("/board")) data = { records: [], next_cursor: null, mode: "live" };
     else if (p.endsWith("/owners")) data = [{ id: "human-fixture", kind: "human", name: "审核者 fixture", revoked_at: null }, author];
     else if (p.endsWith("/authorizations")) data = [{ id: "grant-fixture", agent_id: author.id, revoked_at: null, scopes: ["read", "publish_experience", "discuss"], expires_at: "2099-01-01T00:00:00Z" }];
@@ -137,7 +132,11 @@ test("确认请求中身份退出，迟到批准回执不得留给下一身份",
   await page.getByLabel("上传 Agent", { exact: true }).selectOption(author.id);
   await page.getByLabel("我已逐项审阅", { exact: false }).check();
   await page.getByRole("button", { name: "确认公开并生成 Agent 批准 ID" }).click();
-  await page.evaluate(() => (window as any).__experienceSignOut());
+  const accountTab = await page.context().newPage();
+  await accountTab.goto(origin + "/zh/connect/#account");
+  await accountTab.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(accountTab.getByRole("button", { name: "使用知乎登录", exact: true })).toBeVisible();
+  await accountTab.close();
   release();
   await expect(page.locator(".cm-dialog")).toHaveCount(0);
   await expect(page.locator(".ex-approval-id")).toHaveCount(0);

@@ -1,5 +1,25 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## 知乎 OAuth 前端轮（当前，覆盖下方旧邮箱登录验收）
+
+**最终开发交接（2026-09-15）**：已普通合入 C 最终 `ee269f4d58f6e58109188df5e8e0aa22802d4dc2`，并适配其退出失败先撤下身份的安全行为。实际复现原提示随账户重绘丢失（新 SDK 组合 18/19），窄修为跨重绘保留“退出结果尚未确认”，先收起写入控件、禁用新登录，再以共享 `auth.initialize()` 重新确认服务器会话；确认仍有效后可由人再次退出，成功后恢复登录入口。没有回退 SDK 的安全处理。中间回归另发现旧隐藏错误节点使测试选择器不唯一，移除该废弃节点。
+
+最终同下方完整五文件 Playwright 命令 **54/54，1.2 分钟**，包含新 SDK 12 项、准确批准 7 项及原账户/导航/图全部回归；`npm run typecheck` 与 `node --check public/community/assets/account.js` 通过。最新安全截图 `%TEMP%/gongzhi-oauth-fixture-F-1789401907069/`。M 已明确开发验证后交 I：真实托管未配置 4 项、上游 fixture + 真 PG 的登录后 4 项和完整集成构建由 I 统一执行，F 无需等待该窗口；上述托管测试在 F **未执行**。真实知乎授权仍需用户项目配置与本人授权，未以任何 fixture、旧邮箱身份或打开授权页宣称成功。以下为保留的阶段记录。
+
+从指定 `72dfd46f8c7b99d9a8c659ad95f50e3f206e18ea` 普通合并，消费 C 首片 `7cca7d54bd2d33097800220e7b5a318b690f8186` 的唯一 BrowserAuth / WebSession 契约，保留原分支与 `test-results/`。首片将邮箱/密码表单替换为使用知乎登录按钮和基础资料授权说明；不接收第三方凭据。startSignIn 只启动官方页面导航，返回 query 仅用于一次性提示，清除后仅按 initialize/onChange 的可信站内用户显示登录成功；错误、取消、过期、缺配置均显示实际失败。返回固定 `/zh?auth=…`（C 已订正文档首片中的旧路径）。
+
+登录后显示会话姓名/安全头像，公开发言称呼独立展示；有限 Agent 授权、准确内容 public 审核、换人/退出清稿和迟到响应隔离保留。同身份会话刷新不重建输入。前端不复制客户端、Cookie 或身份框架，生成浏览器客户端由 C 交付。
+
+首片阶段：页面 `node --check public/community/assets/account.js` 通过，账户组 15/15 为明确 BrowserAuth/HTTP 测试替身；当时服务端/SDK 尚待 C 交付。缺本项目 App ID/App Key/登记 callback 与用户本人官方授权，**未验证真实知乎 OAuth**；下方历史官方 GoTrue 邮箱 4/4 不代表新登录通过。
+
+第二片已普通合入 C `87e38d60de153e1e1ba7ed00377ab54ada2b1387`（包含 D 官方适配器），首片 F 为已推送 `7701f1db160b9533aa6f3c122fbd3b1274437e27`。三个现有页面页头增加登录/账户链接，手机菜单和原 Agent 接入入口保留；从官方页面返回的 BFCache 恢复登录按钮，身份仍由 SDK 重新确认。实际 Core 生成客户端的 `evomap-oauth.spec.ts` **12/12**，经验组改用同源 session HTTP fixture，**7/7**；typecheck 与 JS 语法检查通过。新 OAuth 检查覆盖未配置、503、六类返回提示、伪造 success 标记、真实可信姓名头像、只存无秘密刷新信号、限定官方授权域名、导航不等于登录、退出失败、跨标签清稿、会话到期、同身份刷新保稿与失联撤下写入权限。全部是隔离 HTTP fixture，不调用知乎。
+
+首次实际 SDK 组合执行为 14 pass/2 fail：测试错误地禁止了 SDK 的无秘密刷新信号，并使用错误授权端点；按 C/D 固定契约修正 fixture 后 OAuth 12/12，保留“错误域名必须拒绝”单独用例，没有放宽客户端守卫。安全截图 `%TEMP%/gongzhi-oauth-fixture-F-1789401465469/login-desktop-fixture.png` 与 `login-mobile-fixture.png`，390px 实际渲染可读、无溢出。
+
+托管验收明确分层：`evomap-live.spec.ts` 现在只在 `GONGZHI_BROWSER_LIVE=true` 且 I 托管窗口中访问固定 3079，严格要求 zhihu/provider 与 available=false，验实际未配置、匿名 session/401/start503、无效回调和本地草稿零上传；没有资源覆盖、凭据文件读取或写库测试。原四项邮箱用例的业务流程迁至 `evomap-oauth-flows.ts` 导出的 `defineOAuthBrowserFlows({base,evidence,login})`：I 在独立测试文件内注册它，login 接受 Page 与 A/B，必须走实际 start、同一浏览器 Cookie、authorization_code/state callback、session，不能 addCookies 伪造身份；上游仅经 C handleWebAuth 函数参数注入 fixture。仍验证精确新 grant 撤销、两身份隔离、公开求助回复、缺模型如实失败、准确批准/版本下载/独立反馈/跨标签退出。I 需提供独立受控 runner/真实 PG；本文件不连接数据库或修改生产 runtime，尚未执行该新托管四项流程。
+
+2026-09-15 最终本地全量命令：`node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts evomap-experience.spec.ts evomap-connect.spec.ts evomap.spec.ts evomap-oauth.spec.ts` → **54/54，1.1 分钟**；`npm run typecheck`、`node --check public/community/assets/account.js`、`git diff --check` 通过。全量首跑 53/54，失败因测试要求刷新信号必定存在；SDK 的 pageshow/initialize 可以合并回读而不写信号，改为严格只允许空存储或精确信号格式，任何身份/凭据仍拒绝，随后完整 54/54。最终安全截图目录 `%TEMP%/gongzhi-oauth-fixture-F-1789401642701/`。F 未重跑全 Next 构建，由 I 合入最终服务后统一构建；未执行 Docker、数据库/Auth 迁移、生产部署、第三方授权或收费调用。
+
 ## Codex F 接管：经验分享首片
 
 ### 最终验收（2026-09-14，本节优先于下方阶段状态）

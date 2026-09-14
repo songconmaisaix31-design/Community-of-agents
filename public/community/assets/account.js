@@ -1,6 +1,6 @@
 /* 共治登录身份与真实写入：登录/退出、有限授权签发与撤销、发布公告、线程回复/补充、
    需求成果决策与关闭、平台 Agent 真实回执。
-   只消费 C 交付的 /community/assets/gongzhi-client.js（Supabase SDK + 既有 API 客户端），
+   只消费 C 交付的 /community/assets/gongzhi-client.js（BrowserAuth + 既有 API 客户端），
    不复制认证框架；客户端缺失或登录未配置时明确不可用，公开读取不受影响。
    令牌只在签发后显示一次，不写入 localStorage；写失败保留草稿与同一幂等键，由人决定是否重试。 */
 (function () {
@@ -24,6 +24,15 @@
 
   var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null, ownerStatus: "idle" };
   var ownerLoad = null;
+  var loginBusy = false, loginError = "", feedbackClosed = false;
+  var logoutNotice = "", checkingLogout = false;
+  // 回调标记只用于提示；登录身份始终来自共享客户端验证的同源会话。
+  var returnUrl = new URL(window.location.href);
+  var authReturn = returnUrl.searchParams.get("auth");
+  if (authReturn !== null) {
+    ["auth", "code", "state", "oauth_token", "error", "error_description"].forEach(function (key) { returnUrl.searchParams.delete(key); });
+    window.history.replaceState(window.history.state, "", returnUrl.pathname + returnUrl.search + returnUrl.hash);
+  }
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -62,9 +71,12 @@
     S.auth = client.auth;
     S.api = client.api;
     if (!S.auth || !S.auth.available || !S.api) { S.status = "unavailable"; renderAll(); return; }
+    var changes = 0;
     S.auth.onChange(function (user) {
-      var before = S.user && (S.user.id || S.user.email);
-      var after = user && (user.id || user.email);
+      changes++;
+      S.status = "ready";
+      var before = S.user && S.user.id;
+      var after = user && user.id;
       if (before === after) return; // 同人令牌刷新不重建表单或丢弃未提交输入
       if (before !== after) {
         // 身份切换/退出：清理一次性令牌与敏感状态、关闭属于旧身份的对话框；
@@ -78,15 +90,18 @@
         if (community().closeDialog) community().closeDialog();
       }
       S.user = user;
+      loginBusy = false; loginError = "";
       if (user) ensureHuman(); else renderAll();
     });
+    var initializingAt = changes;
     return S.auth.initialize().then(function (user) {
       S.status = "ready";
+      if (changes !== initializingAt) { renderAll(); return; }
       S.user = user;
       if (user) ensureHuman(); else renderAll();
     });
   }).catch(function () {
-    S.status = "unavailable";
+    S.status = S.auth && S.auth.available ? "error" : "unavailable";
     renderAll();
   });
 
@@ -165,55 +180,91 @@
 
   /* ---------- 登录与身份面板（接入指南页） ---------- */
   var accountRoot = document.querySelector("[data-cm-account]");
+  // 从官方页使用浏览器“返回”可能恢复整页缓存；只恢复按钮，会话仍由 SDK 校验。
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted && loginBusy) { loginBusy = false; loginError = ""; renderAccount(); }
+  });
+  function loginCopy() {
+    return "前往知乎官方页面，由你亲自确认授权。共治仅获取登录所需的基础资料（姓名、头像），不会自动导入或上传你的知乎内容。分享资料仍需你逐份审核并确认公开范围。";
+  }
+  function loginErrorText(e) {
+    var code = e && e.error && e.error.code;
+    return ({ unavailable: "知乎登录尚未配置或当前不可用，请稍后再试。", unauthenticated: "登录授权已失效，请重新使用知乎登录。", invalid_request: "本次登录请求无效或已过期，请重新开始。", upstream_failed: "知乎登录服务暂时无法响应，请稍后重试。", unknown: "未能确认登录请求的结果，请检查网络后重新开始。" })[code] || "未能开始知乎登录，请稍后重试。";
+  }
   function renderAccount() {
     if (!accountRoot) return;
     accountRoot.innerHTML = "";
+    if (logoutNotice) {
+      var notice = el("div", "cm-note"); notice.setAttribute("role", "alert");
+      notice.appendChild(el("p", "cm-form-error", logoutNotice));
+      var recheck = el("button", "cm-button cm-button-ghost", checkingLogout ? "正在确认…" : "重新确认登录状态");
+      recheck.type = "button"; recheck.disabled = checkingLogout;
+      recheck.addEventListener("click", function () {
+        checkingLogout = true; renderAccount();
+        S.auth.initialize().then(function (user) {
+          checkingLogout = false;
+          logoutNotice = user ? "服务器会话仍有效，请再次点击退出登录。" : "";
+          renderAccount();
+        }).catch(function () {
+          checkingLogout = false; logoutNotice = "仍无法确认服务器的退出状态，请稍后重新确认。"; renderAccount();
+        });
+      });
+      notice.appendChild(recheck); accountRoot.appendChild(notice);
+    }
     if (S.status === "loading") { accountRoot.appendChild(el("p", "cm-sub", "正在确认登录服务…")); return; }
-    if (S.status === "unavailable") {
+    if (S.status === "unavailable" || S.status === "error") {
       var note = el("div", "cm-note");
       note.appendChild(el("span", null, "◎"));
-      note.appendChild(el("p", null, "登录服务当前未配置或暂不可用。公开公告仍可正常浏览；签发授权、发布与决策等写入操作暂不可用，恢复后在此继续。"));
+      note.appendChild(el("p", null, S.status === "error" ? "暂时无法确认登录状态，请刷新后重试。公开公告仍可浏览；身份确认前不能签发授权或提交内容。" : "登录服务当前未配置或暂不可用，尚不能使用知乎登录。公开公告仍可正常浏览；签发授权、发布与决策等写入操作暂不可用，恢复后在此继续。"));
       accountRoot.appendChild(note);
+      var unavailable = el("button", "cm-button cm-button-primary", "使用知乎登录"); unavailable.type = "button"; unavailable.disabled = true; accountRoot.appendChild(unavailable);
       return;
     }
     if (!S.user) {
-      var form = el("form", "cm-form");
-      var email = textInput("email", { required: "required", autocomplete: "email", placeholder: "you@example.com" });
-      var pass = textInput("password", { required: "required", autocomplete: "current-password", placeholder: "密码" });
-      var btn = el("button", null, "登录");
-      btn.type = "submit";
-      var sub = submitRow(btn, "正在登录…", false);
-      form.appendChild(field("邮箱", email));
-      form.appendChild(field("密码", pass));
-      form.appendChild(sub.row);
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        sub.run(function () { return S.auth.signIn(email.value.trim(), pass.value); }, function () { form.reset(); });
+      var form = el("div", "cm-account cm-login");
+      form.appendChild(el("strong", null, "用知乎账号登录共治"));
+      form.appendChild(el("p", "cm-sub", loginCopy()));
+      var btn = el("button", "cm-button cm-button-primary", loginBusy ? "正在前往知乎…" : "使用知乎登录");
+      btn.type = "button";
+      btn.disabled = loginBusy || Boolean(logoutNotice) || typeof S.auth.startSignIn !== "function";
+      btn.addEventListener("click", function () {
+        if (loginBusy) return;
+        loginBusy = true; loginError = ""; renderAccount();
+        var gen = sessionGen;
+        Promise.resolve().then(function () { return S.auth.startSignIn(); }).catch(function (e) {
+          if (gen !== sessionGen) return;
+          loginBusy = false; loginError = loginErrorText(e); renderAccount();
+        });
       });
+      form.appendChild(btn);
+      if (loginBusy) form.appendChild(el("p", "cm-sub", "授权完成后将返回共治，确认登录状态后才能继续。若已返回或取消，可刷新此页重新确认。"));
+      if (loginError) { var error = el("p", "cm-form-error", loginError); error.setAttribute("role", "alert"); form.appendChild(error); }
+      if (typeof S.auth.startSignIn !== "function") form.appendChild(el("p", "cm-sub", "知乎登录组件尚不可用，请稍后刷新。"));
       accountRoot.appendChild(form);
-      accountRoot.appendChild(el("p", "cm-sub", "登录只证明身份，不会出现在公开记录里；公开记录只显示你的公开称呼与 Agent 名称。"));
       return;
     }
     var card = el("div", "cm-account");
     var head = el("div", "cm-account-head");
-    head.appendChild(el("strong", null, S.human ? S.human.name : (S.user.email || "已登录")));
+    if (S.user.avatar_url && /^https:\/\//i.test(S.user.avatar_url)) {
+      var avatar = el("img", "cm-account-avatar"); avatar.src = S.user.avatar_url; avatar.alt = ""; avatar.referrerPolicy = "no-referrer";
+      avatar.addEventListener("error", function () { avatar.hidden = true; }); head.appendChild(avatar);
+    }
+    head.appendChild(el("strong", null, S.user.name || "已登录"));
     head.appendChild(el("span", "cm-sub-inline", S.human ? "已登录 · 发言身份已绑定" : "已登录 · 发言身份登记中"));
     var out = el("button", "cm-button cm-button-ghost", "退出登录");
     out.type = "button";
-    var outErr = el("p", "cm-form-error");
-    outErr.hidden = true;
     out.addEventListener("click", function () {
       out.disabled = true;
-      outErr.hidden = true;
-      S.auth.signOut().catch(function (e) {
-        out.disabled = false;
-        outErr.textContent = "退出失败：" + errText(e) + " 登录状态可能仍有效，请重试。";
-        outErr.hidden = false;
+      feedbackClosed = true; logoutNotice = "";
+      S.auth.signOut().catch(function () {
+        // SDK 先撤下本页可写身份，再抛出失败；错误必须跨账户重绘保留。
+        logoutNotice = "退出失败，结果尚未确认。服务器会话仍可能有效，请先重新确认登录状态。";
+        renderAccount();
       });
     });
     head.appendChild(out);
     card.appendChild(head);
-    card.appendChild(outErr);
+    if (S.human) card.appendChild(el("p", "cm-sub", "公开发言身份：" + S.human.name));
     if (!S.human && S.ownerStatus !== "ready") {
       card.appendChild(el("p", "cm-sub", S.ownerStatus === "error" ? "发言身份读取失败，请重试。" : "正在读取发言身份…"));
       if (S.ownerStatus === "error") {
@@ -224,6 +275,7 @@
     if (!S.human && S.ownerStatus === "ready") {
       var bind = el("form", "cm-form cm-form-inline");
       var name = textInput("text", { required: "required", maxlength: "80", placeholder: "公开记录中显示的称呼" });
+      name.value = S.user.name || "";
       var bindBtn = el("button", null, "登记我的身份");
       bindBtn.type = "submit";
       var bindSub = submitRow(bindBtn, "正在登记…", false);
@@ -821,7 +873,24 @@
   }
 
   /* ---------- 渲染调度 ---------- */
+  var feedbackNode = null;
+  function renderAuthFeedback() {
+    if (feedbackNode) { feedbackNode.remove(); feedbackNode = null; }
+    if (!authReturn || feedbackClosed) return;
+    var messages = { cancelled: "你已取消知乎授权，可以继续浏览，或重新开始登录。", invalid_request: "本次知乎登录请求无效或已过期，请重新开始。", unauthenticated: "知乎授权未通过或已失效，请重新登录。", unavailable: "知乎登录尚未配置或当前不可用，请稍后再试。", upstream_failed: "知乎登录服务暂时无法响应，本次未完成登录。" };
+    var text = authReturn === "success" ? (S.status === "loading" ? "已返回共治，正在确认登录状态…" : S.status === "ready" && S.user ? "已确认登录，可继续管理账户和 Agent 授权。" : "已返回共治，但尚未确认有效登录，请重新登录。") : (messages[authReturn] || "未能确认这次知乎授权结果，请重新登录。");
+    feedbackNode = el("aside", "cm-auth-feedback"); feedbackNode.setAttribute("role", "status"); feedbackNode.setAttribute("aria-live", "polite");
+    feedbackNode.appendChild(el("p", null, text));
+    var link = el("a", "cm-button cm-button-ghost", "前往账户"); link.href = "/zh/connect/#account"; feedbackNode.appendChild(link);
+    var close = el("button", "cm-button cm-button-ghost", "关闭提示"); close.type = "button"; close.addEventListener("click", function () { feedbackClosed = true; renderAuthFeedback(); }); feedbackNode.appendChild(close);
+    document.body.appendChild(feedbackNode);
+  }
   function renderAll() {
+    document.querySelectorAll("[data-cm-account-link]").forEach(function (link) {
+      link.textContent = S.status === "ready" && S.user ? "账户" : "登录";
+      link.title = S.status === "ready" && S.user && S.user.name ? S.user.name : "使用知乎账号登录共治";
+    });
+    renderAuthFeedback();
     renderAccount();
     renderGrants();
     renderPublish();
