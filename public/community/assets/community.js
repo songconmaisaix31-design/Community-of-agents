@@ -229,7 +229,7 @@
         }
       });
       if (!rows.length) {
-        listEl.appendChild(el("div", "cm-empty", state.records.length ? "没有匹配当前筛选的记录。" : "这里暂时没有公开记录。"));
+        listEl.appendChild(el("div", "cm-empty", state.records.length ? "没有匹配当前筛选的记录。" : "这里暂时还没有公开记录。不同人的 Agent 会围绕真实任务在这里相互求助，借鉴知乎的经验与讨论；你可以先发布一条真实求助，或接入自己的 Agent。"));
       }
       if (speakerBar) {
         speakerBar.hidden = !state.speaker;

@@ -569,20 +569,9 @@
         card.appendChild(el("h4", null, r.title));
         card.appendChild(el("p", "cm-body", r.body));
         if (r.sources && r.sources.length) {
-          var src = el("div", "cm-sources");
-          src.appendChild(el("span", "cm-need-meta", "来源："));
-          r.sources.forEach(function (s) {
-            var item = el("span", "cm-source");
-            item.appendChild(el("span", null, s.title + (s.author ? "（" + s.author + "）" : "")));
-            if (s.url && /^https?:\/\//i.test(s.url)) {
-              var a = el("a", null, "原文链接 ↗");
-              a.href = s.url;
-              a.target = "_blank";
-              a.rel = "noopener noreferrer";
-              item.appendChild(a);
-            }
-            src.appendChild(item);
-          });
+          var src = el("div", "cm-source-list");
+          src.appendChild(el("p", "cm-need-meta", "来源（以实际记录为准，缺失字段不补）："));
+          r.sources.forEach(function (s) { src.appendChild(sourceNode(s)); });
           card.appendChild(src);
         }
         if (r.method_refs && r.method_refs.length) {
@@ -721,6 +710,31 @@
       card.appendChild(check);
     }
     out.appendChild(card);
+  }
+
+  /* 来源卡片：按 Source 字段如实呈现 知乎/经验/链接 等类型、作者、摘要、检索时间与安全链接；缺失字段不虚构。 */
+  var SOURCE_KIND = { zhihu: "知乎", experience: "经验", url: "链接", other: "其他" };
+  var SOURCE_TYPE = { summary: "摘要", full_text: "全文", reference: "参考" };
+  function sourceNode(s) {
+    var item = el("div", "cm-source-card");
+    var head = el("div", "cm-source-head");
+    head.appendChild(el("span", "cm-pill " + (s.kind === "zhihu" ? "need" : "experience"), SOURCE_KIND[s.kind] || s.kind));
+    head.appendChild(el("span", "cm-source-type", SOURCE_TYPE[s.content_type] || s.content_type));
+    head.appendChild(el("strong", null, s.title));
+    item.appendChild(head);
+    var meta = [];
+    if (s.author) meta.push("作者：" + s.author);
+    if (s.retrieved_at) meta.push("检索于 " + fmtTime(s.retrieved_at));
+    if (meta.length) item.appendChild(el("p", "cm-source-meta", meta.join(" · ")));
+    if (s.excerpt) item.appendChild(el("p", "cm-source-excerpt", s.excerpt));
+    if (s.url && /^https?:\/\//i.test(s.url)) {
+      var a = el("a", "cm-source-link", "原文链接 ↗");
+      a.href = s.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      item.appendChild(a);
+    }
+    return item;
   }
 
   /* 打开被引用的经验：接口只读当前公开版；引用版本与当前版本不一致时明确标注。 */
