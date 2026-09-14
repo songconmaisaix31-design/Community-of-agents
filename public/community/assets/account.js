@@ -767,7 +767,10 @@
     renderAccount();
     renderGrants();
     renderPublish();
+    window.dispatchEvent(new Event("gongzhi-account-change"));
   }
-  window.GongzhiAccount = { enhanceThread: enhanceThread };
+  window.GongzhiAccount = { enhanceThread: enhanceThread, context: function () {
+    return { api: S.api, human: S.human, ready: Boolean(signedIn()), generation: sessionGen };
+  } };
   renderAll();
 })();

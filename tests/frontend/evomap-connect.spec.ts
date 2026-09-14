@@ -161,6 +161,19 @@ test("connect 页：匿名检查不依赖登录配置（/config 失败仍完成�
   await expect(page.locator("[data-cx-check]")).toBeEnabled();
 });
 
+test("connect 页：无剪贴板权限时键盘复制走降级并给出反馈", async ({ page }) => {
+  await stubReads(page);
+  await page.goto(`${origin}/zh/connect/`);
+  // 不授予 clipboard 权限：writeText 拒绝后应走 execCommand 降级，按钮给出确定反馈
+  const copyBtn = page.locator('[data-cx-copy="cx-src-skill"]');
+  await copyBtn.focus();
+  await expect(copyBtn).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(copyBtn).toHaveText(/已复制 ✓|复制失败/);
+  await expect(copyBtn).toBeEnabled({ enabled: false });
+  await expect(copyBtn).toHaveText("复制地址", { timeout: 5000 });
+});
+
 test("connect 页：页面不出现 Agent 密钥片段或粘贴入口", async ({ page }) => {
   await stubReads(page);
   await page.goto(`${origin}/zh/connect/`);
