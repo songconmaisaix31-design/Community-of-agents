@@ -2,6 +2,26 @@
 
 ## Codex F 接管：经验分享首片
 
+### 最终验收（2026-09-14，本节优先于下方阶段状态）
+
+前端业务终片 `6a138f64bce6471de094222ff02eb924d688aab8`、真实测试固定片 `e74314010926047ce93f082ad6da3a0435edfaf1`，均已普通 push 原 `songconmaisaix31-design/gongzhi-kimi-adaptation`。I 最终实际托管 `43af491af6b13b7da2d481045334dd7579f83e3d` 于3079：在已编译88e7后端基础上装入最后5行静态修复，模型仍未配置。F 实际访问该原站，**不覆盖 HTML、JS、CSS，不改变浏览器安全策略**。
+
+| 验证命令 / 环境 | 实际结果 |
+| --- | --- |
+| `node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts evomap-experience.spec.ts evomap-connect.spec.ts evomap.spec.ts` | ed232955 全量 41/41；覆盖桌面/390px/键盘、真实生成客户端、API错误、无WebGL、canvas镜头、准确批准与首次请求取消。均为明确 HTTP fixture，非真实模型。 |
+| 同配置 `evomap-experience.spec.ts` | 新增直接人类发布最终 public 确认后 7/7；最后退出清稿修复再单独 `-g '身份退出'` 1/1。总计42个不同 fixture 用例，未把增量复跑说成另一轮全量42。 |
+| `npm run build:backend` | ed232955 完整 Next 生产构建通过，未重写生成客户端、未隐式迁移；最后静态5行 `node --check public/community/assets/experience.js` 通过，并由I实际托管验证。 |
+| `npm run typecheck` | e743140 最新代码与测试通过，退出0。 |
+| `GONGZHI_BROWSER_LIVE=true GONGZHI_FRONTEND_SOURCE_OVERLAY=false` 后运行 `node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-live.spec.ts` | 最终43af实际托管、官方GoTrue 56641与真实PG：**4/4，17.4秒**。中间88e7也4/4、26.7秒，明确单列，最终以43af为准。 |
+
+四项真实流程：本人登录/已有身份/只签发撤销本次grant/发布求助/回复/助手缺配置失败/退出；第二账号只读前者公开内容且无所有者操作、能独立回复；错误密码真实拒绝；双账号准确内容批准分享、上传回执、A授权撤销后B仍下载固定版本、B独立批准反馈并按实际speaker回读和返回原经验，390px手机流程通过。最后以真实Supabase跨标签退出验证旧页未上传草稿清空。测试中的Agent由程序登记和上传，所有内容明确标注协议验收；这些结果不等于真实Agent思考或现实业务任务完成。
+
+安全原始日志在 Git 外 `%TEMP%/gongzhi-f-live-final-20260914-225639.log`；截图目录 `%TEMP%/gongzhi-evomap-live-F-1789397801133/`，包括 `live-signed-out.png`、`live-other-account.png` 和390px视口 `live-experience-feedback.png`。日志没有令牌/密码；只在令牌收起后手动截图，自动trace/screenshot/video关闭，测试结束关闭页面避免自动错误上下文留登录值。每次新证据目录独立，原 `test-results/` 保留，历史授权与记录保留，仅按本次服务返回的精确ID撤销测试grant。
+
+真实剩余限制：平台助手的首次运行取消、预算与unknown状态已有HTTP fixture，缺本项目模型配置/单次及每日预算时未发起收费模型调用，因此没有真实模型取消或费用账单验收。Kernel为可选本机工具，其当前仅start/status/stop/result的版本限制见D技术文档，不宣称多Agent拆分。第一版分享仅public，无私有群组ACL；脱敏为辅助，仍须人审核。未读其他账号/私密记忆，不代替D/I实际Agent互助验收，不执行Docker、数据库迁移、云部署或公网切换。
+
+下方是分阶段记录，包含当时失败和等待状态，保留以说明修复依据。
+
 退出隔离后继：补测试实际复现“退出后同页重新打开草稿仍见上一身份正文”（1 fail），以账户代次变化清理本页草稿和批准操作键缓存，单项回归 1/1。同一身份正常刷新令牌仍保留草稿，不持久化原文。真实双账号流程将覆盖桌面分享及390px借用/反馈；当前仍等 I 切换恢复窗口，未擅自请求3079。
 
 当前本地验收：`node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts evomap-experience.spec.ts evomap-connect.spec.ts evomap.spec.ts` 为 41/41；随后补人类直接分享最终确认用例，经验组为 7/7（其余代码未变）。`npm run build:backend` 已通过完整 Next 生产构建，未重写 Core 生成客户端，未执行迁移。旧 `test-results/` 保留。新增真实双账号经验测试尚待 I 的3079窗口：A准确批准分享并撤销授权，B仍可下载固定版本、独立批准反馈；程序注册/上传明确只是 UI/HTTP 协议测试，不冒充实际 Agent 思考或业务执行。所有 live 测试显式门控，核对指定私有账号文件的实际路径与完整3079/56640/56641隔离配置；失败前后不截取凭据，测试结束关闭页面，避免自动错误上下文保留登录值和一次性授权。
