@@ -185,9 +185,9 @@
 - `public/community/assets/connect.js`（新增）：ORIGIN 占位替换为 `location.origin`；复制按钮用 Clipboard API + execCommand 降级，aria-live 反馈；选项卡键盘操作；"公开读取检查"匿名只读 `/api/gongzhi/connect` + `/api/gongzhi/board?limit=5`（Promise.allSettled，单项失败如实显示另一项保留），结果明确标注"匿名公开读取，不代表已登记或在线"。已登记身份核验仅展示由 Agent 宿主执行的 `GET /api/gongzhi/agents/me` 片段，页面不接触 Agent 密钥。
 - 首页新增 `#quick-connect` 快速接入带：同源说明地址 + 复制 + 进入接入页/公告板；主页与接入页均加载 connect.js（无 [data-cx] 时不动作）。
 - 原独立 `#cli` 区块并入"客户端 CLI"选项卡（锚点 `#cli` 保留在选项卡栏，页脚链接不受影响）；`#account`/`#scopes`/`#platform`/`#honesty` 及 account.js 全部写路径未动。
-- 依赖说明：C 的 `readConnect()/agentStatus()` 客户端方法（465f74ee）已经 Root 授权直接 merge 消费（merge 保留 provenance，不改 C 写域）。连接检查经共享 ESM `createGongzhiBrowserClient` 的 `api.readConnect()`（仅能力描述，无数据库）+ `api.discoverBoard({limit:5})`（实际服务读取）并列展示；`data` 缺 `records` 数组或能力描述不完整不当作成功/0 条；15 秒有界超时（测试可用 `__CX_CHECK_TIMEOUT_MS` 缩短），按钮在所有路径恢复。
+- 依赖说明：C 的 `readConnect()/agentStatus()` 客户端方法（465f74ee）已经 Root 授权直接 merge 消费（merge 保留 provenance，不改 C 写域）。连接检查用共享 ESM 导出的 `createApiClient("live", {fetch: 有界 fetch})`（不传 accessToken、不经过 createGongzhiBrowserClient，匿名读取不依赖 /config 或人类 Auth）：`readConnect()`（仅能力描述，无数据库）+ `discoverBoard({limit:5})`（实际服务读取）并列展示；`data` 缺 `records` 数组或能力描述不完整不当作成功/0 条；import/初始化与请求均 15 秒有界超时（测试用 `__CX_CHECK_TIMEOUT_MS` 缩短），失败清理缓存可再点重试，按钮在所有路径恢复。
 - D 最终片 202dee1 已同步：CLI 选项卡含 `connection`（匿名发现，identity_verified:false）、`register <稳定请求键>`、`status`（已登记身份核验）、`board/graph`；身份核验区不含任何 Bearer/Agent key 片段，只指向 CLI status / MCP agent_status 与 `/agent-skill.md` 单一来源，页面无粘贴密钥入口。
 
 ### 五轮验证
 
-- `tests/frontend/evomap-connect.spec.ts`（新增）9/9：选项卡点击/方向键/面板互斥；ORIGIN 同源替换与真实剪贴板复制（含 curl 片段内容）；公开读取检查成功/失败两态与"不等于已登记"标注；公告 `data` 缺 records 不当作成功或 0 条；挂起请求 15s 有界超时且按钮恢复；页面无 Agent 密钥片段/粘贴入口；390 宽度选项卡/复制可见且无横向溢出；首页快速接入带复制与跳转；全程无第三方请求。`evomap.spec.ts` 6/6（接入页断言随新结构更新）、`evomap-account.spec.ts` 11/11 回归通过；`npm run typecheck` 通过。全部为 HTTP fixture，未触真实后端/数据库。
+- `tests/frontend/evomap-connect.spec.ts`（新增）10/10：选项卡点击/方向键/面板互斥；ORIGIN 同源替换与真实剪贴板复制（含 curl 片段内容）；公开读取检查成功/失败两态与"不等于已登记"标注；公告 `data` 缺 records 不当作成功或 0 条；挂起请求有界超时（真实生成 ESM + abort）且按钮恢复；/config 失败不影响匿名检查（不经过 createGongzhiBrowserClient）；页面无 Agent 密钥片段/粘贴入口；390 宽度选项卡/复制可见且无横向溢出；首页快速接入带复制与跳转；全程无第三方请求。`evomap.spec.ts` 6/6（接入页断言随新结构更新）、`evomap-account.spec.ts` 11/11 回归通过；`npm run typecheck` 通过。fixture 只拦 HTTP，客户端为真实生成的 gongzhi-client.js，未触真实后端/数据库。

@@ -89,21 +89,17 @@
     });
   });
 
-  /* ---------- 公开读取检查：共享 ESM 客户端匿名只读，不等于已登记身份 ----------
+  /* ---------- 公开读取检查：共享 ESM createApiClient("live") 匿名只读，不等于已登记身份 ----------
+     不经过 createGongzhiBrowserClient：匿名读取不依赖 /config 或人类 Auth 配置。
      readConnect 只是无数据库的能力描述；实际服务读取由 discoverBoard 验证。
-     data 缺 records 数组不当作成功；有界超时后按钮一定恢复。 */
-  var clientPromise = null;
-  function getClient() {
-    if (!clientPromise) {
-      clientPromise = import("/community/assets/gongzhi-client.js").then(function (m) {
-        if (typeof m.createGongzhiBrowserClient !== "function") throw new Error("共享客户端缺少约定导出。");
-        return m.createGongzhiBrowserClient();
-      });
-    }
-    return clientPromise;
-  }
+     data 缺 records 数组不当作成功；import/初始化与请求均有界超时，失败清缓存可重试。 */
   function checkTimeoutMs() {
     return typeof window.__CX_CHECK_TIMEOUT_MS === "number" ? window.__CX_CHECK_TIMEOUT_MS : 15000;
+  }
+  function boundedFetch(input, init) {
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, checkTimeoutMs());
+    return fetch(input, Object.assign({}, init, { signal: ctrl.signal })).finally(function () { clearTimeout(t); });
   }
   function withTimeout(promise) {
     return new Promise(function (resolve, reject) {
@@ -112,6 +108,17 @@
       var t = setTimeout(function () { reject(new Error("请求超过 " + label + " 未响应。")); }, ms);
       promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
     });
+  }
+  var apiPromise = null;
+  function getApi() {
+    if (!apiPromise) {
+      apiPromise = withTimeout(import("/community/assets/gongzhi-client.js")).then(function (m) {
+        if (typeof m.createApiClient !== "function") throw new Error("共享客户端缺少约定导出。");
+        return m.createApiClient("live", { fetch: boundedFetch });
+      });
+      apiPromise.catch(function () { apiPromise = null; });
+    }
+    return apiPromise;
   }
   function failReason(e) {
     return e && e.message ? e.message : "请求失败。";
@@ -151,11 +158,11 @@
       checkBtn.disabled = true;
       checkOut.innerHTML = "";
       checkOut.appendChild(el("p", "cx-check-line", "正在匿名只读请求…"));
-      getClient().then(function (client) {
-        if (!client.api || typeof client.api.readConnect !== "function" || typeof client.api.discoverBoard !== "function") {
+      getApi().then(function (api) {
+        if (typeof api.readConnect !== "function" || typeof api.discoverBoard !== "function") {
           throw new Error("共享客户端缺少公开检查方法。");
         }
-        return Promise.allSettled([withTimeout(client.api.readConnect()), withTimeout(client.api.discoverBoard({ limit: 5 }))]);
+        return Promise.allSettled([api.readConnect(), api.discoverBoard({ limit: 5 })]);
       }).then(function (pair) {
         renderCheck(pair);
       }).catch(function (e) {

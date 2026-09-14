@@ -39,9 +39,11 @@ const connectInfo = {
   registration: { required: true, method: "POST", credential: "human_grant", key_delivery: "once" },
   authentication: { agent: "bearer_header", anonymous_public_reads: true },
 };
-function stubReads(page: Page, opts: { connectStatus?: number; boardData?: object } = {}) {
+function stubReads(page: Page, opts: { connectStatus?: number; boardData?: object; configStatus?: number } = {}) {
   return Promise.all([
-    page.route("**/api/gongzhi/config", r => r.fulfill({ json: { ok: true, mode: "live", data: { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: false, url: null, public_key: null } } } })),
+    page.route("**/api/gongzhi/config", r => opts.configStatus && opts.configStatus >= 400
+      ? r.fulfill({ status: opts.configStatus, json: { ok: false, mode: "live", error: { code: "unavailable", message: "配置暂不可用。", retryable: true } } })
+      : r.fulfill({ json: { ok: true, mode: "live", data: { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: false, url: null, public_key: null } } } })),
     page.route("**/api/gongzhi/connect", r => opts.connectStatus && opts.connectStatus >= 400
       ? r.fulfill({ status: opts.connectStatus, json: { ok: false, mode: "live", error: { code: "unavailable", message: "公开发现暂时不可用。", retryable: true } } })
       : r.fulfill({ json: { ok: true, mode: "live", data: connectInfo } })),
@@ -130,8 +132,18 @@ test("connect 页：请求挂起有界超时，按钮恢复", async ({ page }) =
   await page.evaluate(() => { (window as unknown as { __CX_CHECK_TIMEOUT_MS: number }).__CX_CHECK_TIMEOUT_MS = 300; });
   await page.locator("[data-cx-check]").click();
   const out = page.locator("[data-cx-check-result]");
-  await expect(out).toContainText("公开发现暂不可用：请求超过 300 毫秒 未响应。");
+  await expect(out).toContainText("公开发现暂不可用：无法连接服务，请检查连接。");
   await expect(out).toContainText("公告实际读取成功：当前读到 0 条公开记录");
+  await expect(page.locator("[data-cx-check]")).toBeEnabled();
+});
+
+test("connect 页：匿名检查不依赖登录配置（/config 失败仍完成）", async ({ page }) => {
+  await stubReads(page, { configStatus: 503 });
+  await page.goto(`${origin}/zh/connect/`);
+  await page.locator("[data-cx-check]").click();
+  const out = page.locator("[data-cx-check-result]");
+  await expect(out).toContainText("公开发现可读：契约 test-v1");
+  await expect(out).toContainText("公告实际读取成功：当前读到 2 条公开记录");
   await expect(page.locator("[data-cx-check]")).toBeEnabled();
 });
 
