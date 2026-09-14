@@ -106,6 +106,9 @@ test('shared theory navigation keeps six steps, fixed versions and fixture retur
       if (width === 390) await page.locator('#cm-menu-button').click();
       await page.getByRole('link', { name: '进化层', exact: true }).filter({ visible: true }).click();
       await expect(page).toHaveURL(/\/community\/zh\/evolution\/index.html\?demo=atlas$/);
+      // Navigation commits before deferred scripts finish on a public network.
+      // Wait for the browser's actual initialization event, not just visible HTML.
+      await page.waitForLoadState('domcontentloaded');
       await expect(page.getByText('理论设计', { exact: true })).toHaveCount(1);
       await expect(page.locator('.atlas-banner')).toHaveCount(0);
       await expect(page.locator('.ev-process [role=tab]')).toHaveCount(6);
