@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ApiClientError } from '../../lib/gongzhi/api-client.ts';
 import { createZhihuSearch, ZhihuError, type ZhihuSearchResult } from '../../lib/gongzhi/zhihu/search.ts';
 import { questionUrl, type ZhihuAnswerResult } from '../../lib/gongzhi/zhihu/question-answers.ts';
+import { sourceUrl } from '../../lib/gongzhi/zhihu/http.ts';
 import { readLocalText } from './local-content.ts';
 
 /** User-authorized ceiling for one batch; failures count and there is no reset flag. */
@@ -60,6 +61,25 @@ const StoredPageSchema = z.object({
   records: z.array(CorpusRecordSchema),
 }).strict();
 
+// The same content can arrive as a search ContentID and an answer ContentToken, so
+// dedupe prefers the validated official content URL, dropping only known tracking
+// params and the fragment. Without one, fall back to endpoint + opaque ID. Original
+// URL, ID and provenance are always retained; no numeric conversion, no invented links.
+const TRACKING_PARAMS = /^(?:utm_[a-z0-9_]+|share_code|share_token|s_r|s_i|s_c)$/i;
+function canonicalContentUrl(value: string | undefined) {
+  const valid = sourceUrl(value);
+  if (!valid) return undefined;
+  const url = new URL(valid);
+  url.hash = '';
+  for (const key of [...url.searchParams.keys()]) if (TRACKING_PARAMS.test(key)) url.searchParams.delete(key);
+  if (url.pathname.length > 1 && url.pathname.endsWith('/')) url.pathname = url.pathname.slice(0, -1);
+  return url.href;
+}
+const recordKey = (record: Pick<CorpusRecord, 'id' | 'url' | 'provenance'>) => {
+  const canonical = canonicalContentUrl(record.url);
+  return canonical ? `url:${canonical}` : `id:${record.provenance.endpoint ?? 'unknown'}:${record.id}`;
+};
+
 export interface ZhihuCorpusOptions {
   planPath: string; stateDir: string; accessSecret?: string; signal: AbortSignal;
   fetch?: typeof fetch; now?: () => number; sleep?: (ms: number) => Promise<void>;
@@ -71,6 +91,8 @@ const outsideRepository = (path: string) => {
   return Boolean(from) && (from.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) || isAbsolute(from));
 };
 
+const missing = (error: unknown) => ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '');
+
 /** Walk to the deepest existing ancestor so a symlinked parent cannot alias the repository. */
 async function ensureOutsideRepository(path: string) {
   let current = resolve(path);
@@ -81,7 +103,21 @@ async function ensureOutsideRepository(path: string) {
       return;
     } catch (error) {
       if (error instanceof ApiClientError) throw error;
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (!missing(error)) throw error;
+      const parent = dirname(current);
+      if (parent === current) throw invalid('状态目录无法解析。');
+      current = parent;
+    }
+  }
+}
+
+/** Realpath of the deepest existing ancestor, so symlinked parents are resolved before trust. */
+async function realAncestor(path: string): Promise<string> {
+  let current = resolve(path);
+  for (;;) {
+    try { return await realpath(current); }
+    catch (error) {
+      if (!missing(error)) throw error;
       const parent = dirname(current);
       if (parent === current) throw invalid('状态目录无法解析。');
       current = parent;
@@ -98,7 +134,7 @@ async function ensureOutsideGitWorktree(path: string) {
       throw invalid('状态目录位于某个 Git 工作树内；原文与统计不入 Git，请换到工作树外目录。');
     } catch (error) {
       if (error instanceof ApiClientError) throw error;
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (!missing(error)) throw error;
     }
     const parent = dirname(current);
     if (parent === current) return;
@@ -112,7 +148,7 @@ async function assertRegularFile(path: string) {
     if (info.isSymbolicLink() || !info.isFile()) throw invalid(`${basename(path)} 必须是普通文件；拒绝符号链接或特殊文件。`);
   } catch (error) {
     if (error instanceof ApiClientError) throw error;
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (!missing(error)) throw error;
   }
 }
 
@@ -122,7 +158,7 @@ async function assertPlainDirectory(path: string) {
     if (info.isSymbolicLink() || !info.isDirectory()) throw invalid(`${basename(path)} 必须是普通目录；拒绝符号链接或特殊文件。`);
   } catch (error) {
     if (error instanceof ApiClientError) throw error;
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (!missing(error)) throw error;
   }
 }
 
@@ -189,31 +225,34 @@ async function loadState(path: string): Promise<CorpusState | undefined> {
 /**
  * Durable records are the only source of truth. A crash can leave a partial tail
  * line; truncate it instead of appending after it, then rebuild the dedupe set.
+ * Repair works on BYTES: multi-byte UTF-8 rows make character indexes unsafe,
+ * and 0x0A never occurs inside a multi-byte sequence, so the last newline byte
+ * is a safe cut. `total` counts complete rows, `keys` unique dedupe keys.
  */
 async function loadRecords(path: string) {
   await assertRegularFile(path);
-  let text: string;
-  try { text = await readFile(path, 'utf8'); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { ids: new Set<string>(), duplicates: 0 }; throw error; }
-  if (text && !text.endsWith('\n')) {
-    const keep = text.lastIndexOf('\n') + 1;
+  let buffer: Buffer;
+  try { buffer = await readFile(path); }
+  catch (error) { if (missing(error)) return { keys: new Set<string>(), total: 0, duplicates: 0 }; throw error; }
+  let keep = buffer.length;
+  if (keep && buffer[keep - 1] !== 0x0a) {
+    keep = buffer.lastIndexOf(0x0a) + 1;
     await truncate(path, keep);
-    text = text.slice(0, keep);
   }
-  const lines = text.split('\n');
+  const lines = buffer.subarray(0, keep).toString('utf8').split('\n');
   lines.pop();
-  const ids = new Set<string>();
-  let duplicates = 0;
+  const keys = new Set<string>();
+  let total = 0;
   for (const line of lines) {
     if (!line.trim()) continue;
-    let parsed: unknown;
-    try { parsed = JSON.parse(line); }
+    let record: CorpusRecord;
+    try { record = CorpusRecordSchema.parse(JSON.parse(line)); }
     catch { throw invalid('records.jsonl 存在损坏行；停止以免丢失或重复记录。'); }
-    const id = parsed && typeof parsed === 'object' ? (parsed as { id?: unknown }).id : undefined;
-    if (typeof id !== 'string' || !id) throw invalid('records.jsonl 记录缺少 id；停止。');
-    if (ids.has(id)) duplicates++; else ids.add(id);
+    total += 1;
+    const key = recordKey(record);
+    if (!keys.has(key)) keys.add(key);
   }
-  return { ids, duplicates };
+  return { keys, total, duplicates: total - keys.size };
 }
 
 async function appendRecords(path: string, records: CorpusRecord[], seen: Set<string>) {
@@ -221,8 +260,9 @@ async function appendRecords(path: string, records: CorpusRecord[], seen: Set<st
   let added = 0;
   let duplicates = 0;
   for (const record of records) {
-    if (seen.has(record.id)) { duplicates++; continue; }
-    seen.add(record.id);
+    const key = recordKey(record);
+    if (seen.has(key)) { duplicates++; continue; }
+    seen.add(key);
     added++;
     lines.push(JSON.stringify(record));
   }
@@ -269,11 +309,17 @@ export async function collectZhihuCorpus(options: ZhihuCorpusOptions) {
   if (!secret) throw new ApiClientError({ code: 'unavailable', message: '采集需要本项目只读凭据 ZHIHU_ACCESS_SECRET；未配置即不可用，不读取其他凭据。', retryable: false });
   const plan = await readPlan(options.planPath, signal);
   if (!isAbsolute(options.stateDir)) throw invalid('状态目录必须是绝对路径。');
-  await ensureOutsideRepository(options.stateDir);
-  await ensureOutsideGitWorktree(options.stateDir);
-  await mkdir(resolve(options.stateDir), { recursive: true });
-  const stateDir = await realpath(resolve(options.stateDir));
+  const requested = resolve(options.stateDir);
+  await ensureOutsideRepository(requested);
+  // Trust only the resolved path: a symlinked parent must not smuggle the state
+  // directory into another Git worktree after the lexical check.
+  const resolvedAncestor = await realAncestor(requested);
+  await ensureOutsideRepository(resolvedAncestor);
+  await ensureOutsideGitWorktree(resolvedAncestor);
+  await mkdir(requested, { recursive: true });
+  const stateDir = await realpath(requested);
   if (!outsideRepository(stateDir)) throw invalid('状态目录必须在仓库外；原文与统计不入 Git。');
+  await ensureOutsideGitWorktree(stateDir);
   const statePath = join(stateDir, 'state.json');
   const recordsPath = join(stateDir, 'records.jsonl');
   const pagesDir = join(stateDir, 'pages');
@@ -302,8 +348,8 @@ export async function collectZhihuCorpus(options: ZhihuCorpusOptions) {
       inflight: null, records: 0, duplicates: 0, updated_at: nowIso(),
     };
     state.limit = limit;
-    const { ids: seen, duplicates } = await loadRecords(recordsPath);
-    if (previous && seen.size < previous.records) throw invalid('records.jsonl 少于状态已记录数；停止以免重复请求或丢失记录。');
+    const { keys: seen, total, duplicates } = await loadRecords(recordsPath);
+    if (previous && total < previous.records) throw invalid('records.jsonl 少于状态已记录数；停止以免重复请求或丢失记录。');
     state.records = seen.size;
     state.duplicates = duplicates;
 
@@ -332,9 +378,10 @@ export async function collectZhihuCorpus(options: ZhihuCorpusOptions) {
       if (!inflight) return false;
       const endpoint = inflight.kind === 'query' ? 'zhihu_search' : 'question_answers';
       const path = join(pagesDir, pageName(inflight.reservation, endpoint));
+      await assertRegularFile(path);
       let raw: string;
       try { raw = await readFile(path, 'utf8'); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error; }
+      catch (error) { if (missing(error)) return false; throw error; }
       let page: z.infer<typeof StoredPageSchema>;
       try { page = StoredPageSchema.parse(JSON.parse(raw)); }
       catch { throw invalid('pages 文件损坏；停止以免重复请求。'); }
@@ -419,11 +466,11 @@ export async function collectZhihuCorpus(options: ZhihuCorpusOptions) {
       await writeState();
       await throttle();
       let result: ZhihuSearchResult;
-      try { result = await client.search(query.query, signal, 5); }
+      try { result = await client.search(query.query, signal, 10); }
       catch (error) { stop = await recordFailure(query, error); break; }
       const records = searchRecords(result, query.query);
       await writePage(pagesDir, pageName(reservation, 'zhihu_search'), {
-        endpoint: 'zhihu_search', request: { Query: query.query, Count: '5' }, retrieved_at: result.retrievedAt,
+        endpoint: 'zhihu_search', request: { Query: query.query, Count: '10' }, retrieved_at: result.retrievedAt,
         response: result, records,
       });
       const appended = await appendRecords(recordsPath, records, seen);

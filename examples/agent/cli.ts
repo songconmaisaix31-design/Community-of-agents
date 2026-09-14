@@ -2,8 +2,14 @@ import { addAbortSignal } from 'node:stream';
 import { ApiClientError } from '../../lib/gongzhi/api-client.ts';
 import { runCommand } from './commands.ts';
 
+// Serial corpus batches reserve one call per second plus per-request overhead, so
+// 5000 attempts need more than the default. Every other command keeps 60 seconds.
+const DEFAULT_DEADLINE_MS = 60_000;
+const CORPUS_DEADLINE_MS = 2 * 60 * 60 * 1000;
+const deadlineMs = process.argv[2] === 'collect-zhihu-corpus' ? CORPUS_DEADLINE_MS : DEFAULT_DEADLINE_MS;
+
 const controller = new AbortController();
-const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
+const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(deadlineMs)]);
 const cancel = () => controller.abort();
 process.once('SIGINT', cancel);
 process.once('SIGTERM', cancel);
@@ -15,6 +21,10 @@ try {
   const result = await runCommand({ args: process.argv.slice(2), env: process.env, input: process.stdin, signal });
   signal.throwIfAborted();
   process.stdout.write(JSON.stringify(result) + '\n');
+  // A stopped or budget-exhausted batch is not success: keep the structured
+  // receipt on stdout but fail the exit code so callers cannot treat it as done.
+  const receipt = result && typeof result === 'object' ? result as { batch_id?: unknown; status?: unknown } : {};
+  if (typeof receipt.batch_id === 'string' && receipt.status !== 'completed') process.exitCode = 1;
 } catch (error) {
   // Never print arbitrary errors, request headers, credentials or response bodies.
   const code = error instanceof ApiClientError ? error.error.code : signal.aborted ? 'cancelled' : 'invalid_request';

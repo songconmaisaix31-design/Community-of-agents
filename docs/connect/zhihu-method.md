@@ -80,7 +80,7 @@ node --import tsx examples/agent/cli.ts collect-zhihu-corpus "$env:GONGZHI_ZHIHU
 node --import tsx examples/agent/cli.ts collect-zhihu-corpus "$GONGZHI_ZHIHU_PLAN" "$GONGZHI_ZHIHU_STATE_DIR"
 ```
 
-只读凭据来自本机进程环境 `ZHIHU_ACCESS_SECRET`（本项目配置，不是本站发布凭据，也不从其他项目/日常 CLI 复制）。未配置即 `unavailable`，不发出请求。状态目录必须是绝对路径、**任意 Git 工作树之外**（不止本 checkout）；`state.json`/`records.jsonl`/`pages/` 若是符号链接或非普通文件会被拒绝。同一状态目录用 `state.lock` 做最小排他，第二个进程直接拒绝；崩溃留下的锁在确认进程已退出后由操作者删除或由工具按 PID 判定为陈旧后清理。
+只读凭据来自本机进程环境 `ZHIHU_ACCESS_SECRET`（本项目配置，不是本站发布凭据，也不从其他项目/日常 CLI 复制）。未配置即 `unavailable`，不发出请求。状态目录必须是绝对路径、**任意 Git 工作树之外**（不止本 checkout）：检查先解析到最深已存在祖先的真实路径再判定，符号链接父目录指向别的 Git 工作树也会被拒绝；`state.json`/`records.jsonl`/`pages/` 与重放用的 page 文件若是符号链接或非普通文件会被拒绝，不跟随、不覆盖别轨或凭据。同一状态目录用 `state.lock` 做最小排他，第二个进程直接拒绝；崩溃留下的锁在确认进程已退出后由操作者删除或由工具按 PID 判定为陈旧后清理。
 
 ### 产物（仅状态目录，不入 Git、不发公告）
 
@@ -95,8 +95,15 @@ node --import tsx examples/agent/cli.ts collect-zhihu-corpus "$GONGZHI_ZHIHU_PLA
 - `401/403`、`429`、官方 `30001`（含日额度耗尽）立即停止；其他错误也停止并记录真实错误码，**未知错误绝不当作空结果**。不自动重试、不换身份、不跨日轮询。
 - 失败后默认再次运行会以 `previous_failure` 停下并保留回执；结果不明（预留已落盘但没有对应 page）以 `unknown_inflight` 停下。确认要重试时由操作者在新计划里显式 `retry_unresolved: true`，重试仍占预算。
 - 分页只用官方返回的 `NextOffset`（int64 十进制字符串原样传递）；`IsEnd:false` 且缺游标时保留本页、标记 `pagination_incomplete` 并终止该项，不猜游标。`HasMore` 不代表存在翻页参数。
-- 内容 ID（可含负号）原样保留，只按字符串去重；同一内容重复出现不会产生额外请求，查询去重后每个查询只请求一次。
+- 搜索每次取官方 `Count=10`（一次授权调用尽量多取摘要），回答仍为每页 5 条；不新增端点或翻页。
+- 内容记录优先按官方内容 URL 去重：只忽略已知跟踪参数（`utm_*`、`share_code`、`share_token`、`s_r/s_i/s_c`）与 fragment，因此同一内容的搜索 `ContentID` 与回答 `ContentToken` 不会重复入库；没有 URL 时退回 `endpoint + 不透明 ID`（ID 可含负号，原样保留，不做数字转换、不猜链接）。原始 URL、ID 与 provenance 始终原样保存。查询本身去重后每个查询只请求一次，重复内容不产生额外请求。
+- 崩溃留下的半行按**字节**边界修复：`records.jsonl` 只截断到最后一个换行字节，中文/emoji 完整行不会被破坏；每个完整行都按记录 schema 校验，损坏行直接停止。
 - 平台每日配额以官方实际返回为准（2026-09-15 M 实测 `zhihu_search`/`question_answers` 各 Total 10；M 已用 3 次预检，新批次应把 `max_requests` 设为 4997 或更小）。工具只做批次内账本，不造全局账本；不得用新状态目录绕过用户授权的总量。
+
+### 入口进程边界（`examples/agent/cli.ts`）
+
+- 只有 `collect-zhihu-corpus` 使用批次总时限 **2 小时**（按 5000 次、串行约 1 秒一次预留）；其他所有命令仍是原有 **60 秒**。单次知乎请求另有库内 15 秒超时；Ctrl+C/SIGTERM 立即中止并保留已落盘状态与预算。
+- 退出码：批次 `status:"completed"` 时 `0`；`stopped`/`budget_exhausted`（含限流、401、额度、`pagination_incomplete`、`previous_failure`、`unknown_inflight`）仍把结构化回执写到 stdout，但退出码为 `1`；配置或参数错误在 stderr 输出 `{ok:false,code,...}` 且退出码 `1`。调用方必须同时检查退出码和回执状态，不能把非零当成功。
 
 采集范围仅官方摘要读取；拿到摘要不等于可公开分享，不能替代人类批准，也不证明任何任务已执行。
 
@@ -116,12 +123,14 @@ opencode models
 opencode run -m <provider/model> --title "zhihu-method-<batch>" -f "$env:GONGZHI_ZHIHU_SELECTED_INPUT" "按附件整理可复用方法，逐条标明来源与适用条件，并写清实际检查与未验证事项；只输出文本，不上传、不批准、不请求新权限。"
 ```
 
-`-f/--file` 只附操作者明确选择的少量文件；模型整理结果由操作者保存为本机方法与检查文本，再用第一节命令转草稿。记录原生会话与用量即可，不另造 Manifest/哈希证明系统：
+`-f/--file` 只附操作者明确选择的少量文件；模型整理结果由操作者保存为本机方法与检查文本，再用第一节命令转草稿。记录原生会话与用量即可，不另造 Manifest/哈希证明系统；若要分享导出，用原生脱敏选项：
 
 ```powershell
-opencode export <sessionID>
+opencode export --sanitize <sessionID>
 opencode stats
 ```
+
+`opencode export --sanitize` 会脱敏转写与文件数据（本机 2026-09-15 实测存在该选项）。`opencode stats` 汇总本机全部会话，**不能**把其中的总量当成本次任务的用量；本任务的模型、会话与用量以该次原生 session 的记录为准，不与其他会话混算。
 
 ## 四、验证范围
 
@@ -131,4 +140,4 @@ npm run typecheck
 git diff --check
 ```
 
-测试全部使用临时文件与注入 HTTP 替身：覆盖来源署名/URL/内容类型保留、缺来源/秘密/越界/已有输出拒绝、来源 id 凭据样式拒绝、失败计入预算、重复不产生请求、断点与 page 重放、`previous_failure`/`unknown_inflight` 显式停止、限流/401 停止、游标只信官方值、状态目录越域与 Git 工作树拒绝。它们**不证明**真实知乎凭据、额度、真实 A/B 任务、人类批准或公网登录；这些仍需项目凭据、明确授权批次和真实人类参与后单独验收。
+测试全部使用临时文件与注入 HTTP 替身：覆盖来源署名/URL/内容类型保留、缺来源/秘密/越界/已有输出拒绝、来源 id 凭据样式拒绝、失败计入预算、重复不产生请求、断点与 page 重放、`previous_failure`/`unknown_inflight` 显式停止、限流/401 停止、游标只信官方值、状态目录越域与 Git 工作树（含符号链接父目录解析后）拒绝、跨端点同一 URL 去重与跟踪参数变体、无 URL 时 endpoint+ID 回退、中文/emoji 半行按字节修复并连续恢复、`Count=10`、真实 CLI 子进程的退出码（completed 为 0、预算耗尽为 1、缺凭据 fail closed）。子进程用例通过预置状态在预算检查前完成，不发出任何 HTTP 请求。它们**不证明**真实知乎凭据、额度、真实 A/B 任务、人类批准或公网登录；这些仍需项目凭据、明确授权批次和真实人类参与后单独验收。
