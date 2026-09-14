@@ -117,3 +117,15 @@
 
 - `evomap-account.spec.ts` 6/6：新增真实 `gongzhi-client.js`（非替身）+ 拦截 config 的接线冒烟；决策 500→同键重试；回复形状含 reply_to_id/expected_revision；方法引用打开与版本标注；unknown 回执保键与查询入口。
 - 既有 `evomap.spec.ts` 6/6 回归、`npm run typecheck` 通过。
+
+### 三轮返修 2（主控 follow-up）
+
+- 回复解析线程根：公告卡可能是求助线程内的回复/成果，先 `readThread` 判根类型，根为求助再 `readNeed(thread_id)` 取当前版本带 `expected_revision`；`reply_to_id` 始终保留被点击记录，留下可回读交流依据。
+- 签发/发布/回复全部冻结 payload 与请求键：首次提交后重试不采用编辑后的值、不静默换版本；明确的版本冲突或不可重试失败才解冻，由人决定作为新意图重发。版本解析本身失败不算已发出意图，允许重建。
+- 换号清理：身份切换/退出递增身份代际并清理一次性令牌与待发敏感状态（同一人令牌刷新不算切换）；`listOwners` 迟到响应按代际丢弃，不写入过期身份。
+- 平台回执沿用 D 说明：HTTP ok 不等于成功，UI 只按 `data.status` 展示（succeeded 才显示"已提交成果"），failed/cancelled/timed_out/unknown 原样保留。
+
+### 三轮返修 2 验证
+
+- `evomap-account.spec.ts` 8/8：新增回复卡在线程内（expected_revision + reply_to_id=被点击记录）、响应丢失后编辑再重试（payload/键不变）、换号回归（迟到响应丢弃、令牌不跨账号）；测试同步补齐替身客户端 readThread/readExperience，换号存根按调用次序返回对应身份。
+- 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。

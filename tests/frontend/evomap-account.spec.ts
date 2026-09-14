@@ -69,6 +69,7 @@ export async function createGongzhiBrowserClient() {
     createNeed: i => req("/api/gongzhi/needs", "POST", i),
     publishExperience: i => req("/api/gongzhi/experiences", "POST", i),
     postReply: i => req("/api/gongzhi/discussions", "POST", i),
+    readThread: id => req("/api/gongzhi/threads/" + id),
     readNeed: id => req("/api/gongzhi/needs/" + id),
     readExperience: id => req("/api/gongzhi/experiences/" + id),
     decideResult: (id, i) => req("/api/gongzhi/needs/" + id + "/decisions", "POST", i),
@@ -119,6 +120,9 @@ async function login(page: Page, name = "阿治") {
 }
 
 test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）", () => {
+  test.beforeEach(({ page }) => {
+    page.on("pageerror", e => console.log("PAGEERROR:", e.message));
+  });
   test("共享客户端缺失时登录区明确不可用，公开公告照常可读", async ({ page }) => {
     await stubBoard(page);
     await page.goto(`${origin}/zh/connect/`);
@@ -234,16 +238,30 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await expect(page.locator(".cm-dialog")).toContainText("引用的是第 3 版");
     await expect(page.locator(".cm-dialog")).toContainText("先做一张共识卡");
     await page.keyboard.press("Escape");
-    // 回复表单：带线程根引用与当前版本号
+    // 回复表单：第一次请求网络中断（响应丢失），编辑后重试仍发同一冻结 payload 与请求键
     await page.locator(".cm-record").first().click();
     await page.locator(".cm-reply-form textarea").fill("补充：场地可以借到隔壁教室。");
+    await page.unroute("**/api/gongzhi/discussions");
+    let dropFirst = true;
+    await page.route("**/api/gongzhi/discussions", r => {
+      seen.push({ path: "discussions", body: r.request().postDataJSON() });
+      if (dropFirst) { dropFirst = false; return r.abort(); }
+      return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r9" } } });
+    });
     await page.locator(".cm-reply-form").getByRole("button", { name: "公开发表" }).click();
-    await expect.poll(() => seen.filter(s => s.path === "discussions").length).toBe(1);
-    const reply = seen.find(s => s.path === "discussions")!.body;
+    await expect(page.locator(".cm-reply-form .cm-form-error")).toBeVisible();
+    await page.locator(".cm-reply-form textarea").fill("编辑后的内容不应进入重试。");
+    await page.locator(".cm-reply-form").getByRole("button", { name: "公开发表" }).click();
+    await expect.poll(() => seen.filter(s => s.path === "discussions").length).toBe(2);
+    const replies = seen.filter(s => s.path === "discussions").map(s => s.body);
+    expect(replies[0].idempotency_key).toBe(replies[1].idempotency_key);
+    expect(replies[1].body).toBe("补充：场地可以借到隔壁教室。");
+    const reply = replies[1];
     expect(reply.thread_id).toBe("n1");
     expect(reply.reply_to_id).toBe("n1");
     expect(reply.expected_revision).toBe(2);
     expect(reply.category).toBe("reply");
+    expect(reply.body).toBe("补充：场地可以借到隔壁教室。");
     expect(String(reply.idempotency_key)).toMatch(/^web-/);
     // 采纳决策：第一次 500，同一请求键重试成功
     await page.locator(".cm-result").getByRole("button", { name: "采纳这份成果" }).click();
@@ -299,5 +317,84 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await page.locator(".cm-run").getByRole("button", { name: "请求平台助手帮助" }).click();
     await expect.poll(() => keys.length).toBe(2);
     expect(keys[0]).toBe(keys[1]);
+  });
+
+  test("求助线程内的回复卡：回读线程根后带当前版本号，reply_to_id 保留被点击记录", async ({ page }) => {
+    const seen: Array<Record<string, unknown>> = [];
+    const replyCard = { id: "r1", thread_id: "n1", reply_to_id: "n1", kind: "reply", title: "先确认活动边界", body: "建议先准备纸笔备选。", speaker_id: "agent-a", owner_id: "human-owner", speaker: { ...humanOwner, id: "agent-a", kind: "external_agent", name: "拾光" }, need_revision: 2, created_at: time, mode: "live" };
+    await stubClientModule(page);
+    let bound: Record<string, unknown> | null = null;
+    await page.route("**/api/gongzhi/owners", r => {
+      if (r.request().method() === "GET") return r.fulfill({ json: { ok: true, mode: "live", data: bound ? [bound] : [] } });
+      bound = { ...humanOwner };
+      return r.fulfill({ json: { ok: true, mode: "live", data: { owner: bound } } });
+    });
+    await page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [needRecord, replyCard], next_cursor: null, mode: "live" } } }));
+    await page.route("**/api/gongzhi/threads/*", r => r.fulfill({ json: { ok: true, mode: "live", data: { thread_id: "n1", records: [needRecord, replyCard], next_cursor: null, mode: "live" } } }));
+    await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
+    await page.route("**/api/gongzhi/discussions", r => { seen.push(r.request().postDataJSON()); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r10" } } }); });
+    // 登录（绑定公开称呼）
+    await page.goto(`${origin}/zh/connect/`);
+    await page.locator("[data-cm-account] input[type=email]").fill("me@example.com");
+    await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
+    await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+    await page.locator("[data-cm-account] input[type=text]").fill("阿治");
+    await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click();
+    await expect(page.locator("[data-cm-account]")).toContainText("阿治");
+    await page.goto(`${origin}/zh/board/`);
+    // 点击回复卡（kind 不是 need），线程根是求助
+    await page.locator(".cm-record", { hasText: "先确认活动边界" }).click();
+    await page.locator(".cm-reply-form textarea").fill("认同，纸笔方案我们试过。");
+    await page.locator(".cm-reply-form").getByRole("button", { name: "公开发表" }).click();
+    await expect.poll(() => seen.length).toBe(1);
+    expect(seen[0].thread_id).toBe("n1");
+    expect(seen[0].reply_to_id).toBe("r1");
+    expect(seen[0].expected_revision).toBe(2);
+  });
+
+  test("换号：迟到的上任身份响应被丢弃，一次性令牌不跨账号复现", async ({ page }) => {
+    const ownerA = { ...humanOwner, id: "human-a", name: "甲" };
+    const ownerB = { ...humanOwner, id: "human-b", name: "乙" };
+    let calls = 0;
+    await stubClientModule(page);
+    await page.route("**/api/gongzhi/owners", r => {
+      if (r.request().method() !== "GET") return r.fulfill({ json: { ok: true, mode: "live", data: { owner: ownerA } } });
+      calls++;
+      if (calls === 1) {
+        // 甲的身份响应迟到 2 秒
+        return new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: [ownerA] } })), 2000));
+      }
+      return r.fulfill({ json: { ok: true, mode: "live", data: [calls === 2 ? ownerB : ownerA] } });
+    });
+    await page.route("**/api/gongzhi/authorizations", r => {
+      if (r.request().method() === "GET") return r.fulfill({ json: { ok: true, mode: "live", data: [] } });
+      return r.fulfill({ json: { ok: true, mode: "live", data: { authorization: { id: "g1", owner_id: "human-b", scopes: ["read"], expires_at: "2026-09-14T01:00:00.000Z", revoked_at: null, agent_id: null, created_at: time, mode: "live" }, grant_token: "gongzhi_grant_b_secret", credential_state: "issued" } } });
+    });
+    await page.goto(`${origin}/zh/connect/`);
+    const signIn = async (email: string) => {
+      await page.locator("[data-cm-account] input[type=email]").fill(email);
+      await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
+      await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
+    };
+    await signIn("a@example.com");
+    // 甲的 listOwners 还在途中就退出并换乙登录
+    await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
+    await signIn("b@example.com");
+    await expect(page.locator("[data-cm-account]")).toContainText("乙");
+    // 乙签发一份授权，令牌显示一次
+    await page.locator('.cm-check input[value="read"]').check();
+    await page.locator("[data-cm-grants]").getByRole("button", { name: "签发授权" }).click();
+    await expect(page.locator(".cm-token")).toHaveText("gongzhi_grant_b_secret");
+    // 甲迟到的响应到达后：身份仍是乙，且不属于当前账号的 UI 不出现
+    await page.waitForTimeout(2500);
+    await expect(page.locator("[data-cm-account]")).toContainText("乙");
+    await expect(page.locator("[data-cm-account]")).not.toContainText("甲");
+    // 退出乙再登甲：乙的一次性令牌不跨账号复现
+    await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
+    await signIn("a@example.com");
+    await expect(page.locator("[data-cm-account]")).toContainText("甲");
+    await expect(page.locator(".cm-token")).toHaveCount(0);
+    await expect(page.locator(".cm-token-once")).toHaveCount(0);
+    await page.screenshot({ path: path.join(evidence, "account-switch.png"), fullPage: true });
   });
 });

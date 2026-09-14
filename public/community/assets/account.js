@@ -43,6 +43,7 @@
   function community() { return window.GongzhiCommunity || {}; }
 
   /* ---------- 客户端初始化（异步工厂，登录故障不拖累公开读取） ---------- */
+  var sessionGen = 0; // 身份代际：换人/退出时递增，迟到响应据此丢弃
   var clientPromise = import("/community/assets/gongzhi-client.js").then(function (m) {
     if (typeof m.createGongzhiBrowserClient !== "function") throw new Error("共享客户端缺少约定导出。");
     return m.createGongzhiBrowserClient();
@@ -52,8 +53,16 @@
     S.api = client.api;
     if (!S.auth || !S.auth.available || !S.api) { S.status = "unavailable"; renderAll(); return; }
     S.auth.onChange(function (user) {
+      var before = S.user && (S.user.id || S.user.email);
+      var after = user && (user.id || user.email);
+      if (before !== after) {
+        // 身份切换/退出：清理一次性令牌与敏感状态；同一人的令牌刷新不算切换
+        sessionGen++;
+        S.human = null;
+        lastIssued = null;
+        grantKey = newKey();
+      }
       S.user = user;
-      S.human = null;
       renderAll();
       if (user) ensureHuman();
     });
@@ -68,15 +77,18 @@
     renderAll();
   });
 
-  /* 登录后确保“人”的发言身份已绑定；未绑定时给一次自填公开称呼的入口。 */
+  /* 登录后确保“人”的发言身份已绑定；未绑定时给一次自填公开称呼的入口。
+     响应可能迟于换号/退出到达，用身份代际守卫，不写入过期身份。 */
   function ensureHuman() {
     if (!S.user || S.human || !S.api) return;
+    var gen = sessionGen;
     S.api.listOwners().then(function (owners) {
+      if (gen !== sessionGen) return;
       for (var i = 0; i < owners.length; i++) {
         if (owners[i].kind === "human" && !owners[i].revoked_at) { S.human = owners[i]; break; }
       }
       renderAll();
-    }).catch(function () { renderAll(); });
+    }).catch(function () { if (gen === sessionGen) renderAll(); });
   }
   function signedIn() { return S.status === "ready" && S.user && S.human; }
 
@@ -110,7 +122,7 @@
     row.appendChild(err);
     return {
       row: row,
-      run: function (action, onSuccess) {
+      run: function (action, onSuccess, onError) {
         button.disabled = true;
         var old = button.textContent;
         button.textContent = busyText;
@@ -124,6 +136,7 @@
           button.textContent = old;
           err.textContent = errText(e) + (idem === false ? " 请核对后重试。" : " 已填写的内容与本次请求键保留，可直接重试；服务端会用同一请求键去重，不会重复创建。");
           err.hidden = false;
+          if (onError) onError(e);
         });
       },
     };
@@ -239,17 +252,25 @@
     issueBtn.type = "submit";
     var issueSub = submitRow(issueBtn, "正在签发…");
     form.appendChild(issueSub.row);
+    // 同一次签注意图冻结 payload 与请求键：重试不采用编辑后的值；
+    // 明确失败（不可重试，如校验或冲突）才解冻，由人决定作为新意图重发。
+    var frozenGrant = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      var scopes = checks.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
-      if (!scopes.length) return;
+      if (!frozenGrant) {
+        var scopes = checks.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        if (!scopes.length) return;
+        frozenGrant = { scopes: scopes, expires_in_seconds: Number(expiry.value), idempotency_key: grantKey };
+      }
       issueSub.run(function () {
-        return S.api.createAuthorization({ scopes: scopes, expires_in_seconds: Number(expiry.value), idempotency_key: grantKey });
+        return S.api.createAuthorization(frozenGrant);
       }, function (issued) {
         grantKey = newKey();
         lastIssued = issued;
         renderGrants();
         loadGrantList(listEl);
+      }, function (err) {
+        if (err && err.error && err.error.retryable === false) frozenGrant = null;
       });
     });
     wrap.appendChild(form);
@@ -367,11 +388,16 @@
     form.appendChild(field("期望结果", expected));
     form.appendChild(field("标签", tags));
     form.appendChild(sub.row);
+    // 首次提交后冻结 payload 与请求键：重试不采用编辑后的值；明确失败才解冻作新意图。
+    var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (!frozen) frozen = { title: title.value.trim(), body: body.value.trim(), constraints: constraints.value.trim(), expected_result: expected.value.trim(), tags: tagsOf(tags.value), visibility: "public", idempotency_key: key };
       sub.run(function () {
-        return S.api.createNeed({ title: title.value.trim(), body: body.value.trim(), constraints: constraints.value.trim(), expected_result: expected.value.trim(), tags: tagsOf(tags.value), visibility: "public", idempotency_key: key });
-      }, function () { community().closeDialog(); community().refreshBoard(); });
+        return S.api.createNeed(frozen);
+      }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
+        if (err && err.error && err.error.retryable === false) frozen = null;
+      });
     });
     panel.appendChild(form);
   }
@@ -392,11 +418,15 @@
     form.appendChild(field("适用场景", applicability));
     form.appendChild(field("标签", tags));
     form.appendChild(sub.row);
+    var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (!frozen) frozen = { title: title.value.trim(), body: body.value.trim(), applicability: applicability.value.trim(), tags: tagsOf(tags.value), sources: [], visibility: "public", idempotency_key: key };
       sub.run(function () {
-        return S.api.publishExperience({ title: title.value.trim(), body: body.value.trim(), applicability: applicability.value.trim(), tags: tagsOf(tags.value), sources: [], visibility: "public", idempotency_key: key });
-      }, function () { community().closeDialog(); community().refreshBoard(); });
+        return S.api.publishExperience(frozen);
+      }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
+        if (err && err.error && err.error.retryable === false) frozen = null;
+      });
     });
     panel.appendChild(form);
   }
@@ -422,18 +452,42 @@
     form.appendChild(field("类型", category));
     form.appendChild(field("内容", body));
     form.appendChild(sub.row);
+    /* 首次提交后冻结 payload（含解析出的当前版本号）与请求键：响应丢失后重试发同一请求，
+       不采用编辑后的值、不静默换版本；明确的版本冲突或不可重试失败才解冻，由人决定新意图。
+       公告卡可能是求助线程内的回复/成果，先回读线程根判定是否带 expected_revision；
+       reply_to_id 保留被点击的记录，留下可回读的交流依据。 */
+    var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       sub.run(function () {
-        // 求助线程带当前版本号（先回读，避免用过期的 board 快照）；回复引用线程根记录，
-        // 服务端据此留下可回读的交流依据。
-        var base = record.kind === "need"
-          ? S.api.readNeed(record.id).then(function (detail) { return detail.need.revision; })
-          : Promise.resolve(undefined);
-        return base.then(function (revision) {
-          var input = { thread_id: record.thread_id, reply_to_id: record.id, category: category.value, body: body.value.trim(), idempotency_key: key };
-          if (revision !== undefined) input.expected_revision = revision;
-          return S.api.postReply(input);
+        if (!frozen) {
+          frozen = S.api.readThread(record.thread_id).then(function (thread) {
+            var root = null;
+            for (var i = 0; i < thread.records.length; i++) {
+              if (thread.records[i].id === record.thread_id) { root = thread.records[i]; break; }
+            }
+            var rootKind = root ? root.kind : record.kind;
+            var base = rootKind === "need"
+              ? S.api.readNeed(record.thread_id).then(function (detail) { return detail.need.revision; })
+              : Promise.resolve(undefined);
+            return base.then(function (revision) {
+              var input = { thread_id: record.thread_id, reply_to_id: record.id, category: category.value, body: body.value.trim(), idempotency_key: key };
+              if (revision !== undefined) input.expected_revision = revision;
+              return input;
+            });
+          });
+        }
+        return frozen.then(function (input) {
+          return S.api.postReply(input).catch(function (err) {
+            // 明确的版本冲突或不可重试失败：解冻，由人决定作为新意图重发
+            var code = err && err.error && err.error.code;
+            if (code === "revision_conflict" || (err && err.error && err.error.retryable === false)) frozen = null;
+            throw err;
+          });
+        }, function (buildErr) {
+          // 版本解析本身失败：不算已发出的意图，解冻允许重建
+          frozen = null;
+          throw buildErr;
         });
       }, function () {
         community().reopenThread(record);
