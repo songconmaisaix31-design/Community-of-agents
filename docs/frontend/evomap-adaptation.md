@@ -100,3 +100,20 @@
 
 - C 的 `gongzhi-client.js` 尚未合入本分支；本轮用约定接口的测试替身验证，接到真实文件后需回归（导出形状若有出入，适配点集中在 account.js 顶部初始化一处）。
 - 真实 Auth/数据库/平台模型执行未验证（无配置）；fixture 不证明真实链路通过。
+
+### 三轮返修（合入 C 客户端 7ded401 后）
+
+已普通 merge C 首片 `7ded401`（真实 `public/community/assets/gongzhi-client.js` 与 `/api/gongzhi/config`），account.js 初始化一处即兼容，无导出出入。按主控早审修复 5 项真实链路缺陷并各配 UI 负例：
+
+1. 线程回复带 `reply_to_id`（线程根记录，留下可回读交流依据），求助线程先 `readNeed` 取当前版本再带 `expected_revision`，不再用过期快照。
+2. 采纳/关闭的请求键按"同一次意图"固定在渲染闭包内，失败重试不换键（此前每次点击换键）。
+3. run 回执只在终态（succeeded/failed/cancelled/timed_out）换请求键；`unknown` 保留原键与原任务，提供"查询最新状态"入口并明确"不要直接重新请求"。
+4. 退出失败可见（不再静默吞错）；登录/登记等非幂等请求的错误提示不再套用请求键文案。
+5. 方法引用可打开对应经验（版本不一致明确标注"引用的是第 N 版"）；来源渲染作者与安全 http(s) 原文链接（noopener）。
+
+另修：真实客户端返回 `auth.available:false` 时未触发重渲染，登录区卡在"正在确认"（真实文件接线冒烟测试抓出，替身测试未覆盖）。
+
+### 三轮返修验证
+
+- `evomap-account.spec.ts` 6/6：新增真实 `gongzhi-client.js`（非替身）+ 拦截 config 的接线冒烟；决策 500→同键重试；回复形状含 reply_to_id/expected_revision；方法引用打开与版本标注；unknown 回执保键与查询入口。
+- 既有 `evomap.spec.ts` 6/6 回归、`npm run typecheck` 通过。

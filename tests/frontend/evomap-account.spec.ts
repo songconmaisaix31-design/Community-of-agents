@@ -70,6 +70,7 @@ export async function createGongzhiBrowserClient() {
     publishExperience: i => req("/api/gongzhi/experiences", "POST", i),
     postReply: i => req("/api/gongzhi/discussions", "POST", i),
     readNeed: id => req("/api/gongzhi/needs/" + id),
+    readExperience: id => req("/api/gongzhi/experiences/" + id),
     decideResult: (id, i) => req("/api/gongzhi/needs/" + id + "/decisions", "POST", i),
     closeNeed: (id, i) => req("/api/gongzhi/needs/" + id + "/close", "POST", i),
     startRun: i => req("/api/gongzhi/runs", "POST", i),
@@ -85,7 +86,7 @@ const humanOwner = { id: "human-owner", publisher_id: "human-owner", kind: "huma
 const needRecord = { id: "n1", thread_id: "n1", reply_to_id: null, kind: "need", title: "第一次办 AI 体验活动，怎样安排节奏？", body: "想为社团组织一场小型 AI 体验活动。", speaker_id: "human-owner", owner_id: "human-owner", speaker: humanOwner, need_revision: 2, created_at: time, mode: "live" };
 const needDetail = {
   need: { id: "n1", owner_id: "human-owner", publisher_id: "human-owner", title: needRecord.title, body: needRecord.body, constraints: "只有一间教室", expected_result: "一份时间安排", tags: [], visibility: "public", revision: 2, status: "open", accepted_result_id: null, expires_at: "2026-09-20T00:00:00.000Z", created_at: time, updated_at: time, mode: "live" },
-  results: [{ id: "res-1", need_id: "n1", need_revision: 2, owner_id: "agent-owner", publisher_id: "agent-a", title: "90 分钟节奏方案", body: "先 10 分钟破冰，再分组做作品。", subtype: "result", sources: [{ id: "s1", kind: "url", title: "公开活动经验文", url: "https://example.com/a", retrieved_at: time, content_type: "reference" }], method_refs: [], created_at: time, mode: "live" }],
+  results: [{ id: "res-1", need_id: "n1", need_revision: 2, owner_id: "agent-owner", publisher_id: "agent-a", title: "90 分钟节奏方案", body: "先 10 分钟破冰，再分组做作品。", subtype: "result", sources: [{ id: "s1", kind: "url", title: "公开活动经验文", author: "某社团", url: "https://example.com/a", retrieved_at: time, content_type: "reference" }], method_refs: [{ experience_id: "e9", revision: 3, usage: "按此分工" }], created_at: time, mode: "live" }],
   decisions: [],
 };
 
@@ -206,10 +207,16 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
 
   test("线程回复、需求详情、采纳决策与平台回执", async ({ page }) => {
     const seen: Array<{ path: string; body: Record<string, unknown> }> = [];
+    let decideFails = true;
     await stubBoard(page);
     await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
+    await page.route("**/api/gongzhi/experiences/e9", r => r.fulfill({ json: { ok: true, mode: "live", data: { id: "e9", owner_id: "agent-owner", publisher_id: "agent-a", title: "先做一张共识卡", body: "每人写下目标与困难。", applicability: "线下小组", tags: [], revision: 4, previous_version_id: null, sources: [], visibility: "public", created_at: time, mode: "live" } } }));
     await page.route("**/api/gongzhi/discussions", r => { seen.push({ path: "discussions", body: r.request().postDataJSON() }); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r9" } } }); });
-    await page.route("**/api/gongzhi/needs/n1/decisions", r => { seen.push({ path: "decisions", body: r.request().postDataJSON() }); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "d1" } } }); });
+    await page.route("**/api/gongzhi/needs/n1/decisions", r => {
+      seen.push({ path: "decisions", body: r.request().postDataJSON() });
+      if (decideFails) { decideFails = false; return r.fulfill({ status: 500, json: { ok: false, mode: "live", error: { code: "unavailable", message: "服务暂时不可用。", retryable: true } } }); }
+      return r.fulfill({ json: { ok: true, mode: "live", data: { id: "d1" } } });
+    });
     await page.route("**/api/gongzhi/runs", r => {
       seen.push({ path: "runs", body: r.request().postDataJSON() });
       return r.fulfill({ json: { ok: true, mode: "live", data: { id: "run-1", need_id: "n1", need_revision: 2, owner_id: "platform", status: "succeeded", idempotency_key: "k", deadline_at: time, created_at: time, updated_at: time, result_id: "res-1", error: null, usage: { model_steps: 2, zhihu_queries: 1, input_tokens: null, output_tokens: null }, mode: "live" } } });
@@ -217,24 +224,38 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await login(page);
     await page.goto(`${origin}/zh/board/`);
     await page.locator(".cm-record").first().click();
-    // 需求详情：版本、状态、来源、采纳操作（所有者视角）
+    // 需求详情：版本、状态、来源与可追溯链接、采纳操作（所有者视角）
     await expect(page.locator(".cm-need-detail")).toContainText("第 2 版");
     await expect(page.locator(".cm-need-detail")).toContainText("公开活动经验文");
-    // 回复表单：category/body/idempotency_key 形状
+    await expect(page.locator(".cm-source a")).toHaveAttribute("href", "https://example.com/a");
+    await expect(page.locator(".cm-source a")).toHaveAttribute("rel", /noopener/);
+    // 方法引用可打开对应经验；引用版本与当前版本不一致时明确标注
+    await page.locator(".cm-ref-link").click();
+    await expect(page.locator(".cm-dialog")).toContainText("引用的是第 3 版");
+    await expect(page.locator(".cm-dialog")).toContainText("先做一张共识卡");
+    await page.keyboard.press("Escape");
+    // 回复表单：带线程根引用与当前版本号
+    await page.locator(".cm-record").first().click();
     await page.locator(".cm-reply-form textarea").fill("补充：场地可以借到隔壁教室。");
     await page.locator(".cm-reply-form").getByRole("button", { name: "公开发表" }).click();
     await expect.poll(() => seen.filter(s => s.path === "discussions").length).toBe(1);
     const reply = seen.find(s => s.path === "discussions")!.body;
     expect(reply.thread_id).toBe("n1");
+    expect(reply.reply_to_id).toBe("n1");
+    expect(reply.expected_revision).toBe(2);
     expect(reply.category).toBe("reply");
     expect(String(reply.idempotency_key)).toMatch(/^web-/);
-    // 采纳决策
+    // 采纳决策：第一次 500，同一请求键重试成功
     await page.locator(".cm-result").getByRole("button", { name: "采纳这份成果" }).click();
     await expect.poll(() => seen.filter(s => s.path === "decisions").length).toBe(1);
-    const decision = seen.find(s => s.path === "decisions")!.body;
-    expect(decision.result_id).toBe("res-1");
-    expect(decision.expected_revision).toBe(2);
-    expect(decision.decision).toBe("accept");
+    await expect(page.locator(".cm-result").getByRole("button", { name: /服务暂时不可用/ })).toBeVisible();
+    await page.locator(".cm-result").getByRole("button", { name: /服务暂时不可用/ }).click();
+    await expect.poll(() => seen.filter(s => s.path === "decisions").length).toBe(2);
+    const decisions = seen.filter(s => s.path === "decisions").map(s => s.body);
+    expect(decisions[0].idempotency_key).toBe(decisions[1].idempotency_key);
+    expect(decisions[1].result_id).toBe("res-1");
+    expect(decisions[1].expected_revision).toBe(2);
+    expect(decisions[1].decision).toBe("accept");
     // 平台回执：只展示服务返回的真实状态
     await page.locator(".cm-run").getByRole("button", { name: "请求平台助手帮助" }).click();
     await expect(page.locator(".cm-run-card")).toContainText("已提交成果");
@@ -242,5 +263,41 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     expect(run.need_id).toBe("n1");
     expect(run.need_revision).toBe(2);
     await page.screenshot({ path: path.join(evidence, "need-detail-owner.png"), fullPage: true });
+  });
+
+  test("真实 gongzhi-client.js 接线：config 返回登录未启用时明确降级，公开读取不受影响", async ({ page }) => {
+    // 不打桩 /community/assets/gongzhi-client.js：使用 C 交付的真实文件，
+    // 只拦截公开配置接口，验证导出约定与降级路径真实一致。
+    await stubBoard(page);
+    await page.route("**/api/gongzhi/config", r => r.fulfill({ json: { ok: true, mode: "live", data: { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: false, auth: { available: false, url: null, public_key: null } } } }));
+    await page.goto(`${origin}/zh/connect/`);
+    await expect(page.locator("[data-cm-account]")).toContainText("登录服务当前未配置");
+    await page.goto(`${origin}/zh/board/`);
+    await expect(page.locator(".cm-record")).toHaveCount(1);
+  });
+
+  test("平台回执为 unknown 时保留请求键、提供查询入口，不鼓励重开", async ({ page }) => {
+    const keys: string[] = [];
+    await stubBoard(page);
+    await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
+    await page.route("**/api/gongzhi/runs", r => {
+      keys.push((r.request().postDataJSON() as { idempotency_key: string }).idempotency_key);
+      return r.fulfill({ json: { ok: true, mode: "live", data: { id: "run-x", need_id: "n1", need_revision: 2, owner_id: "platform", status: "unknown", idempotency_key: "k", deadline_at: time, created_at: time, updated_at: time, result_id: null, error: { code: "unknown", message: "执行结果未能确认。", retryable: true }, usage: { model_steps: 1, zhihu_queries: 0, input_tokens: null, output_tokens: null }, mode: "live" } } });
+    });
+    await page.route("**/api/gongzhi/runs/run-x", r => r.fulfill({ json: { ok: true, mode: "live", data: { id: "run-x", need_id: "n1", need_revision: 2, owner_id: "platform", status: "failed", idempotency_key: "k", deadline_at: time, created_at: time, updated_at: time, result_id: null, error: { code: "upstream_failed", message: "模型服务未能完成。", retryable: true }, usage: { model_steps: 1, zhihu_queries: 0, input_tokens: null, output_tokens: null }, mode: "live" } } }));
+    await login(page);
+    await page.goto(`${origin}/zh/board/`);
+    await page.locator(".cm-record").first().click();
+    await page.locator(".cm-run").getByRole("button", { name: "请求平台助手帮助" }).click();
+    await expect(page.locator(".cm-run-card")).toContainText("状态未知");
+    await expect(page.locator(".cm-run-card")).toContainText("不要直接重新请求");
+    // 提供查询入口；查询后展示真实终态
+    await page.locator(".cm-run-card").getByRole("button", { name: "查询最新状态" }).click();
+    await expect(page.locator(".cm-run-card")).toContainText("失败");
+    await expect(page.locator(".cm-run-card")).toContainText("模型服务未能完成");
+    // unknown 后再发请求仍用同一键（服务端去重，不会重开模型）
+    await page.locator(".cm-run").getByRole("button", { name: "请求平台助手帮助" }).click();
+    await expect.poll(() => keys.length).toBe(2);
+    expect(keys[0]).toBe(keys[1]);
   });
 });

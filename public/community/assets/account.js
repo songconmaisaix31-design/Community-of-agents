@@ -50,7 +50,7 @@
     S.config = client.config;
     S.auth = client.auth;
     S.api = client.api;
-    if (!S.auth || !S.auth.available || !S.api) { S.status = "unavailable"; return; }
+    if (!S.auth || !S.auth.available || !S.api) { S.status = "unavailable"; renderAll(); return; }
     S.auth.onChange(function (user) {
       S.user = user;
       S.human = null;
@@ -99,8 +99,9 @@
     if (attrs) Object.keys(attrs).forEach(function (k) { input.setAttribute(k, attrs[k]); });
     return input;
   }
-  /* 提交助手：同一表单实例固定一个幂等键；失败保留草稿与键，成功后调用 onSuccess。 */
-  function submitRow(button, busyText) {
+  /* 提交助手：同一表单实例固定一个幂等键；失败保留草稿与键，成功后调用 onSuccess。
+     idem=false 用于登录等非幂等请求，错误提示不套用请求键说明。 */
+  function submitRow(button, busyText, idem) {
     var row = el("div", "cm-form-foot");
     var err = el("p", "cm-form-error");
     err.hidden = true;
@@ -121,7 +122,7 @@
         }).catch(function (e) {
           button.disabled = false;
           button.textContent = old;
-          err.textContent = errText(e) + " 已填写的内容与本次请求键保留，可直接重试；服务端会用同一请求键去重，不会重复创建。";
+          err.textContent = errText(e) + (idem === false ? " 请核对后重试。" : " 已填写的内容与本次请求键保留，可直接重试；服务端会用同一请求键去重，不会重复创建。");
           err.hidden = false;
         });
       },
@@ -147,7 +148,7 @@
       var pass = textInput("password", { required: "required", autocomplete: "current-password", placeholder: "密码" });
       var btn = el("button", null, "登录");
       btn.type = "submit";
-      var sub = submitRow(btn, "正在登录…");
+      var sub = submitRow(btn, "正在登录…", false);
       form.appendChild(field("邮箱", email));
       form.appendChild(field("密码", pass));
       form.appendChild(sub.row);
@@ -165,18 +166,26 @@
     head.appendChild(el("span", "cm-sub-inline", S.human ? "已登录 · 发言身份已绑定" : "已登录 · 发言身份登记中"));
     var out = el("button", "cm-button cm-button-ghost", "退出登录");
     out.type = "button";
+    var outErr = el("p", "cm-form-error");
+    outErr.hidden = true;
     out.addEventListener("click", function () {
       out.disabled = true;
-      S.auth.signOut().catch(function () {}).then(function () { out.disabled = false; });
+      outErr.hidden = true;
+      S.auth.signOut().catch(function (e) {
+        out.disabled = false;
+        outErr.textContent = "退出失败：" + errText(e) + " 登录状态可能仍有效，请重试。";
+        outErr.hidden = false;
+      });
     });
     head.appendChild(out);
     card.appendChild(head);
+    card.appendChild(outErr);
     if (!S.human) {
       var bind = el("form", "cm-form cm-form-inline");
       var name = textInput("text", { required: "required", maxlength: "80", placeholder: "公开记录中显示的称呼" });
       var bindBtn = el("button", null, "登记我的身份");
       bindBtn.type = "submit";
-      var bindSub = submitRow(bindBtn, "正在登记…");
+      var bindSub = submitRow(bindBtn, "正在登记…", false);
       bind.appendChild(field("你的公开称呼", name));
       bind.appendChild(bindSub.row);
       bind.addEventListener("submit", function (e) {
@@ -416,7 +425,16 @@
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       sub.run(function () {
-        return S.api.postReply({ thread_id: record.thread_id, category: category.value, body: body.value.trim(), idempotency_key: key });
+        // 求助线程带当前版本号（先回读，避免用过期的 board 快照）；回复引用线程根记录，
+        // 服务端据此留下可回读的交流依据。
+        var base = record.kind === "need"
+          ? S.api.readNeed(record.id).then(function (detail) { return detail.need.revision; })
+          : Promise.resolve(undefined);
+        return base.then(function (revision) {
+          var input = { thread_id: record.thread_id, reply_to_id: record.id, category: category.value, body: body.value.trim(), idempotency_key: key };
+          if (revision !== undefined) input.expected_revision = revision;
+          return S.api.postReply(input);
+        });
       }, function () {
         community().reopenThread(record);
         community().refreshBoard();
@@ -467,21 +485,44 @@
         card.appendChild(el("h4", null, r.title));
         card.appendChild(el("p", "cm-body", r.body));
         if (r.sources && r.sources.length) {
-          var src = el("p", "cm-need-meta");
-          src.textContent = "来源：" + r.sources.map(function (s) { return s.title + (s.url ? "（" + s.url + "）" : ""); }).join("；");
+          var src = el("div", "cm-sources");
+          src.appendChild(el("span", "cm-need-meta", "来源："));
+          r.sources.forEach(function (s) {
+            var item = el("span", "cm-source");
+            item.appendChild(el("span", null, s.title + (s.author ? "（" + s.author + "）" : "")));
+            if (s.url && /^https?:\/\//i.test(s.url)) {
+              var a = el("a", null, "原文链接 ↗");
+              a.href = s.url;
+              a.target = "_blank";
+              a.rel = "noopener noreferrer";
+              item.appendChild(a);
+            }
+            src.appendChild(item);
+          });
           card.appendChild(src);
         }
         if (r.method_refs && r.method_refs.length) {
-          card.appendChild(el("p", "cm-need-meta", "引用了 " + r.method_refs.length + " 条经验方法（注明来处的复用）。"));
+          var refs = el("div", "cm-sources");
+          refs.appendChild(el("span", "cm-need-meta", "引用的经验方法："));
+          r.method_refs.forEach(function (ref) {
+            var open = el("button", "cm-ref-link", "经验第 " + ref.revision + " 版（" + ref.experience_id.slice(0, 8) + "…）");
+            open.type = "button";
+            open.title = ref.usage;
+            open.addEventListener("click", function () { openExperience(ref); });
+            refs.appendChild(open);
+          });
+          card.appendChild(refs);
         }
         if (mine && need.status !== "accepted" && need.status !== "closed" && r.need_revision === need.revision) {
           var actions = el("div", "cm-result-actions");
           [["accept", "采纳这份成果"], ["request_revision", "请补充修改"], ["reject", "暂不采纳"]].forEach(function (pair) {
             var b = el("button", "cm-button " + (pair[0] === "accept" ? "cm-button-primary" : "cm-button-ghost"), pair[1]);
             b.type = "button";
+            // 同一次决定意图固定一个请求键：失败/结果未知时重试仍用同一键，服务端去重。
+            var decideKey = newKey();
             b.addEventListener("click", function () {
               b.disabled = true;
-              S.api.decideResult(need.id, { result_id: r.id, expected_revision: need.revision, decision: pair[0], note: "", idempotency_key: newKey() }).then(function () {
+              S.api.decideResult(need.id, { result_id: r.id, expected_revision: need.revision, decision: pair[0], note: "", idempotency_key: decideKey }).then(function () {
                 renderNeedDetail(slot, record);
                 community().refreshBoard();
               }).catch(function (e) {
@@ -508,9 +549,10 @@
     if (mine && need.status !== "closed" && need.status !== "accepted") {
       var closeBtn = el("button", "cm-button cm-button-ghost", "关闭这个需求");
       closeBtn.type = "button";
+      var closeKey = newKey();
       closeBtn.addEventListener("click", function () {
         closeBtn.disabled = true;
-        S.api.closeNeed(need.id, { expected_revision: need.revision, idempotency_key: newKey() }).then(function () {
+        S.api.closeNeed(need.id, { expected_revision: need.revision, idempotency_key: closeKey }).then(function () {
           renderNeedDetail(slot, record);
           community().refreshBoard();
         }).catch(function (e) {
@@ -544,9 +586,10 @@
       out.innerHTML = "";
       out.appendChild(el("p", "cm-sub", "已发出请求，等待服务端回执…"));
       S.api.startRun({ need_id: need.id, need_revision: need.revision, idempotency_key: key }).then(function (run) {
-        key = newKey();
         btn.disabled = false;
         renderRun(out, run);
+        // 终态才换键；状态未知必须保留原键与原任务，只能用 readRun 核对，不能一次点击重开模型。
+        if (["succeeded", "failed", "cancelled", "timed_out"].indexOf(run.status) !== -1) key = newKey();
         if (run.status === "succeeded") {
           out.appendChild(el("p", "cm-sub", "成果已提交到本需求。关闭并重新打开线程可看到最新内容与版本状态。"));
           community().refreshBoard();
@@ -568,17 +611,20 @@
       "任务 " + run.id.slice(0, 8) + "… · 模型步骤 " + usage.model_steps + " · 知乎查询 " + usage.zhihu_queries +
       (run.result_id ? " · 已提交成果" : "") + " · " + fmtTime(run.updated_at)));
     if (run.error && run.error.message) card.appendChild(el("p", "cm-form-error", run.error.message));
-    if (run.status === "queued" || run.status === "running") {
-      var cancel = el("button", "cm-button cm-button-ghost", "取消这个任务");
-      cancel.type = "button";
-      cancel.addEventListener("click", function () {
-        cancel.disabled = true;
-        S.api.cancelRun(run.id).then(function (next) { renderRun(out, next); }).catch(function (e) {
-          cancel.disabled = false;
-          cancel.textContent = errText(e);
+    if (run.status === "unknown") card.appendChild(el("p", "cm-sub", "服务端不能确认这次执行的结果。请用“查询最新状态”核对，不要直接重新请求；同一请求键不会重复启动模型。"));
+    if (run.status === "queued" || run.status === "running" || run.status === "unknown") {
+      if (run.status !== "unknown") {
+        var cancel = el("button", "cm-button cm-button-ghost", "取消这个任务");
+        cancel.type = "button";
+        cancel.addEventListener("click", function () {
+          cancel.disabled = true;
+          S.api.cancelRun(run.id).then(function (next) { renderRun(out, next); }).catch(function (e) {
+            cancel.disabled = false;
+            cancel.textContent = errText(e);
+          });
         });
-      });
-      card.appendChild(cancel);
+        card.appendChild(cancel);
+      }
       var check = el("button", "cm-button cm-button-ghost", "查询最新状态");
       check.type = "button";
       check.addEventListener("click", function () {
@@ -591,6 +637,31 @@
       card.appendChild(check);
     }
     out.appendChild(card);
+  }
+
+  /* 打开被引用的经验：接口只读当前公开版；引用版本与当前版本不一致时明确标注。 */
+  function openExperience(ref) {
+    var panel = community().openDialog("被引用的经验", "引用方注明使用方式：" + ref.usage);
+    var status = el("p", "cm-sub", "正在读取经验…");
+    panel.appendChild(status);
+    S.api.readExperience(ref.experience_id).then(function (exp) {
+      status.remove();
+      if (exp.revision !== ref.revision) {
+        panel.appendChild(el("p", "cm-form-error", "引用的是第 " + ref.revision + " 版；当前公开可读的是第 " + exp.revision + " 版，内容可能已有修订。"));
+      }
+      var card = el("article", "cm-thread-record");
+      var byline = el("div", "cm-byline");
+      byline.appendChild(el("span", "cm-pill experience", "经验"));
+      byline.appendChild(el("span", null, "第 " + exp.revision + " 版"));
+      byline.appendChild(el("time", null, fmtTime(exp.created_at)));
+      card.appendChild(byline);
+      card.appendChild(el("h3", null, exp.title));
+      card.appendChild(el("p", "cm-body", exp.body));
+      if (exp.applicability) card.appendChild(el("p", "cm-need-meta", "适用场景：" + exp.applicability));
+      panel.appendChild(card);
+    }).catch(function (e) {
+      status.textContent = "这条经验暂时无法读取：" + errText(e);
+    });
   }
 
   /* ---------- 渲染调度 ---------- */
