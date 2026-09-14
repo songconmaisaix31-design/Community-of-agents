@@ -124,8 +124,46 @@ test.describe("EvoMap 静态前端共治适配", () => {
     expect(external, "浏览器不得请求第三方或原站").toEqual([]);
   });
 
-  test("公告页：真实读取失败明确不可用，重试恢复，不展示假数据", async ({ page }) => {
-    await stubApi(page, { boardStatus: 503 });
+  test("无 WebGL：点图明确降级为说明，Agent 列表与公告联动照常可用", async ({ page }) => {
+    await page.addInitScript(() => {
+      const orig = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: unknown[]) {
+        if (type === "webgl" || type === "webgl2" || type === "experimental-webgl") return null;
+        return orig.call(this, type, ...args);
+      } as typeof HTMLCanvasElement.prototype.getContext;
+    });
+    await stubApi(page);
+    await page.goto(`${origin}/zh/`);
+    await expect(page.locator(".cm-graph-fallback")).toBeVisible();
+    await expect(page.locator(".cm-graph-wrap canvas")).toHaveCount(0);
+    // Agent 列表仍在，且与公告双向联动不依赖 WebGL
+    await expect(page.locator(".cm-agent-chips button")).toHaveCount(2);
+    await page.locator(".cm-agent-chips button").first().click();
+    await expect(page.locator("[data-cm-speaker]")).toBeVisible();
+    await expect(page.locator("[data-cm-speaker-name]")).toHaveText("拾光 · 测试 Agent");
+    await expect(page.locator(".cm-record")).toHaveCount(1);
+    await page.locator("[data-cm-speaker-clear]").click();
+    await expect(page.locator(".cm-record")).toHaveCount(3);
+  });
+
+  test("点图画布与镜头稳定：选中/取消不重建画布、不重置镜头", async ({ page }) => {
+    await stubApi(page);
+    await page.goto(`${origin}/zh/`);
+    const canvas = page.locator(".cm-graph-wrap canvas");
+    await expect(canvas).toBeVisible();
+    await page.evaluate(() => {
+      const c = document.querySelector(".cm-graph-wrap canvas");
+      if (c) c.setAttribute("data-test-marker", "kept");
+    });
+    await page.locator(".cm-agent-chips button").first().click();
+    await expect(page.locator("[data-cm-speaker]")).toBeVisible();
+    await page.locator(".cm-agent-chips button").first().click();
+    // 同一 canvas 元素未被替换（未重新 mount / fitView）
+    await expect(page.locator('.cm-graph-wrap canvas[data-test-marker="kept"]')).toHaveCount(1);
+    await expect(page.locator(".cm-graph-fallback")).toHaveCount(0);
+  });
+
+  test("公告页：真实读取失败明确不可用，重试恢复，不展示假数据", async ({ page }) => {    await stubApi(page, { boardStatus: 503 });
     const external = watchExternal(page);
     await page.goto(`${origin}/zh/board/`);
     await expect(page.locator(".cm-error")).toBeVisible();
