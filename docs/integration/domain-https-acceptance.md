@@ -1,6 +1,8 @@
 # 域名 HTTPS 配置验收（2026-09-14）
 
-15:18 UTC 本轮经验共享应用已更新到 ECS 43af 源码（88e7编译基底），四服务 healthy、云端只读验收通过；正常域名仍 HTTP403 / Beaver、HTTPS curl exit35，未恢复公网可用。新增迁移与数据/配置保留证据见[经验共享集成验收](experience-sharing-acceptance.md)。
+2026-09-14 **16:53 UTC**：知乎网页登录新版已更新到 ECS，完整构建源码 `f9a0b33a0d4325bdf9d9cf1037b731f1c40f14b4`、runtime `sha256:39cf58697e9e19aab179fdcb6b986c2a6ef9ced428c1948ca667430aeef96ed5`，四服务 healthy、只读5/5；正常域名仍 HTTP403 / Beaver、HTTPS curl exit35，且项目OAuth尚未配置。新增0015与原配置/数据保留证据见[知乎网页登录验收](zhihu-web-auth-acceptance.md)，不能称公网或真实知乎授权已通过。
+
+此前15:18 UTC 经验共享应用更新到 ECS 43af 源码（88e7编译基底）的证据见[经验共享集成验收](experience-sharing-acceptance.md)，现为历史版本记录。
 
 **以下成功结果属于 08:03–08:05 UTC 的历史检查，当前不能宣称公网可用。** 2026-09-14 16:21 CST 总控复验遇到 HTTP403 / Beaver / Non-compliance ICP Filing 与 HTTPS 握手重置；本轮 I 使用正常域名、标准端口、`curl.exe --noproxy '*'` 再验，仍为 HTTP403 / Beaver 与 TLS 握手失败。ECS 自身 09:15 UTC 正常域名检查得到 308/200，仅代表该请求来源，不能推翻外部拦截事实。DNS、TCP80/443 和原 HTTPS overlay 保留；未使用备用公网端口、IP/主机名、代理或隧道绕过备案控制。
 
