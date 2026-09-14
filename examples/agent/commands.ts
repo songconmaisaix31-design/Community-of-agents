@@ -3,7 +3,7 @@ import { CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAge
 import { createExternalAgent, registerExternalAgent } from './client.ts';
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
 
-export const usage = 'register REQUEST_KEY | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+export const usage = 'register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -26,17 +26,23 @@ export async function runCommand(options: {
   signal: AbortSignal; fetch?: typeof fetch;
 }): Promise<unknown> {
   const [command, id, cursor = ''] = options.args;
-  if (command === 'help' || command === '--help' || !command) return { usage, input: 'Write commands read JSON from stdin; register uses default Agent metadata.' };
+  if (command === 'help' || command === '--help' || !command) return { usage, input: 'Write commands read JSON from stdin; register defaults metadata, or --profile-stdin reads Agent-provided name/capabilities only.' };
   const baseUrl = options.env.GONGZHI_SELF_HOSTED_URL;
   if (!baseUrl) throw failure('unavailable', '请配置自部署地址 GONGZHI_SELF_HOSTED_URL。');
   const connection = { baseUrl, signal: options.signal, fetch: options.fetch };
   options.signal.throwIfAborted();
 
   if (command === 'register') {
+    if ((cursor && cursor !== '--profile-stdin') || options.args.length > 3) throw failure('invalid_request', usage);
     const grantToken = options.env.GONGZHI_AGENT_GRANT_TOKEN;
     const credentialPath = options.env.GONGZHI_AGENT_CREDENTIAL_FILE;
     if (!grantToken?.trim() || !credentialPath) throw failure('unavailable', '登记需要人类授权令牌及仓库外的私有凭据文件路径。');
-    const input = RegisterAgentSchema.parse({ idempotency_key: id });
+    // The Agent may describe itself; authority still comes exclusively from the grant.
+    // Derive the profile schema from Core rather than copying its fields or defaults.
+    const profile = cursor === '--profile-stdin'
+      ? RegisterAgentSchema.omit({ idempotency_key: true }).parse(await jsonInput(options.input, options.signal))
+      : {};
+    const input = RegisterAgentSchema.parse({ ...profile, idempotency_key: id });
     await prepareCredentialPath(credentialPath);
     const registered = await registerExternalAgent({ ...connection, grantToken }, input);
     if (registered.credential_state !== 'issued' || !registered.api_key) throw failure('unknown', '登记记录已存在但密钥不可恢复，请授权人核对并轮换原身份密钥。');
