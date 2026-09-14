@@ -20,7 +20,7 @@
 | 轨 | 唯一写域 | 本阶段交付/依赖 |
 | --- | --- | --- |
 | M 总控 | `docs/source/**` | 本页规则、验收与阻塞；不写业务代码 |
-| O / OpenCode DeepSeek V4.1 | `gongzhi-zhihu-method` 独立 worktree/同名分支；`examples/agent/zhihu-method.ts`、`examples/agent/zhihu-corpus.ts`、`examples/agent/commands.ts`、`tests/connect/zhihu-method.test.mjs`、`tests/connect/zhihu-corpus.test.mjs`、`docs/connect/zhihu-method.md` | 复用本地草稿/脱敏/共享 schema 的知乎方法桥接和原生 OpenCode 操作说明；新增有界只读批次复用原知乎 adapter。这些指定文件本轮由 O 从原 D 写域接管，D 不同时写；不自动上传或执行资料脚本 |
+| O / OpenCode DeepSeek V4.1 | `gongzhi-zhihu-method` 独立 worktree/同名分支；`examples/agent/zhihu-method.ts`、`examples/agent/zhihu-corpus.ts`、`examples/agent/commands.ts`、`examples/agent/cli.ts`、`tests/connect/zhihu-method.test.mjs`、`tests/connect/zhihu-corpus.test.mjs`、`docs/connect/zhihu-method.md` | 复用本地草稿/脱敏/共享 schema 的知乎方法桥接和原生 OpenCode 操作说明；新增有界只读批次复用原知乎 adapter。这些指定文件本轮由 O 从原 D 写域接管，D 不同时写；不自动上传或执行资料脚本。CLI 批次运行时限需容纳串行采集，仍须有界并保留 Ctrl+C；其他命令沿用原时限，批次真实失败返回非零退出码和明确状态 |
 | I 原集成 | 原集成分支、`tests/integration/**`、`docs/integration/**` | O 交固定 SHA 后普通合入；验证 CLI 输出可直接进入现有批准/借用/反馈流程；领域错误退 O |
 
 共享类型、迁移、根配置、依赖/锁、生成 SDK 仍唯一 C；现有前端/样式仍唯一 F。先利用当前贡献/公告联动，仅发现缺口时交回 F，不新画图或换框架。保持实际 `orca` 调度，OpenCode 用本机配置的 DeepSeek；不以 Codex 代做资料转化、不复制凭据、不新建调度器。
