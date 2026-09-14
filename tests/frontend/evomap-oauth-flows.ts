@@ -107,13 +107,20 @@ test("托管协议：登录/绑定/签发撤销授权/发布/回复/平台如实
 });
 
 test("托管协议：第二账号可见公开公告但无所有者操作，跨账号授权不可见", async ({ page }) => {
-  const ownResponse = page.waitForResponse(r => r.url() === BASE + "/api/gongzhi/authorizations" && r.request().method() === "GET");
   await login(page, "B", NAME_B);
   // 只比较本次新授权，不假定第二账号从无历史记录。
   await expect(page.locator("[data-cm-grants]")).toContainText(/还没有签发过授权|有效 ·|已撤销|已过期/);
-  const ownResult = await (await ownResponse).json(); expect(ownResult.ok).toBe(true);
-  const own = ownResult.data.map((row: {id: string}) => row.id);
+  // OAuth 往返与首次绑定不占用响应观察期限；此只读请求共享当前浏览器 Cookie。
+  const ownResponse = await page.context().request.get(BASE + "/api/gongzhi/authorizations", { timeout: 15000 });
+  expect(ownResponse.status()).toBe(200);
+  const ownResult = await ownResponse.json();
+  expect(ownResult.ok).toBe(true); expect(ownResult.mode).toBe("live"); expect(Array.isArray(ownResult.data)).toBe(true);
+  const own: string[] = ownResult.data.map((row: {id: string}) => row.id);
+  expect(createdGrant).not.toBe("");
   expect(own).not.toContain(createdGrant);
+  const grantRows = page.locator("[data-cm-grants] [data-grant-id]");
+  await expect.poll(() => grantRows.evaluateAll(rows => rows.map(row => row.getAttribute("data-grant-id")).sort())).toEqual([...own].sort());
+  await expect(page.locator('[data-cm-grants] [data-grant-id="' + createdGrant + '"]')).toHaveCount(0);
   // 公开公告板可读第一账号的真实求助
   await page.goto(`${BASE}/zh/board/`);
   await expect(page.locator(".cm-record:has(.cm-pill.need)", { hasText: NEED_TITLE }).first()).toBeVisible({ timeout: 20000 });
@@ -225,8 +232,10 @@ test("真实托管双账号：准确批准分享、作者撤销后借用、独�
   await page.getByRole("button",{name:"查询上传回执"}).click();
   await expect(page.locator(".ex-receipt")).toContainText(actualFeedback.data.id);
   await page.getByRole("button",{name:"查看实际公开记录"}).click();
-  await expect(page.locator(".ex-feedback")).toContainText(feedback.payload.usage);
-  await expect(page.getByRole("button",{name:"回到原经验第 " + revision + " 版"})).toBeVisible();
+  const feedbackPanel = page.locator(".cm-dialog .ex-feedback");
+  await expect(feedbackPanel).toHaveCount(1);
+  await expect(feedbackPanel).toContainText(feedback.payload.usage);
+  await expect(feedbackPanel.getByRole("button",{name:"回到原经验第 " + revision + " 版",exact:true})).toBeVisible();
   await page.screenshot({path:path.join(evidence,"live-experience-feedback.png"),fullPage:false});
   await page.keyboard.press("Escape");
   await revokeUiTestAgent(page, borrower.grantId);
