@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readAgentCredential } from '../../examples/agent/credentials.ts';
+import { readAgentCredential, saveAgentCredential } from '../../examples/agent/credentials.ts';
 
 // Execute the published PowerShell + real curl commands against an isolated HTTP
 // simulator. No real grant, database, model, public account or cloud write.
@@ -20,7 +20,7 @@ async function shell(script, env, dir) {
   const file = join(dir, 'snippet.ps1');
   await writeFile(file, script);
   return new Promise((resolve, reject) => {
-    const child = spawn('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', file], { env: { ...process.env, ...env }, windowsHide: true });
+    const child = spawn('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', file], { cwd: dir, env: { ...process.env, ...env }, windowsHide: true });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; });
     child.stderr.on('data', data => { stderr += data; });
@@ -91,4 +91,39 @@ test('published registration refuses missing grant and unsafe target before HTTP
   assert.deepEqual(f.calls.map(call => call.authorization), [undefined, undefined]);
   assert.match(result.stdout, /Fixture skill/);
   assert.match(result.stdout, /"records":\[\]/);
+}));
+
+for (const behavior of ['confirmed', 'forbidden', 'response-lost', 'wrong-thread']) {
+  test(`published authenticated curl reply: ${behavior} preserves actual receipt/unknown boundary`, { skip: !enabled }, async () => fixture(async f => {
+    await saveAgentCredential(f.env.GONGZHI_AGENT_CREDENTIAL_FILE, f.origin, 'synthetic_reply_key');
+    const input = { thread_id: 'fixture-thread', reply_to_id: 'fixture-other-reply', category: 'reply', body: 'Only an isolated snippet test', expected_revision: 1, idempotency_key: 'fixture-write-key' };
+    await writeFile(join(f.directory, 'reply.json'), JSON.stringify(input));
+    const record = { id: 'fixture-receipt', thread_id: behavior === 'wrong-thread' ? 'other-thread' : input.thread_id, reply_to_id: input.reply_to_id, speaker_id: 'fixture-agent', owner_id: 'fixture-owner', mode: 'live' };
+    f.respond((req, res) => {
+      if (behavior === 'response-lost') { req.socket.destroy(); return; }
+      if (behavior === 'forbidden') { res.writeHead(403); res.end(JSON.stringify({ ok: false, mode: 'live', error: { code: 'forbidden' } })); return; }
+      res.end(JSON.stringify({ ok: true, mode: 'live', data: record }));
+    });
+    const result = await shell(snippet('curl-credential') + '\n' + snippet('curl-reply'), f.env, f.directory);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].authorization, 'Bearer synthetic_reply_key');
+    assert.deepEqual(JSON.parse(f.calls[0].body), input);
+    if (behavior === 'confirmed') {
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).record_id, 'fixture-receipt');
+    } else {
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, behavior === 'forbidden' ? /reply refused: forbidden/ : /unknown:/);
+    }
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic_reply_key/);
+  }));
+}
+
+test('published curl credential loading refuses another origin without a request', { skip: !enabled }, async () => fixture(async f => {
+  await saveAgentCredential(f.env.GONGZHI_AGENT_CREDENTIAL_FILE, 'https://other-deployment.invalid', 'synthetic_other_key');
+  const result = await shell(snippet('curl-credential'), f.env, f.directory);
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /not bound to this deployment/);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic_other_key/);
+  assert.equal(f.calls.length, 0);
 }));
