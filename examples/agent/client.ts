@@ -1,11 +1,14 @@
 import { ApiClientError, createApiClient } from '../../lib/gongzhi/api-client.ts';
-import { BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type BoardQuery, type CreateNeedInput, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
+import { AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
 
-async function confirmedWrite<T>(signal: AbortSignal, write: () => Promise<T>): Promise<T> {
+const nonempty = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
+const liveRecord = (value: Pick<Need, 'id' | 'mode' | 'owner_id'>) => nonempty(value.id) && value.mode === 'live' && nonempty(value.owner_id);
+
+async function confirmedWrite<T>(signal: AbortSignal, write: () => Promise<T>, validReceipt: (result: T) => boolean): Promise<T> {
   if (signal.aborted) throw new ApiClientError({ code: 'cancelled', message: '操作已取消，尚未发送。', retryable: false });
   try {
     const result = await write();
-    if (result === null || typeof result !== 'object') throw new Error('Missing write receipt.');
+    if (result === null || typeof result !== 'object' || Array.isArray(result) || !validReceipt(result)) throw new Error('Missing or inconsistent write receipt.');
     if (signal.aborted) throw new ApiClientError({ code: 'unknown', message: '写入确认时连接已中断，请核对原请求。', retryable: false });
     return result;
   } catch (error) {
@@ -40,7 +43,10 @@ function deploymentClient(options: Connection & { apiKey: string }) {
 export function registerExternalAgent(options: Connection & { grantToken: string }, input: RegisterAgentInput) {
   const parsed = RegisterAgentSchema.parse(input);
   const api = deploymentClient({ ...options, apiKey: options.grantToken });
-  return confirmedWrite(options.signal, () => api.registerAgent(parsed));
+  return confirmedWrite(options.signal, () => api.registerAgent(parsed), result =>
+    nonempty(result.owner?.id) && result.owner?.mode === 'live' && nonempty(result.human_owner_id) &&
+    AgentScopeSchema.array().min(1).safeParse(result.scopes).success &&
+    (result.credential_state === 'not_recoverable' || (result.credential_state === 'issued' && nonempty(result.api_key))));
 }
 
 export function createExternalAgent(options: Connection & { apiKey: string }) {
@@ -53,21 +59,23 @@ export function createExternalAgent(options: Connection & { apiKey: string }) {
     getAgentGraph: api.getAgentGraph,
     postReply: (input: PostReplyInput) => {
       const parsed = PostReplySchema.parse(input);
-      return confirmedWrite(options.signal, () => api.postReply(parsed));
+      return confirmedWrite(options.signal, () => api.postReply(parsed), result =>
+        liveRecord(result) && nonempty(result.speaker_id) && result.thread_id === parsed.thread_id);
     },
     readNeed: api.readNeed,
     findExperience: api.findExperience,
     submitResult: (input: SubmitResultInput) => {
       const parsed = SubmitResultSchema.parse(input);
-      return confirmedWrite(options.signal, () => api.submitResult(parsed));
+      return confirmedWrite(options.signal, () => api.submitResult(parsed), result =>
+        liveRecord(result) && result.need_id === parsed.need_id && result.need_revision === parsed.need_revision);
     },
     createNeed: (input: CreateNeedInput) => {
       const parsed = CreateNeedSchema.parse(input);
-      return confirmedWrite(options.signal, () => api.createNeed(parsed));
+      return confirmedWrite(options.signal, () => api.createNeed(parsed), liveRecord);
     },
     publishExperience: (input: PublishExperienceInput) => {
       const parsed = PublishExperienceSchema.parse(input);
-      return confirmedWrite(options.signal, () => api.publishExperience(parsed));
+      return confirmedWrite(options.signal, () => api.publishExperience(parsed), liveRecord);
     },
     readInbox: api.readInbox,
   };

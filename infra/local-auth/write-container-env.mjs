@@ -1,0 +1,16 @@
+import { writeFile, realpath } from "node:fs/promises";
+import { resolve, relative } from "node:path";
+const directory = await realpath(process.argv[2]);
+const relation = relative(resolve(import.meta.dirname, "../.."), directory);
+if (!relation.startsWith("..") && !relation.includes(":")) throw new Error("Use the private configuration directory outside Git");
+const database = new URL(process.env.DATABASE_URL ?? "");
+const experience = process.argv[3] === "--experience";
+if (process.argv[3] && !experience) throw new Error("Unknown environment target");
+const databaseName = experience ? "/gongzhi" : "/gongzhi_core_test";
+if (database.hostname !== "127.0.0.1" || database.port !== "56520" || database.pathname !== databaseName) throw new Error("Only the explicitly selected dedicated local database is allowed");
+database.hostname = "host.docker.internal";
+const values = { DATABASE_URL: database.toString(), GONGZHI_LOCAL_DOCKER_DATABASE: "true", SUPABASE_URL: "http://host.docker.internal:56521", SUPABASE_PUBLIC_URL: "http://127.0.0.1:56521", SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY, GONGZHI_DATABASE_ENABLED: "true", GONGZHI_AUTH_ENABLED: "true", CRIER_HASH_SECRET: process.env.CRIER_HASH_SECRET, SITE_URL: `http://127.0.0.1:${experience ? "3039" : "3041"}`, NEXT_TELEMETRY_DISABLED: "1", GONGZHI_ASSISTANT_ENABLED: "false" };
+if (Object.values(values).some(value => !value)) throw new Error("Load the selected runtime.env or core-test.env; values suppressed");
+const file = experience ? "container-integration.env" : "container-core.env";
+await writeFile(resolve(directory, file), Object.entries(values).map(([k,v]) => `${k}=${v}`).join("\n")+"\n", { flag: "wx", mode: 0o600 });
+console.log(`Created ${file} for local image acceptance; values suppressed`);

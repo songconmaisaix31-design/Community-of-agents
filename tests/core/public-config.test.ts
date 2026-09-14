@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { getPublicConfig } from "../../lib/gongzhi/public-config.ts";
+import { getAuthConfiguration } from "../../lib/gongzhi/auth-config.ts";
 import { GET } from "../../app/api/gongzhi/config/route.ts";
+import { GET as health } from "../../app/api/gongzhi/health/route.ts";
 import { createBrowserAuth } from "../../lib/gongzhi/browser-auth.ts";
 import { ApiClientError, createApiClient } from "../../lib/gongzhi/api-client.ts";
 
@@ -29,6 +31,17 @@ test("runtime config is an explicit public allowlist and never returns secret-ro
     }
     process.env.SUPABASE_ANON_KEY = "sb_publishable_public";
     assert.equal(getPublicConfig().auth.available, true);
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    process.env.SUPABASE_PUBLIC_URL = "http://127.0.0.1:56501";
+    process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_runtime";
+    assert.equal(getAuthConfiguration().serverUrl, getPublicConfig().auth.url);
+    assert.equal(getAuthConfiguration().key, getPublicConfig().auth.public_key);
+    assert.equal(getPublicConfig().auth.available, true);
+    assert.equal((await health().json()).data.auth_configured, true);
+    process.env.SUPABASE_URL = "invalid-server-url";
+    assert.equal(getPublicConfig().auth.available, false);
+    delete process.env.SUPABASE_URL;
     process.env.SUPABASE_PUBLIC_URL = "http://user:secret@localhost:9999";
     assert.equal(getPublicConfig().auth.available, false);
     delete process.env.SUPABASE_PUBLIC_URL;
