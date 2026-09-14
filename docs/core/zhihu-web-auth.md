@@ -33,8 +33,12 @@ start/logout 必须同源 POST application/json 空对象，流读取最多 1024
 
 ## 本轮检查（2026-09-14）
 
-- 最终全套 `GONGZHI_COMPOSE_TEST=true npm test`：270 pass / 20 skip / 0 fail；跳过项均为另需显式环境的 live/浏览器/生产验收，另跑适用专用库组。
+- 最终全套 `GONGZHI_COMPOSE_TEST=true npm test`：271 pass / 20 skip / 0 fail；跳过项均为另需显式环境的 live/浏览器/生产验收，另跑适用专用库组。
 - 官方本机 GoTrue + 真实 PG 旧身份/批准链与新 OAuth 上游 fixture 组：25/25；最终新 OAuth PG 组单独 9/9，包含跨浏览器/重放/过期、uid/hash 补齐与冲突、Origin/显式凭据、只读 runs 无副作用、有限 Agent + 人批准、退出与在途 callback 竞态。
 - 0015 仅在专用测试库显式应用；重复迁移显示 all 15 already recorded。没有重建表、修改旧迁移或写主体验库。
 - typecheck、共享客户端构建及 SDK/流限长负例通过。旧邮箱浏览器测试保留为显式 `GONGZHI_LEGACY_BROWSER_TEST=true` 的历史部署检查，新网页登录不能借它证明成功。
 - 首次 PG 运行的 Agent 扩权负例正确返回 forbidden，测试原预期 unauthenticated 已更正；安全检查未放宽。
+- 收尾真实复现 SDK 竞态：退出开始后新发的 session 读取若迟到，可把界面恢复为旧 user。新增回归先失败再通过：退出期间不启动刷新，结束推进请求版本；服务端 session 撤销检查原已有效，未改变授权规则。
+- Linux 构建：从 `ee269f4d58f6e58109188df5e8e0aa22802d4dc2` 的独立 git archive 执行 `docker build -t gongzhi:oauth-ee269f4 <snapshot>`，Next 15.5.25 编译/类型/静态页全部通过，无凭据或迁移注入，也未覆盖原 `.next`。镜像 manifest list `sha256:5d3ddc562195f113428212e6832001562b9dae16e41c9f064153787e1c346038`。
+- 对该镜像仅启动无凭据、无数据库连接的临时回环容器（随机端口 58884），HTTP 6/6：配置不可用、start 503、session 匿名、callback 303/no-store、完整跟随到 `/zh?auth=unavailable` 200、MCP GET 405。该自有临时容器检查后已停止；启动初次 Docker local 日志驱动拒绝 max-file=1 与默认压缩组合，改为有界 max-file=2 后成功，没有更改项目配置。
+- **镜像版本限制**：上述后端镜像先于最后仅 SDK 的退出刷新竞态修复，不作为最终整合包。最终源码的 typecheck/build:client/Node 回归已通过；总控明确由 I 合最终 F 页面和本轨最终 SDK 再统一完整 Linux 构建，C不重复重构建或部署。真实浏览器 + PG + 函数参数上游 fixture 的组合验收归 I，实际知乎授权仍待配置及用户确认。

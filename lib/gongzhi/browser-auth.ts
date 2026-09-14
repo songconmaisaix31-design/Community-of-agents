@@ -67,7 +67,7 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
   const listeners = new Set<(user: BrowserUser | null) => void>();
   const signalKey = "gongzhi.live.auth.changed.v2";
   let current: BrowserUser | null = null, disposed = false, generation = 0;
-  let intent = 0, refreshPending: Promise<BrowserUser | null> | undefined;
+  let intent = 0, signingOut = 0, refreshPending: Promise<BrowserUser | null> | undefined;
   const requests = new Map<AbortController, "read" | "start" | "logout">();
   async function bounded<T>(kind: "read" | "start" | "logout", run: (api: ReturnType<typeof createApiClient>) => Promise<T>): Promise<T> {
     const controller = new AbortController(); requests.set(controller, kind);
@@ -87,6 +87,7 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
   const emit = (user: BrowserUser | null) => { current = user; for (const listener of listeners) listener(user); };
   const signal = () => { try { window.localStorage.setItem(signalKey, `${Date.now()}:${Math.random()}`); } catch { /* Focus/expiry still refresh without storage. */ } };
   function refresh(notify = false): Promise<BrowserUser | null> {
+    if (signingOut) return Promise.resolve(null);
     if (refreshPending) return refreshPending;
     refreshPending = read(notify).finally(() => { refreshPending = undefined; });
     return refreshPending;
@@ -118,7 +119,7 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
     available,
     initialize: () => refresh(true),
     async startSignIn() {
-      if (!available || disposed) throw new ApiClientError({ code: "unavailable", message: "尚未配置本项目知乎登录。", retryable: false });
+      if (!available || disposed || signingOut) throw new ApiClientError({ code: "unavailable", message: "登录暂不可用，请等待当前操作结束。", retryable: false });
       const ownIntent = ++intent; cancel("start");
       const data = await bounded("start", api => api.startZhihuLogin());
       if (disposed || ownIntent !== intent) return;
@@ -130,9 +131,10 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
     async signIn() { throw new ApiClientError({ code: "unavailable", message: "请通过知乎授权页面登录。", retryable: false }); },
     async signOut() {
       if (!available || disposed) throw new ApiClientError({ code: "unavailable", message: "登录服务不可用。", retryable: false });
-      intent++; generation++; cancel("read"); cancel("start");
+      intent++; generation++; signingOut++; cancel("read"); cancel("start");
       try { await bounded("logout", api => api.logout()); }
       catch (error) { if (!disposed) { emit(null); signal(); } throw error; }
+      finally { signingOut--; generation++; }
       if (disposed) return;
       if (expiryTimer) clearTimeout(expiryTimer);
       emit(null); signal();

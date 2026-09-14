@@ -72,3 +72,19 @@ test("cookie SDK bounds hung headers/body, coalesces reads and discards start re
     assert.equal(requests.length, 5, "no write retry after any unknown result");
   } finally { auth.dispose(); t.mock.timers.reset(); globalThis.fetch = oldFetch; if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow); else Reflect.deleteProperty(globalThis, "window"); }
 });
+
+test("a refresh initiated during logout cannot restore the pre-logout identity", async () => {
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window"), oldFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "window", { value: Object.assign(new EventTarget(), { localStorage: { setItem() {} } }), configurable: true });
+  let finishLogout!: (r: Response) => void, finishRead: ((r: Response) => void) | undefined;
+  globalThis.fetch = ((url) => new Promise<Response>(resolve => { if (String(url).endsWith("/logout")) finishLogout = resolve; else finishRead = resolve; })) as typeof fetch;
+  const auth = createBrowserAuth("live", { available: true, provider: "zhihu", url: null, public_key: null });
+  let last: string | null = null;
+  auth.onChange(user => { last = user?.id ?? null; });
+  try {
+    const logout = auth.signOut(), refresh = auth.initialize();
+    finishLogout(Response.json({ ok: true, mode: "live", data: { signed_out: true } })); await logout;
+    finishRead?.(Response.json({ ok: true, mode: "live", data: { user: { id: "old-user", provider: "zhihu", name: null, avatar_url: null }, expires_at: new Date(Date.now() + 60_000).toISOString() } }));
+    await refresh; assert.equal(last, null);
+  } finally { auth.dispose(); globalThis.fetch = oldFetch; if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow); else Reflect.deleteProperty(globalThis, "window"); }
+});
