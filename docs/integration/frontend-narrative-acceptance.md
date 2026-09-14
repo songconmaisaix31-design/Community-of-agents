@@ -1,19 +1,22 @@
 # 共治原生 Next 前端验收
 
-2026-09-14，`integration/gongzhi-mvp`，基线 `9033141e5a5fca2f790abd1530577bedd80ff00e`。装配 `99c08a0` 移除 Hugo 入口重写与 dev/build 调用，保留 `/demo/api/*` 拒绝路由和 `build:backend` 兼容命令；默认 HTML 浅色。K 首片 `942698d` 已 cherry-pick 为 `33bd5ea`：原生 CommunityPage、共治互助叙事、蓝白/深色主题与本地字体；历史 Hugo 文件保留，产品入口不请求其资源。
+2026-09-14，`integration/gongzhi-mvp`。最新用户决定“只改前端、抛弃 Hugo”覆盖旧文档中的 Hugo 要求；既有后端保持。基线 `9033141`，I 装配 `99c08a0`，K `942698d/d4b079b` 分别 cherry-pick 为 `33bd5ea/152d384`；最终源码 `152d38418de776198562b3b0b43b5f9c1f68a5fd`。
+
+原生 CommunityPage 承接 `/`、`/network`、`/demo/space`，默认浅色，共治互助叙事；Outfit/Rajdhani 自托管且保留 OFL。dev/build 直接使用 Next，移除 Hugo 调用和页面重写，保留 `/demo/api/*` 拒绝路由及 `build:backend` 兼容命令。历史 Hugo 文件保留，产品入口不请求其资源。
 
 | 实际命令 | 结果 |
 | --- | --- |
-| `npm run build` | 直接 `next build`，Next15.5.25 通过；无 Hugo、迁移或外部模型步骤 |
-| `npm run typecheck` | 通过 |
-| `node --import tsx --test tests/frontend/behavior.test.ts tests/integration/http-mode-isolation.test.ts`，`GONGZHI_TEST_BASE_URL=http://127.0.0.1:3019` | 17/17：MSW 与实际 Next 拒绝路由、未知 API、模式隔离 |
-| `npx --no-install playwright test --config tests/integration/frontend-narrative.config.ts` | I6 + K4 = 10/10，Chrome1440/390；旧 Hugo 测试未修改 |
-| 上述浏览器命令加 `--project desktop --project narrow --grep 'actual theme'` | 加强平移与刷新完成等待后，镜头两尺寸 2/2 |
+| `npm run build` | 最终源码直接 `next build`，Next15.5.25 通过；无 Hugo 或隐含迁移 |
+| `npm run typecheck` | 最终源码通过 |
+| `node --import tsx --test tests/frontend/behavior.test.ts tests/integration/http-mode-isolation.test.ts`，设置 `GONGZHI_TEST_BASE_URL=http://127.0.0.1:3019` | 首片17/17：MSW及实际Next拒绝路由；最后仅文案/主题按钮属性变化，不重复后台检查 |
+| `npx --no-install playwright test --config tests/integration/frontend-narrative.config.ts` | 最终10/10：I6+K4，Chrome1440/390；旧Hugo断言未修改 |
 
-浏览器实际覆盖入口、两入口面板、公告类别/正文搜索/完整线程、浅色默认与偏好保存、主题切换时同一 Canvas 和镜头、公开边证据、明确示例标识、真实503无卡片/无SW/无身份草稿传递，以及无 Hugo 或外站资源请求。未使用旧页面验收代替本轮；视图与 HTTP fixture 不等于真实 Agent 执行。
+实际覆盖自然入口、两入口面板、公告类别/正文搜索/完整线程、浅色默认及偏好保存、同一Canvas的主题/平移/缩放/刷新、公开边证据、明确示例标识、真实503且无卡片/SW/身份草稿传递；无Hugo或外站资源请求，无交易收益/进化/积分叙事或假统计。I及主控均已审阅两尺寸截图与核心操作；K最后接入说明小修已合入。
 
-首轮3项失败属于 I 测试假设：关键词实际匹配两条原文，现核对精确记录ID；镜头坐标出现约 `1e-13` 像素舍入，k保持严格相等、x/y只容许 `1e-8` 像素。原始失败报告保留，未修改产品行为或降低为像素级镜头容差。
+首轮3项失败为I测试假设：搜索词匹配两条原文，现断言精确a/b记录ID；坐标有约1e-13像素舍入，k严格相等，x/y仅容许1e-8像素。已保留失败证据，并补平移确实发生、刷新HTTP完成及固定页首截图检查，未修改产品行为。
 
-范围核对：`git diff 9033141 -- lib app/api app/auth app/mcp migrations scripts package-lock.json components/gongzhi/AgentCanvas.tsx` 为空；依赖未增删。自托管 Outfit/Rajdhani 保留 OFL，未请求 EvoMap。主控已独立审阅两尺寸入口、锚点、线程、主题和真实失败；其面向用户文案小修待 K 后继提交。
+`git diff 9033141 -- lib app/api app/auth app/mcp migrations scripts package-lock.json components/gongzhi/AgentCanvas.tsx` 为空；dependencies/devDependencies逐项与基线一致。最终预览 <http://127.0.0.1:3019/>，示例 <http://127.0.0.1:3019/demo/space>；自有PID `72488` 仅loopback，DB/Auth/助手/遥测关闭，首页200。
 
-体验：<http://127.0.0.1:3019/>、<http://127.0.0.1:3019/demo/space>；自有 PID `96836` 仅 loopback，DB/Auth/助手/遥测关闭。证据在 `C:/Users/DW/AppData/Local/Temp/`：`gongzhi-narrative-I-build.log`、`gongzhi-narrative-I-mode.log`；`gongzhi-narrative-I-final/report.json` 与 results 中入口/线程/深浅截图，`gongzhi-narrative-I-camera/` 为固定页首的镜头截图；初次失败在 `gongzhi-narrative-I/`。本轮未运行数据库或迁移，未验证云身份、真实模型协作或知乎，未部署、增加费用或申请新授权。
+Git外证据根目录 `C:/Users/DW/AppData/Local/Temp/`：`gongzhi-narrative-I-build-final.log`、`gongzhi-narrative-I-mode.log`、`gongzhi-narrative-I-release/report.json`；同release目录 `previews/` 中 desktop-entry-light、mobile-entry-light、desktop-demo-light、mobile-demo-dark、mobile-thread 五张PNG供直接审阅，原图在results。初次失败保存在 `gongzhi-narrative-I/`。
+
+限制：仅前端及本地隔离fixture验收；未运行数据库/迁移、云身份、真实模型协作或知乎，示例与HTTP替身不等于真实Agent执行。未部署、增加费用或申请新授权；无需用户额外操作即可体验本地页面。
