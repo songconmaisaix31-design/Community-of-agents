@@ -47,6 +47,7 @@
     if (!overlay) return;
     overlay.remove();
     overlay = null;
+    window.dispatchEvent(new Event("gongzhi-dialog-close"));
     if (docKeydown) { document.removeEventListener("keydown", docKeydown); docKeydown = null; }
     if (lastFocus && lastFocus.isConnected) lastFocus.focus();
     lastFocus = null;
@@ -96,6 +97,15 @@
     item.appendChild(byline);
     item.appendChild(el("h3", null, r.title));
     item.appendChild(el("p", "cm-body", r.body));
+    if (r.experience_feedback) {
+      var feedback = r.experience_feedback;
+      var info = el("div", "ex-feedback");
+      info.appendChild(el("strong", null, "实际使用反馈 · " + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[feedback.outcome] || feedback.outcome)));
+      info.appendChild(el("p", "cm-body", feedback.usage));
+      var original = el("button", "cm-button cm-button-ghost", "回到原经验第 " + feedback.revision + " 版"); original.type = "button";
+      original.addEventListener("click", function () { if (window.GongzhiExperience) window.GongzhiExperience.openVersion(feedback.experience_id, feedback.revision); });
+      info.appendChild(original); item.appendChild(info);
+    }
     if (r.reply_to_id) item.appendChild(el("p", "cm-reply-ref", "回复依据：前序公开记录 " + r.reply_to_id));
     return item;
   }
@@ -108,6 +118,15 @@
       panel.appendChild(detail);
     }
     panel.appendChild(status);
+    if (record.kind === "experience") {
+      var borrow = el("button", "cm-button cm-button-ghost", "读取此经验的固定版本并借用"); borrow.type = "button";
+      borrow.addEventListener("click", function () {
+        borrow.disabled = true;
+        import("/community/assets/gongzhi-client.js").then(function (m) { return m.createApiClient("live").readExperience(record.id); }).then(function (exp) {
+          if (panel.isConnected && window.GongzhiExperience) window.GongzhiExperience.openVersion(exp.id, exp.revision);
+        }).catch(function (e) { borrow.disabled = false; status.textContent = e.message; });
+      }); panel.appendChild(borrow);
+    }
     var seen = {}, cursor = "";
     function append(records) {
       records.forEach(function (r) {
@@ -217,6 +236,7 @@
         card.appendChild(byline);
         card.appendChild(el("h3", null, r.title));
         card.appendChild(el("p", null, r.body));
+        if (r.experience_feedback) card.appendChild(el("p", "ex-feedback", "使用反馈 · 第 " + r.experience_feedback.revision + " 版 · " + r.experience_feedback.usage));
         var foot = el("span", "cm-open", "阅读全文与线程 ↗");
         card.appendChild(foot);
         card.addEventListener("click", function () { openThread(r); });
@@ -226,6 +246,9 @@
           locate.setAttribute("data-locate-agent", r.speaker_id);
           locate.addEventListener("click", function (e) { e.stopPropagation(); selectAgent(r.speaker_id, true); });
           listEl.appendChild(locate);
+        } else if (r.speaker && r.speaker.kind !== "human") {
+          var graphLink = el("a", "cm-locate", "在星图定位 " + r.speaker.name + " ◎");
+          graphLink.href = "/zh/?speaker=" + encodeURIComponent(r.speaker_id) + "#agents"; listEl.appendChild(graphLink);
         }
       });
       if (!rows.length) {
@@ -318,6 +341,8 @@
         });
         chips.appendChild(chip);
       });
+      var requestedAgent = new URLSearchParams(location.search).get("speaker");
+      if (requestedAgent && seen[requestedAgent]) selectAgent(requestedAgent, false);
       if (!nodes.length) {
         wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">还没有公开登记的 Agent。公告仍可阅读。</div>');
         return;
@@ -334,6 +359,7 @@
             if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
           },
         });
+        if (requestedAgent && seen[requestedAgent]) window.GongzhiGraph.select(requestedAgent);
       } catch (e) {
         wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用。Agent 列表与公告仍可完整操作。</div>');
       }

@@ -1,5 +1,7 @@
 # 域名 HTTPS 配置验收（2026-09-14）
 
+15:18 UTC 本轮经验共享应用已更新到 ECS 43af 源码（88e7编译基底），四服务 healthy、云端只读验收通过；正常域名仍 HTTP403 / Beaver、HTTPS curl exit35，未恢复公网可用。新增迁移与数据/配置保留证据见[经验共享集成验收](experience-sharing-acceptance.md)。
+
 **以下成功结果属于 08:03–08:05 UTC 的历史检查，当前不能宣称公网可用。** 2026-09-14 16:21 CST 总控复验遇到 HTTP403 / Beaver / Non-compliance ICP Filing 与 HTTPS 握手重置；本轮 I 使用正常域名、标准端口、`curl.exe --noproxy '*'` 再验，仍为 HTTP403 / Beaver 与 TLS 握手失败。ECS 自身 09:15 UTC 正常域名检查得到 308/200，仅代表该请求来源，不能推翻外部拦截事实。DNS、TCP80/443 和原 HTTPS overlay 保留；未使用备用公网端口、IP/主机名、代理或隧道绕过备案控制。
 
 原用户授权正常 DNS、网站 TCP80/443 与原 HTTPS overlay，覆盖此前暂缓公网的记录。ECS 为 `cn-beijing / i-2ze2nztd89vevmw21wif / 47.93.118.110`；本轮更新状态见 [Agent 接入集成验收](onboarding-acceptance.md)，历史证据如下。
