@@ -27,7 +27,7 @@ const BASE = "http://127.0.0.1:3079";
 if (live) for (const [field, value] of Object.entries({ SITE_URL: BASE, SUPABASE_URL: "http://127.0.0.1:56641", SUPABASE_PUBLIC_URL: "http://127.0.0.1:56641", GONGZHI_LOCAL_PROJECT: "gongzhi-fulltest-c-20260914", GONGZHI_LOCAL_PG_PORT: "56640", GONGZHI_LOCAL_AUTH_PORT: "56641", GONGZHI_LOCAL_APP_PORT: "3079" })) {
   if (env[field] !== value) throw new Error("Isolated browser target mismatch: " + field);
 }
-const evidence = path.join(tmpdir(), "gongzhi-evomap-live");
+const evidence = path.join(tmpdir(), "gongzhi-evomap-live-F-" + Date.now());
 mkdirSync(evidence, { recursive: true });
 const stamp = Date.now().toString(36) + "-" + randomUUID().slice(0, 6);
 const NAME_A = `看山验收一号${stamp.slice(-4)}`;
@@ -55,6 +55,7 @@ test.beforeEach(async ({ request, page }) => {
 
 // 即使失败，也在自动 error-context 快照前关闭页面；登录值和一次性 grant 不入测试附件。
 test.afterEach(async ({ page }) => { await page.close(); });
+test.afterAll(() => { if (live) console.log("Safe browser evidence:", evidence); });
 
 async function login(page: Page, email: string, password: string, name: string) {
   await page.goto(`${BASE}/zh/connect/`);
@@ -255,10 +256,22 @@ test("真实托管双账号：准确批准分享、作者撤销后借用、独�
   await page.getByRole("button",{name:"查看实际公开记录"}).click();
   await expect(page.locator(".ex-feedback")).toContainText(feedback.payload.usage);
   await expect(page.getByRole("button",{name:"回到原经验第 " + revision + " 版"})).toBeVisible();
-  await page.screenshot({path:path.join(evidence,"live-experience-feedback.png"),fullPage:true});
+  await page.screenshot({path:path.join(evidence,"live-experience-feedback.png"),fullPage:false});
   await page.keyboard.press("Escape");
   await revokeUiTestAgent(page, borrower.grantId);
-  await page.locator("[data-cm-account]").getByRole("button",{name:"退出登录"}).click();
+  // 实际 Supabase 跨标签退出：旧标签的未上传本地草稿不得留给下一身份。
+  await page.goto(BASE + "/zh/board/");
+  await expect(page.locator(".cm-publish-bar")).toBeVisible();
+  await page.getByRole("button", {name:"整理本地草稿 / 导入 SKILL.md"}).click();
+  await page.locator(".ex-editor").fill(JSON.stringify({...draft,payload:{...draft.payload,body:"未上传的跨标签私有草稿检查"}}));
+  const accountTab = await page.context().newPage();
+  try {
+    await accountTab.goto(BASE + "/zh/connect/");
+    await accountTab.locator("[data-cm-account]").getByRole("button",{name:"退出登录"}).click();
+    await expect(page.locator(".cm-dialog")).toHaveCount(0);
+    await page.getByRole("button",{name:"整理本地草稿 / 导入 SKILL.md"}).click();
+    await expect(page.locator(".ex-editor")).not.toHaveValue(/未上传的跨标签私有草稿检查/);
+  } finally { await accountTab.close(); }
   const publicVersion = await request.get(BASE + "/api/gongzhi/experiences/" + id + "/versions/" + revision);
   expect(publicVersion.status()).toBe(200);
   // 上述是双真实账号的实际 UI/HTTP 协议测试；注册/上传由测试程序驱动，不冒充实际 Agent 思考。
