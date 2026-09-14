@@ -17,6 +17,10 @@
 .cm-mobile-nav a{display:block;padding:10px 0;font-size:14px;color:hsl(var(--c-text)/.72)}
 .cm-mobile-nav a:hover{color:#0066ff}
 
+/* 子页首节避开 80px 固定头；锚点同样留偏移（主页首子元素为通栏 hero，不受影响） */
+main>.cm-section:first-child{padding-top:128px}
+section[id]{scroll-margin-top:96px}
+
 /* 区块骨架 */
 .cm-section{max-width:1152px;margin:0 auto;padding:56px 24px}
 .cm-eyebrow{display:flex;align-items:center;gap:10px;color:hsl(var(--c-evox-eyebrow));font-size:11px;letter-spacing:.14em;font-weight:500;margin:0 0 14px}
@@ -108,6 +112,7 @@
 .cm-scope strong{display:block;font-size:13px;color:hsl(var(--c-text));margin-bottom:2px}
 
 @media(max-width:800px){
+  main>.cm-section:first-child{padding-top:112px}
   .cm-section{padding:36px 18px}
   .cm-card-grid{grid-template-columns:1fr}
   .cm-graph-wrap{height:260px}

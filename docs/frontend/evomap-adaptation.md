@@ -57,9 +57,17 @@
 - 许可随资产：`media/Outfit-OFL.txt`、`media/Rajdhani-OFL.txt`、`assets/cosmos.gl-LICENCE.txt`（MIT）。
 - 主页 `<title>` 简化为「共治」；hero 高亮统一知乎蓝；次级文字对比度提升。
 
+二轮实测返修：
+
+- `api()` 把 HTTP 状态守卫放在成功分支之前：500 即使带 `ok:true` 也按失败处理（回归测试覆盖）。
+- 对话框打开即聚焦关闭按钮，焦点落在面板或外部时 Tab/Shift+Tab 都先收回面板内，首个 Shift+Tab 不再逃逸到页脚。
+- 子页首节 `padding-top` 避开 80px 固定头（390/1440 实测 heading.top > header.bottom），锚点 `scroll-margin-top` 留偏移。
+- 删除 9 字节文本占位 `favicon.ico`（HTML 只引用有效 `icon.svg`）。
+- 说明：3029 固定首片快照上的 chip 筛选失效属旧版，返修版联动已在两种托管模式验证。
+
 ## 验证
 
-- `tests/frontend/evomap.spec.ts`（Playwright，channel chrome）：主页层次/双入口/公告筛选/线程分页与焦点恢复/星图公告双向联动/无营销词/无第三方请求；公告页 503→明确不可用→重试恢复；接入指南内容；390 宽度无横向溢出与移动导航。静态文件服务器模式与真实 Next 托管模式（`GZ_EVOMAP_BASE`）均 4/4 通过。
+- `tests/frontend/evomap.spec.ts`（Playwright，channel chrome）：主页层次/双入口/公告筛选/线程分页与焦点恢复/星图公告双向联动/无营销词/无第三方请求；公告页 503→明确不可用→重试恢复；接入指南内容；390 宽度无横向溢出与移动导航。静态文件服务器模式与真实 Next 托管模式（`GZ_EVOMAP_BASE`）均 6/6 通过。
 - `npm run typecheck` 通过；`npm test` 97 pass 0 fail（7 项需真实服务跳过）。
 - 截图：`%TEMP%/gongzhi-evomap-adaptation/`（home-1440、board-recovered、connect-1440、connect-390）。
 

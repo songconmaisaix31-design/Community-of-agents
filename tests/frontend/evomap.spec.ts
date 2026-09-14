@@ -141,6 +141,39 @@ test.describe("EvoMap 静态前端共治适配", () => {
     expect(external).toEqual([]);
   });
 
+  test("HTTP 500 即使带 ok:true 也按失败处理；对话框首个 Shift+Tab 不逃逸", async ({ page }) => {
+    await page.route("**/api/gongzhi/board?*", r => r.fulfill({ status: 500, json: { ok: true, mode: "live", data: { records, next_cursor: null, mode: "live" } } }));
+    await page.route("**/api/gongzhi/agent-graph", r => r.fulfill({ json: { ok: true, mode: "live", data: { nodes: [], edges: [], mode: "live" } } }));
+    await page.goto(`${origin}/zh/board/`);
+    await expect(page.locator(".cm-error")).toBeVisible();
+    await expect(page.locator(".cm-record")).toHaveCount(0);
+    // 对话框焦点环：打开后焦点在面板内，首个 Shift+Tab 仍留在面板内
+    await page.unroute("**/api/gongzhi/board?*");
+    await stubApi(page);
+    await page.locator("[data-cm-retry]").click();
+    await expect(page.locator(".cm-record").first()).toBeVisible();
+    await page.locator(".cm-record").first().click();
+    await expect(page.locator(".cm-dialog")).toBeVisible();
+    expect(await page.evaluate(() => Boolean(document.activeElement && document.activeElement.closest(".cm-dialog")))).toBe(true);
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement && document.activeElement.closest(".cm-dialog")))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-dialog")).toHaveCount(0);
+  });
+
+  test("子页首节不被固定头遮挡（390 与 1440）", async ({ page }) => {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${origin}/zh/connect/`);
+      const clearance = await page.evaluate(() => {
+        const header = document.querySelector("header")!.getBoundingClientRect();
+        const heading = document.querySelector("#connect h2")!.getBoundingClientRect();
+        return heading.top - header.bottom;
+      });
+      expect(clearance, `宽度 ${width} 下首节标题应完全在固定头之下`).toBeGreaterThan(0);
+    }
+  });
+
   test("接入指南：授权范围、客户端命令与平台 Agent 真实回执说明", async ({ page }) => {
     const external = watchExternal(page);
     await page.goto(`${origin}/zh/connect/`);
