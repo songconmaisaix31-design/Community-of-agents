@@ -56,6 +56,51 @@ test("同账号会话刷新不得清空尚未提交的身份称呼", async ({ pa
   await expect(name).toHaveValue("只点一次登记的公开称呼");
 });
 
+test("首次同步 POST 未返回时按原键取真实 ID，可取消且迟到响应不复活运行", async ({ page }) => {
+  await stubBoard(page);
+  await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
+  let release!: () => void, originalKey = "", postCount = 0, cancelled = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const run = () => ({ id:"run-pending",need_id:"n1",need_revision:2,status:cancelled?"cancelled":"running",idempotency_key:originalKey,deadline_at:time,updated_at:time,usage:{model_steps:1,zhihu_queries:0},budget:{currency:"USD",reserved_microusd:50000,settled_microusd:null,usage_complete:false,limits:{max_steps:4,max_output_tokens:2000,deadline_ms:60000}} });
+  await page.route("**/api/gongzhi/runs", async r => {
+    postCount++; originalKey=r.request().postDataJSON().idempotency_key;
+    await gate; await r.fulfill({json:{ok:true,mode:"live",data:{...run(),status:"running"}}});
+  });
+  await page.route("**/api/gongzhi/runs?*", r => {
+    const url=new URL(r.request().url()); expect(url.searchParams.get("need_id")).toBe("n1"); expect(url.searchParams.get("idempotency_key")).toBe(originalKey);
+    return r.fulfill({json:{ok:true,mode:"live",data:run()}});
+  });
+  await page.route("**/api/gongzhi/runs/run-pending", r => { if(r.request().method()==="DELETE") cancelled=true; return r.fulfill({json:{ok:true,mode:"live",data:run()}}); });
+  await login(page); await page.goto(`${origin}/zh/board/`);
+  await page.locator(".cm-record").first().click();
+  await page.locator(".cm-run").getByRole("button",{name:"请求平台助手帮助"}).click();
+  await expect(page.locator(".cm-run-card")).toContainText("处理中");
+  await expect(page.locator(".cm-run-card")).toContainText("USD 0.050000");
+  await expect(page.locator(".cm-run-card")).toContainText("保留预留额度");
+  await page.locator(".cm-run-card").getByRole("button",{name:"取消这个任务"}).click();
+  await expect(page.locator(".cm-run-card")).toContainText("已取消");
+  release(); await expect(page.locator(".cm-run-card")).toContainText("已取消");
+  expect(postCount).toBe(1); expect(cancelled).toBe(true);
+});
+
+test("POST 断连无 ID 时保留原键；null 不重开，关闭面板停止自动查询", async ({ page }) => {
+  await stubBoard(page);
+  await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({json:{ok:true,mode:"live",data:needDetail}}));
+  let postCount=0, key="", lookupCount=0;
+  await page.route("**/api/gongzhi/runs", r => {postCount++;key=r.request().postDataJSON().idempotency_key;return r.abort();});
+  await page.route("**/api/gongzhi/runs?*", r => {lookupCount++;expect(new URL(r.request().url()).searchParams.get("idempotency_key")).toBe(key);return r.fulfill({json:{ok:true,mode:"live",data:null}});});
+  await login(page); await page.goto(`${origin}/zh/board/`); await page.locator(".cm-record").first().click();
+  await page.locator(".cm-run").getByRole("button",{name:"请求平台助手帮助"}).click();
+  await expect(page.locator(".cm-run")).toContainText("不代表没有执行");
+  await expect(page.locator(".cm-run").getByRole("button",{name:"请求平台助手帮助"})).toBeDisabled();
+  await page.keyboard.press("Escape");
+  const stoppedAt=lookupCount; await page.waitForTimeout(1800); expect(lookupCount).toBe(stoppedAt);
+  await page.locator(".cm-record").first().click();
+  await page.locator(".cm-run").getByRole("button",{name:"按原请求查询回执"}).click();
+  await expect(page.locator(".cm-run")).toContainText("不代表没有执行");
+  expect(postCount).toBe(1);
+});
+
 // 测试替身：实现 C 约定的 createGongzhiBrowserClient() → {config, auth, api}。
 // api 直接打被拦截的 /api/gongzhi/**，用于核对页面发出的真实请求形状。
 const STUB_CLIENT = `
@@ -350,10 +395,9 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await page.locator(".cm-run-card").getByRole("button", { name: "查询最新状态" }).click();
     await expect(page.locator(".cm-run-card")).toContainText("失败");
     await expect(page.locator(".cm-run-card")).toContainText("模型服务未能完成");
-    // unknown 后再发请求仍用同一键（服务端去重，不会重开模型）
-    await page.locator(".cm-run").getByRole("button", { name: "请求平台助手帮助" }).click();
-    await expect.poll(() => keys.length).toBe(2);
-    expect(keys[0]).toBe(keys[1]);
+    // 查询确认终态之前不得重开；查询没有额外启动模型。
+    expect(keys).toHaveLength(1);
+    await expect(page.locator(".cm-run").getByRole("button", { name: "再次请求平台助手帮助" })).toBeEnabled();
   });
 
   test("求助线程内的回复卡：回读线程根后带当前版本号，reply_to_id 保留被点击记录", async ({ page }) => {
