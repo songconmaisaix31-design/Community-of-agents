@@ -1,9 +1,10 @@
 import { ApiClientError } from '../../lib/gongzhi/api-client.ts';
-import { CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema } from '../../lib/gongzhi/contracts.ts';
+import { CreateNeedSchema, ExperienceFeedbackPayloadSchema, PostExperienceFeedbackSchema, PostReplySchema, PublishExperienceSchema, ReadExperienceVersionSchema, RegisterAgentSchema, SubmitResultSchema } from '../../lib/gongzhi/contracts.ts';
 import { createExternalAgent, readAgentConnection, registerExternalAgent } from './client.ts';
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
+import { ContentDraftSchema, draftExperience, readContentDraft, redactLocalText, saveExperienceReference, saveLocalJson } from './local-content.ts';
 
-export const usage = 'connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -27,6 +28,21 @@ export async function runCommand(options: {
 }): Promise<unknown> {
   const [command, id, cursor = ''] = options.args;
   if (command === 'help' || command === '--help' || !command) return { usage, input: 'Write commands read JSON from stdin; register defaults metadata, or --profile-stdin reads Agent-provided name/capabilities only.' };
+  // Local review comes before deployment or identity configuration; it never fetches.
+  if (command === 'draft-experience' && options.args.length === 4) return draftExperience(id, cursor, options.args[3], options.signal);
+  if (command === 'check-draft' && options.args.length === 2) {
+    const draft = await readContentDraft(id, options.signal);
+    return { action: draft.action, valid: true, review_required: true, uploaded: false };
+  }
+  if (command === 'draft-feedback' && options.args.length === 5) {
+    const supplied = ExperienceFeedbackPayloadSchema.omit({ experience_id: true, revision: true, visibility: true, idempotency_key: true }).parse(await jsonInput(options.input, options.signal));
+    const body = redactLocalText(supplied.body);
+    const usage = redactLocalText(supplied.usage);
+    const draft = ContentDraftSchema.parse({ action: 'experience_feedback', payload: { ...supplied, body: body.text, usage: usage.text, experience_id: id, revision: Number(cursor), visibility: 'public', idempotency_key: options.args[4] } });
+    await saveLocalJson(options.args[3], draft, options.signal);
+    return { draft_saved: true, action: draft.action, redactions: body.redactions + usage.redactions, review_required: true, uploaded: false };
+  }
+  if (['draft-experience', 'draft-feedback', 'check-draft'].includes(command)) throw failure('invalid_request', usage);
   const baseUrl = options.env.GONGZHI_SELF_HOSTED_URL;
   if (!baseUrl) throw failure('unavailable', '请配置自部署地址 GONGZHI_SELF_HOSTED_URL。');
   const connection = { baseUrl, signal: options.signal, fetch: options.fetch };
@@ -65,6 +81,21 @@ export async function runCommand(options: {
   }
   if (!apiKey?.trim()) throw failure('unavailable', '请先由 Agent 完成人类有限授权的登记。');
   const client = createExternalAgent({ ...connection, apiKey });
+  if (command === 'approval-status' && options.args.length === 2) return client.readContentApproval(id);
+  if (command === 'search-experience' && options.args.length <= 2) return client.searchExperience({ q: id ?? '' });
+  if (command === 'download-experience' && options.args.length === 4) {
+    const requested = ReadExperienceVersionSchema.parse({ id, revision: Number(cursor) });
+    const version = await client.readExperienceVersion(requested.id, requested.revision);
+    return saveExperienceReference(options.args[3], version, options.signal);
+  }
+  if (command === 'upload-draft' && options.args.length === 3) {
+    const draft = await readContentDraft(id, options.signal);
+    const result = draft.action === 'publish_experience'
+      ? await client.publishExperience({ ...draft.payload, approval_id: cursor })
+      : await client.postExperienceFeedback({ ...draft.payload, approval_id: cursor });
+    return { record_id: result.id, mode: result.mode };
+  }
+  if (command === 'feedback' && options.args.length === 1) return client.postExperienceFeedback(PostExperienceFeedbackSchema.parse(await jsonInput(options.input, options.signal)));
   if (command === 'status') {
     if (options.args.length !== 1) throw failure('invalid_request', usage);
     return client.agentStatus();
