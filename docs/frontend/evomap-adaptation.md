@@ -1,5 +1,13 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## 知乎 OAuth 前端轮（当前，覆盖下方旧邮箱登录验收）
+
+从指定 `72dfd46f8c7b99d9a8c659ad95f50e3f206e18ea` 普通合并，消费 C 首片 `7cca7d54bd2d33097800220e7b5a318b690f8186` 的唯一 BrowserAuth / WebSession 契约，保留原分支与 `test-results/`。首片将邮箱/密码表单替换为使用知乎登录按钮和基础资料授权说明；不接收第三方凭据。startSignIn 只启动官方页面导航，返回 query 仅用于一次性提示，清除后仅按 initialize/onChange 的可信站内用户显示登录成功；错误、取消、过期、缺配置均显示实际失败。返回固定 `/zh?auth=…`（C 已订正文档首片中的旧路径）。
+
+登录后显示会话姓名/安全头像，公开发言称呼独立展示；有限 Agent 授权、准确内容 public 审核、换人/退出清稿和迟到响应隔离保留。同身份会话刷新不重建输入。前端不复制客户端、Cookie 或身份框架，生成浏览器客户端由 C 交付。
+
+当前阶段：页面首片 `node --check public/community/assets/account.js` 通过，`node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts` 15/15，通过的是明确 BrowserAuth/HTTP 测试替身；服务端/SDK 后继及实际托管隔离浏览器验收尚待 C/I。缺本项目 App ID/App Key/登记 callback 与用户本人官方授权，**未验证真实知乎 OAuth**；下方历史官方 GoTrue 邮箱 4/4 不代表新登录通过。
+
 ## Codex F 接管：经验分享首片
 
 ### 最终验收（2026-09-14，本节优先于下方阶段状态）
