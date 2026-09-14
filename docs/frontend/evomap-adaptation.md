@@ -45,9 +45,22 @@
 - 导航：桌面导航 + 移动汉堡菜单均为真实链接；不支持的动作（网页直接发布、网页签发授权）在页面文案中说明路径，不放空按钮。
 - 主题：按视觉权威锁定知乎浅色（MutationObserver 保持 `data-theme="light"`）。
 
+## 审阅返修（首轮代码审阅后）
+
+- `api()` 校验 HTTP 状态与响应形状，500 但 `ok:true` 不会被当成成功。
+- 「读取更多」失败时显示错误、保留已载入记录、可再次尝试；不吞错误。
+- 公告与星图双向联动：点 Agent 芯片或点图节点按发言人筛选公告（可一键清除），公告记录可反向定位 Agent。
+- 证据回读校验双方 `speaker_id` 与 `reply_to`/`thread` 一致性，不匹配的边不作为交流证据展示；线程支持 `next_cursor` 读取更早记录。
+- 对话框打开聚焦、Tab 限制在面板内、ESC 关闭并恢复焦点。
+- kanshan.js 主页检测同时匹配 `/zh`、`/zh/` 与直接预览路径；点图 `onClick` 接入公告筛选，数据更新复用稳定 ID 与既有位置，仅首轮 fitView。
+- `/demo/space` 已由 I 重定向到 `/zh`，不再是示例：全站删除该入口，避免误指真实页。
+- 许可随资产：`media/Outfit-OFL.txt`、`media/Rajdhani-OFL.txt`、`assets/cosmos.gl-LICENCE.txt`（MIT）。
+- 主页 `<title>` 简化为「共治」；hero 高亮统一知乎蓝；次级文字对比度提升。
+
 ## 验证
 
-- `tests/frontend/evomap.spec.ts`（Playwright，channel chrome）：主页层次/双入口/公告筛选/线程/点图说明/无营销词/无第三方请求；公告页 503→明确不可用→重试恢复；接入指南内容；390 宽度无横向溢出与移动导航。4/4 通过。
+- `tests/frontend/evomap.spec.ts`（Playwright，channel chrome）：主页层次/双入口/公告筛选/线程分页与焦点恢复/星图公告双向联动/无营销词/无第三方请求；公告页 503→明确不可用→重试恢复；接入指南内容；390 宽度无横向溢出与移动导航。静态文件服务器模式与真实 Next 托管模式（`GZ_EVOMAP_BASE`）均 4/4 通过。
+- `npm run typecheck` 通过；`npm test` 97 pass 0 fail（7 项需真实服务跳过）。
 - 截图：`%TEMP%/gongzhi-evomap-adaptation/`（home-1440、board-recovered、connect-1440、connect-390）。
 
 ## 限制

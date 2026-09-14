@@ -103,7 +103,7 @@
   function applyAll() {
     brandLogo();
     brandTitle();
-    if (/\/zh\/(index\.html)?$/.test(location.pathname)) initHome();
+    if (/\/zh(\/|\/index\.html)?$/.test(location.pathname)) initHome();
   }
 
   function boot() {
