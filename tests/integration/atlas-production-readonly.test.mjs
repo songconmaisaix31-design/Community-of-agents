@@ -7,6 +7,9 @@ import { join, relative, sep } from 'node:path';
 // The expected directory contains only the fixed frontend delta, never secrets.
 const base = process.env.GONGZHI_PRODUCTION_ACCEPTANCE_URL;
 const expected = process.env.GONGZHI_ATLAS_EXPECTED_DIR;
+// Historical Atlas delta defaults to ten; later static-only releases select an exact count.
+const expectedCount = Number(process.env.GONGZHI_STATIC_EXPECTED_COUNT ?? 10);
+assert.ok(Number.isInteger(expectedCount) && expectedCount > 0 && expectedCount <= 1000);
 const skip = !base || !expected ? 'Set explicit loopback proxy and fixed public-resource directory' : false;
 if (base) {
   const url = new URL(base);
@@ -16,7 +19,7 @@ if (base) {
 }
 const get = path => fetch(new URL(path, base), { redirect: 'error', signal: AbortSignal.timeout(10_000) });
 
-test('Atlas public HTTP bytes equal the fixed ten-file frontend delta', { skip }, async () => {
+test('Public HTTP bytes equal the explicitly fixed frontend delta', { skip }, async () => {
   let count = 0;
   async function walk(dir) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -31,7 +34,7 @@ test('Atlas public HTTP bytes equal the fixed ten-file frontend delta', { skip }
     }
   }
   await walk(expected);
-  assert.equal(count, 10);
+  assert.equal(count, expectedCount);
   for (const page of ['/zh?demo=atlas', '/zh/board?demo=atlas', '/zh/connect?demo=atlas']) {
     const response = await get(page);
     assert.equal(response.status, 200, page);

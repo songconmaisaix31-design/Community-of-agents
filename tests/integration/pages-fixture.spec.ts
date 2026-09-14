@@ -40,6 +40,8 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(request.url());
     if (/^\/(api|auth|mcp)(\/|$)/.test(url.pathname) || (url.origin !== new URL(base).origin && url.protocol !== 'blob:')) forbidden.push(request.url());
   });
+  page.on('pageerror', error => forbidden.push('runtime: ' + error.message));
+  page.on('response', response => { if (response.status() >= 400) forbidden.push('HTTP ' + response.status() + ' ' + response.url()); });
   (page as any).pagesForbidden = forbidden;
 });
 test.afterEach(({ page }) => expect((page as any).pagesForbidden, 'No API/auth/MCP/model/origin/external requests').toEqual([]));
@@ -94,4 +96,37 @@ test('public artifact supports 100 points, fixed download, optional feedback and
   await page.locator('.cm-agent-chips button:visible').click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.locator('[data-cm-graph]').screenshot({ path: path.join(evidence, 'pages-mobile.png') });
+});
+
+test('shared theory navigation keeps six steps, fixed versions and fixture return paths on desktop and mobile', async ({ page }) => {
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const route of ['/zh/', '/zh/board/', '/zh/connect/']) {
+      await page.goto(base + route);
+      if (width === 390) await page.locator('#cm-menu-button').click();
+      await page.getByRole('link', { name: '进化层', exact: true }).filter({ visible: true }).click();
+      await expect(page).toHaveURL(/\/community\/zh\/evolution\/index.html\?demo=atlas$/);
+      await expect(page.getByText('理论设计', { exact: true })).toHaveCount(1);
+      await expect(page.locator('.atlas-banner')).toHaveCount(0);
+      await expect(page.locator('.ev-process [role=tab]')).toHaveCount(6);
+      await expect(page.locator('script')).toHaveCount(1);
+      for (let index = 0; index < 6; index++) {
+        await page.locator(`[data-step="${index}"]`).click();
+        await expect(page.locator('#ev-step-panel')).toHaveAttribute('aria-labelledby', 'ev-step-' + index);
+        await expect(page.locator('[data-step-condition]')).not.toBeEmpty();
+      }
+      for (const name of ['检查证据', '来源归属', '适用范围']) {
+        await page.getByRole('tab', { name, exact: true }).click();
+        await expect(page.locator('[data-v1-content]')).not.toBeEmpty();
+        await expect(page.locator('[data-v2-content]')).not.toBeEmpty();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.evaluate(() => scrollTo(0, 0));
+      if (route === '/zh/') await page.screenshot({ path: path.join(evidence, `evolution-${width}.png`), fullPage: true });
+      await page.locator('.ev-header-back').click();
+      await expect(page).toHaveURL(/\/zh\/\?demo=atlas#agents$/);
+      await expect(page.locator('.atlas-banner')).toContainText('黑客松演示');
+      await expect(page.locator('[data-agent-id]')).toHaveCount(100);
+    }
+  }
 });
