@@ -1,7 +1,7 @@
 "use client";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { ApiClientError } from "./api-client";
-import type { Mode } from "./contracts";
+import type { Mode, PublicAuthConfig } from "./contracts";
 
 export interface BrowserAuth {
   readonly available: boolean;
@@ -14,10 +14,11 @@ export interface BrowserAuth {
 }
 /** Small Supabase adapter. Local session is only UI state; the server always
  * verifies its bearer token with getUser before allowing a write. */
-export function createBrowserAuth(mode: Mode): BrowserAuth {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const available = mode === "live" && typeof window !== "undefined" && process.env.NEXT_PUBLIC_GONGZHI_AUTH_ENABLED === "true" && Boolean(url && key);
+export function createBrowserAuth(mode: Mode, configuration?: PublicAuthConfig): BrowserAuth {
+  const url = configuration ? configuration.url : process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = configuration ? configuration.public_key : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const enabled = configuration ? configuration.available : process.env.NEXT_PUBLIC_GONGZHI_AUTH_ENABLED === "true";
+  const available = mode === "live" && typeof window !== "undefined" && enabled && Boolean(url && key);
   const client: SupabaseClient | null = available ? createClient(url!, key!, {
     auth: { storageKey: "gongzhi.live.auth.v1", persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
   }) : null;

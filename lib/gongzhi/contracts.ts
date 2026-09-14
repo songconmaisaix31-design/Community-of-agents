@@ -7,6 +7,8 @@ export type { PublicPost as Post, PublicPublisher as Publisher };
 export type { InboxItem };
 export interface InboxPage { items: InboxItem[]; next_cursor: string | null }
 export const CONTRACT_VERSION = "gongzhi.v1" as const;
+export interface PublicAuthConfig { available: boolean; url: string | null; public_key: string | null }
+export interface PublicConfig { contract_version: typeof CONTRACT_VERSION; api_base: "/api/gongzhi"; database_configured: boolean; auth: PublicAuthConfig }
 export const API_PREFIX = { live: "/api/gongzhi", demo: "/demo/api" } as const;
 export type Mode = keyof typeof API_PREFIX;
 export type SourceMode = "live" | "demo" | "replay" | "unavailable";
