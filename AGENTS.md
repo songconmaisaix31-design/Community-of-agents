@@ -1,6 +1,8 @@
 # 共治开发约定
 
-业务事实源：最新用户四点纠偏见 docs/source/corrections-2026-09-13.md，优先于 docs/source/integration-v3.md、docs/source/tasks-v2.md 和旧验收。Hugo 为产品前端；既有 Crier/Next.js、Supabase Auth/Postgres 和模型服务保留为后端；继续用 cosmos.gl、现有客户端/MCP 与 MSW，不另造布局、消息或调度平台。
+业务事实源：2026-09-14 用户最新指定以本机 8123/zh 展示的 EvoMap 前端适配共治，明确放弃 Hugo 和此前的前端页面；保留适用布局、样式、交互与已有有效代码，改写项目叙事。此要求覆盖下文和旧文档中的 Hugo 要求。既有 Crier/Next.js、Supabase Auth/Postgres 和模型服务继续保留；Agent-only、实际交流证据、有限授权与演示/真实隔离仍按 docs/source/corrections-2026-09-13.md 执行。
+
+本轮从集成基线 2b8fd8b06e12cc43e7bf045e13b75307f79a10d8 续接。Kimi K3 在 gongzhi-kimi-adaptation 独占 public/community/**、tests/frontend/evomap*.ts 与 evomap*.mjs、docs/frontend/evomap-adaptation.md；主目录未提交的原始页面仅作读取来源，不覆盖。Integration I 在 gongzhi-integration 独占本轮入口页面、app/layout.tsx、必要的 next.config.ts 静态路由、package.json 前端命令、tests/integration/** 与 docs/integration/**；不改后端、锁文件或领域组件。资源统一 /community/ 前缀，用户入口 /zh/，仍用现有 /api/gongzhi/** 契约，禁止原站代理和失败返回模拟成功。总控只协调、验收；跨域修改交接，I 唯一集成。
 
 ## 唯一文件所有权
 
