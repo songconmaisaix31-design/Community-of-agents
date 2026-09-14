@@ -1,5 +1,13 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## OAuth 页面内会话查询返修（2026-09-15，覆盖下方首次返修的查询方式）
+
+读取 I 集成 `836e7801171d6e4da7d261c7efec8ac4b870bb05` 的 `%TEMP%/gongzhi-oauth-i-836e780/oauth-browser.log`：第 1 流程通过（44.6 秒），第 2 流程在授权 UI 已落定后由 `page.context().request.get` 查询返回 401，后两项未跑；不能把浏览器正常会话等同于 Node APIRequestContext 在 HTTP 回环地址上的 Secure Cookie 行为。
+
+本次仅把该单次只读 GET 移入当前 `page.evaluate`，使用相对路径 `fetch('/api/gongzhi/authorizations')`、`credentials: 'same-origin'` 和 `AbortSignal.timeout(15000)`，返回 HTTP status 与 JSON；由浏览器发送当前会话，不读取或复制 Cookie、不改 Secure 或浏览器安全设置。HTTP 200、ok/live、列表形状、完整 UI/服务端授权 ID 集合一致、本次 A grant 非空且在 B 两份列表均不可见的断言全部保留，当前唯一反馈弹窗的 usage/准确版本断言也保持不变。
+
+本地 `npm run typecheck`、`git diff --check` 均通过，交付沿原分支普通 commit/push；没有业务代码、SDK、后端或配置变更，原 `test-results/` 保留。本轨不运行完整 54 项或 PG/真实浏览器回归，不操作数据库、3079 或云；Root 收到 SHA 后交 I 独占重跑真实四项，本次不宣称该复验已通过。
+
 ## OAuth 托管测试返修（2026-09-15）
 
 读取 I 在集成产品 `f9a0b33a0d4325bdf9d9cf1037b731f1c40f14b4` 的两份真实日志 `%TEMP%/gongzhi-oauth-i-f9a0b33/oauth-browser-2.log` 与 `oauth-browser-3.log`，以及 I 的 `tests/integration/oauth-browser.spec.ts` 登录驱动，确认两处均为测试观察问题：第 2 条在登录前启动授权 GET 的 15 秒等待，计时包含 OAuth 往返、导航和绑定，先超时形成未处理拒绝；第 4 条页面背景历史反馈与正确的当前反馈弹窗都匹配 `.ex-feedback`，形成 strict mode violation，并非打开了错误产品记录。保留日志中的事实：第二次记录是 1 pass/1 fail/2 未跑，第三次是 3 pass/1 fail，均不记为四项通过。
