@@ -1,0 +1,19 @@
+.cap-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; margin: 24px 0 18px; }
+.cap-tabs { display: inline-flex; padding: 4px; border: 1px solid #d5e0ed; border-radius: 28px; background: #eaf0f8; }
+.cap-tabs button { padding: 10px 22px; color: #526780; border-radius: 24px; font-size: 13px; }
+.cap-tabs [aria-pressed=true] { background: white; color: #0066df; box-shadow: 0 2px 6px #284a7410; }
+.cap-controls > .cm-sub { flex-basis: 100%; font-size: 12px; margin: 0; }
+.cap-design-link { color: #0066df; font-size: 13px; margin-left: auto; }
+.cap-search { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 8px; }
+.cap-search input { flex: 1; min-width: 180px; max-width: 480px; }
+[data-graph-view=capabilities] .cm-agent-chips { max-height: 186px; overflow: auto; padding: 8px 4px; }
+[data-cm-graph] [hidden] { display: none !important; }
+.cap-detail { border: 1px solid #ccdced; border-radius: 14px; padding: 24px; margin: 18px 0; background: #f5f9ff; overflow-wrap: anywhere; }
+.cap-detail h3 { font-size: 22px; font-weight: 600; margin-bottom: 10px; }
+.cap-detail > p { font-size: 13px; color: #536a84; }
+.cap-links { display: flex; flex-wrap: wrap; gap: 12px 24px; color: #0066df; font-size: 13px; margin: 18px 0; }
+.cap-links a:hover, .cap-design-link:hover { text-decoration: underline; }
+.cap-detail .cap-provenance, .cap-service-status { font-size: 11px; color: #617891; }
+.cap-service-status { margin-top: 12px; }
+[data-cm-graph] :is(button,a,input):focus-visible { outline: 3px solid #0066ff; outline-offset: 4px; }
+@media(max-width: 650px) { .cap-tabs { width: 100%; }.cap-tabs button { flex: 1; padding: 10px 14px; }.cap-design-link { margin-left: 0; }.cap-detail { padding: 20px; } }
