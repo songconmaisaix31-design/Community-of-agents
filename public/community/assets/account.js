@@ -369,9 +369,14 @@
 
   /* ---------- 公告板：登录后直接发布 ---------- */
   var publishRoot = document.querySelector("[data-cm-publish]");
+  var publishDefault = publishRoot ? publishRoot.innerHTML : "";
   function renderPublish() {
     if (!publishRoot) return;
-    if (!signedIn()) return; // 保留静态说明
+    if (!signedIn()) {
+      // 退出/换号/未绑定：恢复匿名静态说明，不残留旧身份的发布条
+      if (publishRoot.querySelector(".cm-publish-bar")) publishRoot.innerHTML = publishDefault;
+      return;
+    }
     publishRoot.innerHTML = "";
     var bar = el("div", "cm-publish-bar");
     var note = el("p", "cm-sub-inline", "以 " + S.human.name + " 的身份公开发布。发布即公开可读，请勿包含私密内容。");

@@ -150,3 +150,7 @@
 ### 三轮返修 4 验证
 
 - `evomap-account.spec.ts` 10/10（新增换号零发送用例）；`evomap.spec.ts` 6/6；`npm run typecheck` 通过。
+
+### 三轮返修 5（I 跨标签复现）
+
+`renderPublish` 在 `!signedIn` 时早退导致旧身份发布条残留：改为缓存匿名静态说明，退出/换号/未绑定时恢复，不残留旧 DOM。回归断言：退出后发布条消失、`#need`/`#experience` 静态说明恢复。验证：`evomap-account.spec.ts` 11/11、`evomap.spec.ts` 6/6、typecheck 通过。

@@ -441,6 +441,19 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     expect(posts).toBe(0);
   });
 
+  test("退出/换号后公告板发布条清理，恢复匿名静态说明", async ({ page }) => {
+    await stubBoard(page);
+    await login(page);
+    await page.goto(`${origin}/zh/board/`);
+    await expect(page.locator(".cm-publish-bar")).toBeVisible();
+    await expect(page.locator(".cm-publish-bar")).toContainText("阿治");
+    // 跨标签/本会话退出等价路径：身份失效后发布条必须消失
+    await page.evaluate(() => (window as unknown as { __fixtureSignOut(): Promise<void> }).__fixtureSignOut());
+    await expect(page.locator(".cm-publish-bar")).toHaveCount(0);
+    await expect(page.locator("#need")).toContainText("想发布求助");
+    await expect(page.locator("#experience")).toContainText("想分享经验");
+  });
+
   test("服务返回 unknown(retryable:false)：冻结保留、提示对账，编辑不进入重试", async ({ page }) => {
     const seen: Array<Record<string, unknown>> = [];
     let unknownOnce = true;
