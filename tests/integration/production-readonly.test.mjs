@@ -12,6 +12,8 @@ if (base) {
   assert.equal(url.username + url.password + url.search + url.hash, '');
 }
 const skip = base ? false : 'Set GONGZHI_PRODUCTION_ACCEPTANCE_URL for a fresh isolated local production package';
+// Explicit operator expectation; never infer availability from legacy Supabase config.
+const oauthAvailable = process.env.GONGZHI_EXPECT_OAUTH_AVAILABLE === 'true';
 const get = path => fetch(new URL(path, base), { redirect: 'error', signal: AbortSignal.timeout(10_000) });
 
 test('production proxy, official Auth and Next process health respond separately', { skip }, async () => {
@@ -26,7 +28,7 @@ test('production proxy, official Auth and Next process health respond separately
   const health = await next.json();
   assert.equal(health.mode, 'live');
   assert.equal(health.data.database_configured, true);
-  assert.equal(health.data.auth_configured, true);
+  assert.equal(health.data.auth_configured, oauthAvailable);
   assert.equal(health.data.live_verified, false);
 });
 
@@ -39,12 +41,15 @@ test('production browser configuration contains only the public contract', { ski
   assert.deepEqual(Object.keys(data).sort(), ['api_base', 'auth', 'contract_version', 'database_configured']);
   assert.equal(data.database_configured, true);
   assert.equal(data.api_base, '/api/gongzhi');
-  assert.deepEqual(Object.keys(data.auth).sort(), ['available', 'public_key', 'url']);
-  assert.equal(data.auth.available, true);
-  assert.equal(data.auth.url, 'https://zhihu.davidwang.space');
-  // Do not put any returned key in assertion diagnostics.
-  const role = JSON.parse(Buffer.from(data.auth.public_key.split('.')[1], 'base64url').toString()).role;
-  assert.equal(role, 'anon');
+  assert.deepEqual(Object.keys(data.auth).sort(), ['available', 'endpoints', 'provider', 'public_key', 'url']);
+  assert.equal(data.auth.available, oauthAvailable);
+  assert.equal(data.auth.provider, 'zhihu');
+  assert.equal(data.auth.url, null);
+  assert.equal(data.auth.public_key, null);
+  assert.deepEqual(data.auth.endpoints, {
+    start: '/api/gongzhi/auth/zhihu/start', session: '/api/gongzhi/auth/session',
+    logout: '/api/gongzhi/auth/logout', callback: '/auth/zhihu/callback',
+  });
 });
 
 test('fresh production board and Agent-only graph query the real empty database', { skip }, async () => {
@@ -87,4 +92,10 @@ test('production proxy blocks Auth admin and demo escape without synthetic succe
   assert.equal(Object.hasOwn(denied, 'data'), false);
   assert.equal((await get('/api/gongzhi/__production_readonly_probe__')).status, 404);
   assert.equal((await get('/api/gongzhi/runs/__production_readonly_probe__')).status, 401);
+  for (const path of ['/api/gongzhi/owners', '/api/gongzhi/authorizations', '/api/gongzhi/agents/me']) {
+    assert.equal((await get(path)).status, 401, path);
+  }
+  const session = await get('/api/gongzhi/auth/session');
+  assert.equal(session.status, 200);
+  assert.equal((await session.json()).data.user, null);
 });
