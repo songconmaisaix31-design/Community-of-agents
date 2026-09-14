@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { MockLanguageModelV4 } from 'ai/test';
 import { executeAssistant } from '../../lib/gongzhi/agent/execute.ts';
 import { getAssistantConfig } from '../../lib/gongzhi/agent/config.ts';
-import { ZhihuError } from '../../lib/gongzhi/zhihu/search.ts';
+import { ZhihuError, createZhihuSearch } from '../../lib/gongzhi/zhihu/search.ts';
+import { createAssistantTools } from '../../lib/gongzhi/agent/tools.ts';
+import { createRunBudget } from '../../lib/gongzhi/agent/budget.ts';
 
 const emptyUsage = { model_steps: 0, zhihu_queries: 0, input_tokens: null, output_tokens: null };
 const input = { need_id: 'synthetic-need', need_revision: 1, idempotency_key: 'synthetic-key' };
@@ -181,12 +183,157 @@ test('empty search may produce an explicitly unsourced result without fake citat
 
 test('model is never given an adoption tool', async () => {
   const h = harness();
+  let toolNames;
   const provider = modelSteps([options => {
-    assert.deepEqual(options.tools.map(tool => tool.name).sort(), ['findExperience', 'readNeed', 'searchZhihu', 'submitResult']);
+    toolNames = options.tools.map(tool => tool.name).sort();
     return [{ type: 'text', text: 'I cannot accept results.' }];
   }]);
   const result = await executeAssistant({ ...h, model: provider.model });
   assert.equal(result.status, 'failed');
+  assert.equal(h.submitted(), 0);
+  // Assert outside the provider: a swallowed assertion must not count as the expected run failure.
+  assert.deepEqual(toolNames, ['findExperience', 'readNeed', 'readZhihuAnswers', 'searchZhihu', 'submitResult']);
+});
+
+const question = 'https://www.zhihu.com/question/123';
+const answerItem = { ContentType: 'answer', ContentToken: '9007199254740993', Url: `${question}/answer/9007199254740993?utm_source=fixture`, Summary: 'Actual fixture provider summary; not full text.' };
+const answerCall = (offset, url = question) => toolCall('readZhihuAnswers', { question_url: url, ...(offset === undefined ? {} : { offset }) });
+const answerResponse = (Items = [answerItem], Paging = { IsEnd: true }) => Response.json({ Code: 0, Data: { Items, Paging } });
+const answerAdapter = fetch => createZhihuSearch({ enabled: true, accessSecret: 'isolated-fixture', fetch });
+
+test('actual SDK plus isolated HTTP answer fixture commits only returned summary metadata', async () => {
+  const h = harness();
+  let requests = 0;
+  h.search = answerAdapter(async () => { requests++; return answerResponse(); });
+  const provider = modelSteps([[toolCall('readNeed')], [answerCall()], [draftCall([answerItem.ContentToken])]]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(requests, 1);
+  assert.equal(result.usage.zhihu_queries, 1);
+  assert.deepEqual(h.submittedBodies[0].sources, [{ id: answerItem.ContentToken, kind: 'zhihu', title: '问题下的回答摘要', url: answerItem.Url, excerpt: answerItem.Summary, content_type: 'summary', retrieved_at: h.submittedBodies[0].sources[0].retrieved_at }]);
+});
+
+test('empty page can advance only using official lossless cursor within the four model steps', async () => {
+  const h = harness();
+  const offsets = [];
+  h.search = answerAdapter(async url => {
+    offsets.push(url.searchParams.get('Offset'));
+    return offsets.length === 1 ? new Response('{"Code":0,"Data":{"Items":[],"Paging":{"IsEnd":false,"NextOffset":9007199254740993}}}') : answerResponse();
+  });
+  const provider = modelSteps([[toolCall('readNeed')], [answerCall()], [answerCall('9007199254740993')], [draftCall([answerItem.ContentToken])]]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'succeeded');
+  assert.deepEqual(offsets, ['0', '9007199254740993']);
+  assert.equal(result.usage.zhihu_queries, 2);
+  assert.equal(result.usage.model_steps, 4);
+});
+
+test('same answer page deduplicates concurrent calls and charges once', async () => {
+  const h = harness();
+  let requests = 0;
+  h.search = answerAdapter(async () => { requests++; return answerResponse(); });
+  const provider = modelSteps([[toolCall('readNeed')], [answerCall(), { ...answerCall(), toolCallId: 'duplicate-page' }], [draftCall([answerItem.ContentToken])]]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(requests, 1);
+  assert.equal(result.usage.zhihu_queries, 1);
+});
+
+for (const kind of ['missing', 'invented', 'different-question', 'no-first-page']) {
+  test(`answers refuse ${kind} cursor without making a later request`, async () => {
+    const h = harness();
+    let requests = 0;
+    h.search = answerAdapter(async () => { requests++; return answerResponse([], kind === 'missing' ? { IsEnd: false } : { IsEnd: false, NextOffset: 7 }); });
+    const later = answerCall(kind === 'invented' ? '8' : '7', kind === 'different-question' ? 'https://www.zhihu.com/question/456' : question);
+    const provider = modelSteps([[toolCall('readNeed')], ...(kind === 'no-first-page' ? [] : [[answerCall()]]), [later]]);
+    const result = await executeAssistant({ ...h, model: provider.model });
+    assert.equal(result.status, 'failed');
+    assert.equal(requests, kind === 'no-first-page' ? 0 : 1);
+    assert.equal(h.submitted(), 0);
+  });
+}
+
+test('missing next cursor reports incomplete paging while real summaries remain usable', async () => {
+  const h = harness();
+  h.search = answerAdapter(async () => answerResponse([answerItem], { IsEnd: false }));
+  let observedToolOutput;
+  const provider = modelSteps([[toolCall('readNeed')], [answerCall()], options => {
+    observedToolOutput = JSON.stringify(options.prompt);
+    return [toolCall('submitResult', { title: 'Partial evidence', body: 'Only this page was obtained; pagination is incomplete. The proposal is unverified.', source_ids: [answerItem.ContentToken], method_refs: [] })];
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'succeeded');
+  assert.match(observedToolOutput, /"pagination_incomplete":true/);
+  assert.equal(h.submittedBodies[0].sources.length, 1);
+});
+
+for (const answersFirst of [false, true]) {
+  test(`search and answers share two calls (${answersFirst ? 'answers' : 'search'} first); third transport is blocked`, async () => {
+    const h = harness();
+    let requests = 0;
+    const search = h.search.search;
+    const adapter = answerAdapter(async () => { requests++; return answerResponse(); });
+    h.search = { questionAnswers: adapter.questionAnswers, search: async (...args) => { requests++; return search(...args); } };
+    const first = answersFirst ? answerCall() : toolCall('searchZhihu', { query: 'one' });
+    const second = answersFirst ? toolCall('searchZhihu', { query: 'one' }) : answerCall();
+    const third = answersFirst ? answerCall(undefined, 'https://www.zhihu.com/question/456') : toolCall('searchZhihu', { query: 'two' });
+    const provider = modelSteps([[toolCall('readNeed')], [first], [second, third]]);
+    const result = await executeAssistant({ ...h, model: provider.model });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.error.code, 'budget_exceeded');
+    assert.equal(requests, 2);
+    assert.equal(result.usage.zhihu_queries, 2);
+    assert.equal(h.submitted(), 0);
+  });
+}
+
+test('answers before reading the task and cached-only citations from another run are refused', async () => {
+  let requests = 0;
+  const adapter = answerAdapter(async () => { requests++; return answerResponse(); });
+  const early = harness();
+  const first = await executeAssistant({ ...early, search: adapter, model: modelSteps([[answerCall()]]).model });
+  assert.equal(first.status, 'failed');
+  assert.equal(requests, 0);
+  // Cache has the source, but this new run has not retrieved it through its tool.
+  await adapter.questionAnswers(question, new AbortController().signal);
+  const later = harness();
+  const result = await executeAssistant({ ...later, search: adapter, model: modelSteps([[toolCall('readNeed')], [draftCall([answerItem.ContentToken])]]).model });
+  assert.equal(result.status, 'failed');
+  assert.equal(later.submitted(), 0);
+});
+
+test('unconfigured answers fail the real SDK execution without a result', async () => {
+  const h = harness();
+  const result = await executeAssistant({ ...h, ...getAssistantConfig(modelConfig), model: modelSteps([[toolCall('readNeed')], [answerCall()]]).model });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'unavailable');
+  assert.equal(h.submitted(), 0);
+});
+
+test('answer quota failure remains sticky; even direct later tool attempts cannot switch channel or submit', async () => {
+  const budget = createRunBudget({ signal: new AbortController().signal });
+  let searches = 0;
+  const adapter = answerAdapter(async () => Response.json({ Code: 30001 }));
+  const session = createAssistantTools({ run: { id: 'fixture-run', ...input }, budget, assertActive: async () => {}, readNeed: async () => ({ need }), findExperience: async () => [], searchZhihu: async () => { searches++; throw Error('must not run'); }, readZhihuAnswers: adapter.questionAnswers });
+  try {
+    await session.tools.readNeed.execute({});
+    await assert.rejects(session.tools.readZhihuAnswers.execute({ question_url: question }), { code: 'rate_limited' });
+    await assert.rejects(session.tools.searchZhihu.execute({ query: 'fallback' }), { code: 'rate_limited' });
+    await assert.rejects(session.tools.submitResult.execute({ title: 'Fake', body: 'Fake success', source_ids: [], method_refs: [] }), { code: 'rate_limited' });
+    assert.equal(searches, 0);
+    assert.equal(session.getDraft(), undefined);
+  } finally { budget.dispose(); }
+});
+
+test('answer cancellation reaches HTTP and leaves the SDK run cancelled without a receipt', async () => {
+  const h = harness();
+  h.search = answerAdapter(async (_url, init) => {
+    h.request.abort();
+    assert.equal(init.signal.aborted, true);
+    return answerResponse();
+  });
+  const result = await executeAssistant({ ...h, model: modelSteps([[toolCall('readNeed')], [answerCall()]]).model });
+  assert.equal(result.status, 'cancelled');
   assert.equal(h.submitted(), 0);
 });
 
