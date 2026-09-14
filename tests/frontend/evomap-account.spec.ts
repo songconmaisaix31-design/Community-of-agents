@@ -89,7 +89,7 @@ const humanOwner = { id: "human-owner", publisher_id: "human-owner", kind: "huma
 const needRecord = { id: "n1", thread_id: "n1", reply_to_id: null, kind: "need", title: "第一次办 AI 体验活动，怎样安排节奏？", body: "想为社团组织一场小型 AI 体验活动。", speaker_id: "human-owner", owner_id: "human-owner", speaker: humanOwner, need_revision: 2, created_at: time, mode: "live" };
 const needDetail = {
   need: { id: "n1", owner_id: "human-owner", publisher_id: "human-owner", title: needRecord.title, body: needRecord.body, constraints: "只有一间教室", expected_result: "一份时间安排", tags: [], visibility: "public", revision: 2, status: "open", accepted_result_id: null, expires_at: "2026-09-20T00:00:00.000Z", created_at: time, updated_at: time, mode: "live" },
-  results: [{ id: "res-1", need_id: "n1", need_revision: 2, owner_id: "agent-owner", publisher_id: "agent-a", title: "90 分钟节奏方案", body: "先 10 分钟破冰，再分组做作品。", subtype: "result", sources: [{ id: "s1", kind: "url", title: "公开活动经验文", author: "某社团", url: "https://example.com/a", retrieved_at: time, content_type: "reference" }], method_refs: [{ experience_id: "e9", revision: 3, usage: "按此分工" }], created_at: time, mode: "live" }],
+  results: [{ id: "res-1", need_id: "n1", need_revision: 2, owner_id: "agent-owner", publisher_id: "agent-a", title: "90 分钟节奏方案", body: "先 10 分钟破冰，再分组做作品。", subtype: "result", sources: [{ id: "s1", kind: "zhihu", title: "如何组织一场线下技术分享？", author: "某社团组织者", url: "https://www.zhihu.com/question/123", retrieved_at: time, content_type: "summary", excerpt: "高赞回答建议控制在一小时半以内，先破冰后分组。" }, { id: "s2", kind: "other", title: "内部排练记录", retrieved_at: time, content_type: "reference" }], method_refs: [{ experience_id: "e9", revision: 3, usage: "按此分工" }], created_at: time, mode: "live" }],
   decisions: [],
 };
 
@@ -231,11 +231,21 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await login(page);
     await page.goto(`${origin}/zh/board/`);
     await page.locator(".cm-record").first().click();
-    // 需求详情：版本、状态、来源与可追溯链接、采纳操作（所有者视角）
+    // 需求详情：版本、状态、来源（知乎作者/摘要/检索时间/原文链接）与可追溯引用、采纳操作（所有者视角）
     await expect(page.locator(".cm-need-detail")).toContainText("第 2 版");
-    await expect(page.locator(".cm-need-detail")).toContainText("公开活动经验文");
-    await expect(page.locator(".cm-source a")).toHaveAttribute("href", "https://example.com/a");
-    await expect(page.locator(".cm-source a")).toHaveAttribute("rel", /noopener/);
+    const sources = page.locator(".cm-source-card");
+    await expect(sources).toHaveCount(2);
+    await expect(sources.first()).toContainText("知乎");
+    await expect(sources.first()).toContainText("摘要");
+    await expect(sources.first()).toContainText("作者：某社团组织者");
+    await expect(sources.first()).toContainText("检索于");
+    await expect(sources.first()).toContainText("高赞回答建议");
+    await expect(sources.first().locator("a.cm-source-link")).toHaveAttribute("href", "https://www.zhihu.com/question/123");
+    await expect(sources.first().locator("a.cm-source-link")).toHaveAttribute("rel", /noopener/);
+    // 缺字段来源：只显示实际存在的字段，不虚构作者/链接/摘要
+    await expect(sources.nth(1)).toContainText("内部排练记录");
+    await expect(sources.nth(1)).not.toContainText("作者：");
+    await expect(sources.nth(1).locator("a")).toHaveCount(0);
     // 方法引用可打开对应经验；引用版本与当前版本不一致时明确标注
     await page.locator(".cm-ref-link").click();
     await expect(page.locator(".cm-dialog")).toContainText("引用的是第 3 版");
