@@ -4,7 +4,7 @@ import { inTransaction, sql } from "../db";
 import { bearer } from "../http";
 import { sha256 } from "../ids";
 import { registerPublisher, rotateApiKey, type PublisherRow } from "../publishers";
-import { BindOwnerSchema, type AgentScope, type BoundOwner, type Owner } from "./contracts";
+import { BindOwnerSchema, type AgentScope, type AgentStatus, type BoundOwner, type Owner } from "./contracts";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 import { getAuthConfiguration } from "./auth-config";
 
@@ -44,7 +44,7 @@ export async function resolveIdentity(req: Request): Promise<Identity> {
   if (!rows[0]) throw new GongzhiError(403, "unbound_identity", "此凭据尚未绑定共治发言身份。");
   return identity(rows[0]);
 }
-export async function assertIdentity(actor: Identity, lock = false, scope?: AgentScope): Promise<PublisherRow> {
+async function validatedIdentityRow(actor: Identity, lock = false, scope?: AgentScope): Promise<OwnerRow> {
   if (!credentials.has(actor)) throw new GongzhiError(403, "unbound_identity", "身份必须由服务器验证。");
   const rows = lock
     ? await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${actor.owner.id} for update of o,p`
@@ -52,8 +52,21 @@ export async function assertIdentity(actor: Identity, lock = false, scope?: Agen
   const row = rows[0];
   if (!row || row.user_id !== actor.user_id || row.revoked_at || row.status !== "active" || row.credential_version !== credentials.get(actor)) throw new GongzhiError(403, "revoked", "此发言身份或凭据已撤销。");
   if (scope && row.kind !== "human" && !row.scopes.includes(scope)) throw new GongzhiError(403, "forbidden", `此 Agent 未获 ${scope} 授权。`);
+  return row;
+}
+export async function assertIdentity(actor: Identity, lock = false, scope?: AgentScope): Promise<PublisherRow> {
+  const row = await validatedIdentityRow(actor, lock, scope);
   const [publisher] = await sql()<PublisherRow[]>`select * from publishers where id=${row.publisher_id}`;
   return publisher;
+}
+export async function agentStatus(req: Request): Promise<AgentStatus> {
+  const header = req.headers.get("authorization") ?? "";
+  const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
+  if (!match?.[1].startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请由宿主通过 Bearer 提供已登记的 Agent 密钥。");
+  const actor = await resolveIdentity(req);
+  const row = await validatedIdentityRow(actor);
+  if (row.kind !== "external_agent") throw new GongzhiError(403, "forbidden", "此接口仅核验外部 Agent。");
+  return { owner: { ...toOwner(row), kind: "external_agent" }, human_owner_id: await humanOwnerId(actor), scopes: [...row.scopes], mode: "live" };
 }
 export async function humanOwnerId(actor: Identity): Promise<string> {
   const [human] = await sql()`select o.id from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${actor.user_id} and o.kind='human' and o.revoked_at is null and p.status='active'`;
