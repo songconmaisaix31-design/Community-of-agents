@@ -1,5 +1,13 @@
 # 共治开发约定
 
+## 当前真实功能轮（2026-09-14，优先于下方历史轮次）
+
+用户已要求按照开发文档、多 Agent 隔离开发，调研开源并接入真实功能；此前“只改前端”的范围仅属于已完成轮次。当前基线为 `cda811d23ed154ddf87c1a200d3cf30ffa5e7340`，一页分工与验收见 `docs/source/live-2026-09-14.md`。保留当前 Next 托管的 `public/community` 前端及 Crier 后端，不恢复 Hugo、不改动 8123 原件或留档。
+
+本轮唯一写域：C 继续拥有 lib（排除 agent/zhihu）、app/api（排除 runs）、app/auth、app/mcp、migrations、scripts、tests/core、docs/core、根配置/依赖/锁文件及新增 `infra/local-auth/**`；C 独占共享浏览器客户端产物 `public/community/assets/gongzhi-client.js`。D 继续拥有 lib/gongzhi/agent、lib/gongzhi/zhihu、app/api/gongzhi/runs、examples/agent、tests/connect、docs/connect。Kimi K3 独占 public/community（排除 C 的 gongzhi-client.js）、tests/frontend/evomap*、docs/frontend/evomap-adaptation.md。I 唯一集成，拥有 tests/integration、docs/integration、app/layout.tsx 与必要入口路由胶水，领域问题退原轨；根配置交 C。M 仅拥有 AGENTS.md、DEVELOPMENT.md、docs/source 下的计划/决定/验收。其他旧前端轨本轮不启动。
+
+各轨复用原长期 Agent、worktree、分支；从明确基线普通 merge 同步，不覆盖未提交内容。最多三条开发轨先并行，I 接收小步 SHA 后集成。仅本项目、本机回环的独立真实数据库和开源 Supabase Auth 可无新增费用验证；不动其他项目容器，不复用其他项目凭据，不以 auth stub 或 fixture 证明真实身份。模型/知乎外部调用需本项目明确配置和预算；当前未提供，不默认发起收费请求或公开部署。真实 Agent 交流需 Agent 实际读取、思考并写入服务，脚本造数不是验收。
+
 业务事实源：2026-09-14 用户最新指定以本机 8123/zh 展示的 EvoMap 前端适配共治，明确放弃 Hugo 和此前的前端页面；保留适用布局、样式、交互与已有有效代码，改写项目叙事。此要求覆盖下文和旧文档中的 Hugo 要求。既有 Crier/Next.js、Supabase Auth/Postgres 和模型服务继续保留；Agent-only、实际交流证据、有限授权与演示/真实隔离仍按 docs/source/corrections-2026-09-13.md 执行。
 
 本轮从集成基线 2b8fd8b06e12cc43e7bf045e13b75307f79a10d8 续接。Kimi K3 在 gongzhi-kimi-adaptation 独占 public/community/**、tests/frontend/evomap*.ts 与 evomap*.mjs、docs/frontend/evomap-adaptation.md；主目录未提交的原始页面仅作读取来源，不覆盖。Integration I 在 gongzhi-integration 独占本轮入口页面、app/layout.tsx、必要的 next.config.ts 静态路由、package.json 前端命令、tests/integration/** 与 docs/integration/**；不改后端、锁文件或领域组件。资源统一 /community/ 前缀，用户入口 /zh/，仍用现有 /api/gongzhi/** 契约，禁止原站代理和失败返回模拟成功。总控只协调、验收；跨域修改交接，I 唯一集成。
