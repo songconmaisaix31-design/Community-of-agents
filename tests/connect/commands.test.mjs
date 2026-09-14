@@ -63,6 +63,41 @@ test('registration replay without a recoverable credential is unknown and does n
   } finally { await rm(path, { force: true }); await rmdir(dir); }
 });
 
+test('CLI accepts an Agent-written profile while grant alone supplies owner/scopes and key stays private', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'gongzhi-profile-'));
+  const path = join(dir, 'credential.json');
+  const config = { GONGZHI_SELF_HOSTED_URL: env.GONGZHI_SELF_HOSTED_URL, GONGZHI_AGENT_GRANT_TOKEN: 'synthetic-grant', GONGZHI_AGENT_CREDENTIAL_FILE: path };
+  const profile = { name: '评审 Agent A', capabilities: ['官方接口审阅', '失败边界核对'] };
+  try {
+    const receipt = await run(['register', 'profile-registration', '--profile-stdin'], async (_url, init) => {
+      assert.equal(init.headers.Authorization, 'Bearer synthetic-grant');
+      assert.deepEqual(JSON.parse(init.body), { ...profile, idempotency_key: 'profile-registration' });
+      return response({ owner: { id: 'agent-profile', mode: 'live' }, human_owner_id: 'grant-owner', scopes: ['read', 'publish_need', 'discuss'], api_key: 'synthetic-profile-key', credential_state: 'issued' });
+    }, profile, { env: config });
+    assert.equal(receipt.human_owner_id, 'grant-owner');
+    assert.deepEqual(receipt.scopes, ['read', 'publish_need', 'discuss']);
+    assert.doesNotMatch(JSON.stringify(receipt), /synthetic-profile-key|synthetic-grant/);
+    assert.equal(JSON.parse(await readFile(path, 'utf8')).api_key, 'synthetic-profile-key');
+  } finally { await rm(path, { force: true }); await rmdir(dir); }
+});
+
+test('profile input rejects authority fields, alternate request keys and malformed/oversized data before registering', async () => {
+  let calls = 0;
+  const dir = await mkdtemp(join(tmpdir(), 'gongzhi-profile-rejected-'));
+  const path = join(dir, 'credential.json');
+  const config = { GONGZHI_SELF_HOSTED_URL: env.GONGZHI_SELF_HOSTED_URL, GONGZHI_AGENT_GRANT_TOKEN: 'synthetic-grant', GONGZHI_AGENT_CREDENTIAL_FILE: path };
+  const fetch = async () => { calls++; throw Error('must not register'); };
+  try {
+    for (const profile of [{ owner_id: 'forged' }, { scopes: ['submit_result'] }, { idempotency_key: 'changed' }, { name: '' }, { capabilities: Array(11).fill('too many') }, { name: 'x'.repeat(64_001) }, null]) {
+      await assert.rejects(run(['register', 'stable-key', '--profile-stdin'], fetch, profile, { env: config }));
+    }
+    await assert.rejects(run(['register', 'stable-key', '--unknown'], fetch, {}, { env: config }));
+    await assert.rejects(run(['register', 'stable-key', '--profile-stdin'], fetch, {}, { env: config, signal: AbortSignal.abort() }));
+    assert.equal(calls, 0);
+    await assert.rejects(readFile(path));
+  } finally { await rmdir(dir); }
+});
+
 test('registration denies self-reported authority; expiry/revocation and response loss remain failures', async () => {
   const options = { baseUrl: env.GONGZHI_SELF_HOSTED_URL, grantToken: 'synthetic-grant', signal };
   assert.throws(() => registerExternalAgent(options, { idempotency_key: 'key', owner_id: 'forged', scopes: ['discuss'] }));
