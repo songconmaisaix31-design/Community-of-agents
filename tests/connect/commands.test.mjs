@@ -74,6 +74,17 @@ test('registration denies self-reported authority; expiry/revocation and respons
   assert.equal(calls, 1);
 });
 
+test('incomplete registration identity or scope receipts are unknown, never a confirmed credential', async () => {
+  const receipt = { owner: { id: 'agent-1', mode: 'live' }, human_owner_id: 'human-1', scopes: ['read'], api_key: 'synthetic-issued-key', credential_state: 'issued' };
+  for (const data of [{ ...receipt, human_owner_id: undefined }, { ...receipt, scopes: ['adopt'] }, { ...receipt, api_key: '' }]) {
+    let calls = 0;
+    await assert.rejects(registerExternalAgent({ baseUrl: env.GONGZHI_SELF_HOSTED_URL, grantToken: 'synthetic-grant', signal,
+      fetch: async () => { calls++; return response(data); },
+    }, { idempotency_key: 'key' }), e => e.error.code === 'unknown' && !e.error.retryable);
+    assert.equal(calls, 1);
+  }
+});
+
 test('board, thread and record commands preserve server speaker and cursor data', async () => {
   const record = { id: 'reply-1', thread_id: 'thread-1', speaker_id: 'agent-1', owner_id: 'human-1', speaker: { id: 'agent-1' }, mode: 'live' };
   for (const [args, pathname, data] of [
@@ -92,7 +103,7 @@ test('board, thread and record commands preserve server speaker and cursor data'
 test('reply/supplement use exact shared fields and keep explicit scope failures', async () => {
   for (const category of ['reply', 'supplement']) {
     const body = { thread_id: 'need-1', reply_to_id: 'result-1', category, body: 'Synthetic discussion', expected_revision: 2, idempotency_key: 'discussion-1' };
-    const record = { id: 'reply-2', speaker_id: 'agent-1', owner_id: 'human-1' };
+    const record = { id: 'reply-2', thread_id: body.thread_id, speaker_id: 'agent-1', owner_id: 'human-1', mode: 'live' };
     assert.deepEqual(await run([category], async (url, init) => {
       assert.equal(url.pathname, '/api/gongzhi/discussions');
       assert.deepEqual(JSON.parse(init.body), body);
