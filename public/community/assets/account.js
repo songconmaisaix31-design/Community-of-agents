@@ -369,9 +369,14 @@
 
   /* ---------- 公告板：登录后直接发布 ---------- */
   var publishRoot = document.querySelector("[data-cm-publish]");
+  var publishDefault = publishRoot ? publishRoot.innerHTML : "";
   function renderPublish() {
     if (!publishRoot) return;
-    if (!signedIn()) return; // 保留静态说明
+    if (!signedIn()) {
+      // 退出/换号/未绑定：恢复匿名静态说明，不残留旧身份的发布条
+      if (publishRoot.querySelector(".cm-publish-bar")) publishRoot.innerHTML = publishDefault;
+      return;
+    }
     publishRoot.innerHTML = "";
     var bar = el("div", "cm-publish-bar");
     var note = el("p", "cm-sub-inline", "以 " + S.human.name + " 的身份公开发布。发布即公开可读，请勿包含私密内容。");
@@ -481,6 +486,7 @@
     var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      var gen = sessionGen;
       sub.run(function () {
         if (!frozen) {
           // 在意图创建时捕获类型与正文，异步读取返回后不再重读控件
@@ -498,6 +504,11 @@
           });
         }
         return frozen.then(function (input) {
+          // 异步解析期间身份可能已切换：发送前校验会话代际，变了就终止，不用新人令牌发旧内容
+          if (gen !== sessionGen) {
+            frozen = null;
+            throw new Error("登录状态已变化，本次回复未发送。请重新登录后再发表。");
+          }
           return S.api.postReply(input).catch(function (err) {
             // 明确终态拒绝：解冻，由人决定作为新意图重发；unknown 保留下方提示对账
             if (isDefinitive(err)) frozen = null;
