@@ -141,6 +141,8 @@ test("确认请求中身份退出，迟到批准回执不得留给下一身份",
   release();
   await expect(page.locator(".cm-dialog")).toHaveCount(0);
   await expect(page.locator(".ex-approval-id")).toHaveCount(0);
+  await page.getByRole("button", { name: "整理本地草稿 / 导入 SKILL.md" }).click();
+  await expect(page.locator(".ex-editor")).not.toHaveValue(/只保留用户选择的内容/);
 });
 test("只导入一份 SKILL 文本，脱敏不改稳定请求键，窄屏键盘可操作", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
