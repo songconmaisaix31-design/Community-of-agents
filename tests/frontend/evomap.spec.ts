@@ -179,7 +179,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
     await page.goto(`${origin}/zh/connect/`);
     await expect(page.locator(".cm-scope")).toHaveCount(5);
     await page.getByRole("tab", { name: "客户端 CLI" }).click();
-    await expect(page.locator("#cx-src-cli")).toContainText("examples/agent/cli.ts register grant:");
+    await expect(page.locator("#cx-src-cli")).toContainText("examples/agent/cli.ts register");
     await expect(page.locator("#platform")).toContainText("以服务端回执为准");
     await expect(page.locator("#honesty")).toContainText("失败就是失败");
     await page.screenshot({ path: path.join(evidence, "connect-1440.png"), fullPage: true });

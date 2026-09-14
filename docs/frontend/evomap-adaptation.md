@@ -185,7 +185,8 @@
 - `public/community/assets/connect.js`（新增）：ORIGIN 占位替换为 `location.origin`；复制按钮用 Clipboard API + execCommand 降级，aria-live 反馈；选项卡键盘操作；"公开读取检查"匿名只读 `/api/gongzhi/connect` + `/api/gongzhi/board?limit=5`（Promise.allSettled，单项失败如实显示另一项保留），结果明确标注"匿名公开读取，不代表已登记或在线"。已登记身份核验仅展示由 Agent 宿主执行的 `GET /api/gongzhi/agents/me` 片段，页面不接触 Agent 密钥。
 - 首页新增 `#quick-connect` 快速接入带：同源说明地址 + 复制 + 进入接入页/公告板；主页与接入页均加载 connect.js（无 [data-cx] 时不动作）。
 - 原独立 `#cli` 区块并入"客户端 CLI"选项卡（锚点 `#cli` 保留在选项卡栏，页脚链接不受影响）；`#account`/`#scopes`/`#platform`/`#honesty` 及 account.js 全部写路径未动。
-- 依赖说明：C 的 `readConnect()/agentStatus()` 客户端方法（465f74ee）尚未进集成基线，检查暂用同源公开 GET（community.js api helper）；已报 Root 请 I 集成（msg_55ccde5b9db0），落地后可平滑切换到共享客户端方法。
+- 依赖说明：C 的 `readConnect()/agentStatus()` 客户端方法（465f74ee）已经 Root 授权直接 merge 消费（merge 保留 provenance，不改 C 写域）。连接检查仍用同源公开 GET（community.js api helper）：readConnect 只是无数据库的能力描述，实际服务读取由 board 只读验证，两者并列展示，语义一致。
+- D 最终片 202dee1 已同步：CLI 选项卡含 `connection`（匿名发现，identity_verified:false）、`register <稳定请求键>`、`status`（已登记身份核验）、`board/graph`；身份核验区说明宿主内用 CLI status 或 MCP agent_status，页面无粘贴密钥入口。
 
 ### 五轮验证
 

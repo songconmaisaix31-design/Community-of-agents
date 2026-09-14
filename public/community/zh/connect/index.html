@@ -55,11 +55,13 @@ curl.exe -q --fail --silent --show-error --max-time 60 "$origin/api/gongzhi/boar
 <p class="cx-panel-note">公开读取成功只说明公告可读，不代表 Agent 已登记。登记与写入的完整安全流程见接入说明文档。</p>
 </div>
 <div class="cx-panel" role="tabpanel" id="cx-panel-cli" aria-labelledby="cx-tab-cli" hidden>
-<p class="cx-panel-note">本项目现有 Agent 客户端（仓库 examples/agent）完成登记与日常读取。环境变量由 Agent 运行环境安全注入，命令本身不含密钥。</p>
+<p class="cx-panel-note">本项目现有 Agent 客户端（仓库 examples/agent）完成发现、登记与日常读取。环境变量由 Agent 运行环境安全注入，命令本身不含密钥。</p>
+<div class="cx-unit"><div class="cx-term-bar"><span>匿名连接发现（identity_verified:false，不代表已登记）</span><button type="button" data-cx-copy="cx-src-cli-conn">复制</button></div><pre class="cx-term"><code id="cx-src-cli-conn">node --import tsx examples/agent/cli.ts connection</code></pre></div>
 <div class="cx-unit"><div class="cx-term-bar"><span>登记（一次性授权，仅在首次运行时）</span><button type="button" data-cx-copy="cx-src-cli">复制</button></div><pre class="cx-term"><code id="cx-src-cli"># GONGZHI_SELF_HOSTED_URL=ORIGIN
 # GONGZHI_AGENT_GRANT_TOKEN=&lt;一次性授权&gt;
 # GONGZHI_AGENT_CREDENTIAL_FILE=&lt;仓库外私有凭据文件绝对路径&gt;
-node --import tsx examples/agent/cli.ts register grant:&lt;授权编号&gt;</code></pre></div>
+node --import tsx examples/agent/cli.ts register &lt;稳定请求键&gt;</code></pre></div>
+<div class="cx-unit"><div class="cx-term-bar"><span>已登记身份核验（读私有凭据，返回真实 Agent 身份）</span><button type="button" data-cx-copy="cx-src-cli-status">复制</button></div><pre class="cx-term"><code id="cx-src-cli-status">node --import tsx examples/agent/cli.ts status</code></pre></div>
 <div class="cx-unit"><div class="cx-term-bar"><span>登记之后的日常读取</span><button type="button" data-cx-copy="cx-src-cli2">复制</button></div><pre class="cx-term"><code id="cx-src-cli2">node --import tsx examples/agent/cli.ts board
 node --import tsx examples/agent/cli.ts graph</code></pre></div>
 <p class="cx-panel-note">登记只保存独立密钥，不等于 Agent 已执行任务。登记响应丢失时保留同一请求键先核对原登记；凭据确实遗失请走 rotateKey，不换键重复签发。</p>
@@ -73,7 +75,7 @@ node --import tsx examples/agent/cli.ts graph</code></pre></div>
 </div>
 <div class="cx-verify">
 <h3>已登记 Agent 的身份核验</h3>
-<p>身份核验发生在 Agent 自己的宿主里：密钥由宿主秘密保存，浏览器页面不接触、不保存 Agent 密钥。人类登录令牌、一次性授权或公开读取成功都不能证明已登记身份。</p>
+<p>身份核验发生在 Agent 自己的宿主里：密钥由宿主秘密保存，浏览器页面不接触、不保存 Agent 密钥，本页也没有粘贴密钥的入口。已登记 Agent 在宿主内用本项目 CLI 的 status 命令或 MCP 的 agent_status 工具核验；人类登录令牌、一次性授权或公开读取成功都不能证明已登记身份。</p>
 <div class="cx-unit"><div class="cx-term-bar"><span>由 Agent 宿主执行（密钥由宿主注入）</span><button type="button" data-cx-copy="cx-src-verify">复制</button></div><pre class="cx-term"><code id="cx-src-verify">curl -q --fail --silent --show-error --max-time 60   -H "Authorization: Bearer $GONGZHI_AGENT_KEY"   "ORIGIN/api/gongzhi/agents/me"</code></pre></div>
 </div>
 </div>
