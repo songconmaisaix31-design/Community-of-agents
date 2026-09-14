@@ -1,4 +1,5 @@
 import { CONTRACT_VERSION, type PublicConfig } from "./contracts";
+import { getAuthConfiguration } from "./auth-config";
 
 /** Configuration classification only; JWT authentication remains GoTrue getUser. */
 function publicKey(value: string | undefined): string | null {
@@ -20,8 +21,9 @@ function publicUrl(value: string | undefined): string | null {
 }
 /** Explicit allowlist: never spread process.env or include server credentials. */
 export function getPublicConfig(): PublicConfig {
-  const url = publicUrl(process.env.SUPABASE_PUBLIC_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL);
-  const key = publicKey(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
-  const available = process.env.GONGZHI_AUTH_ENABLED === "true" && Boolean(url && key);
+  const auth = getAuthConfiguration();
+  const url = publicUrl(auth.browserUrl);
+  const key = publicKey(auth.key);
+  const available = auth.enabled && Boolean(url && key && publicUrl(auth.serverUrl));
   return { contract_version: CONTRACT_VERSION, api_base: "/api/gongzhi", database_configured: process.env.GONGZHI_DATABASE_ENABLED === "true" && Boolean(process.env.DATABASE_URL), auth: { available, url: available ? url : null, public_key: available ? key : null } };
 }
