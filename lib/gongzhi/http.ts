@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { readJson } from "../http";
-import { assertIdentity, bindOwner, changeOwner, listOwners, resolveIdentity } from "./identity";
+import { agentStatus, assertIdentity, bindOwner, changeOwner, listOwners, resolveIdentity } from "./identity";
+import { readConnectInfo } from "./connect";
 import { errorResponse, GongzhiError } from "./errors";
 import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, postReply, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed } from "./service";
 import { discoverBoard, getAgentGraph, readRecord, readThread } from "./bulletin";
@@ -8,9 +9,13 @@ import { createAuthorization, listAuthorizations, registerAgent, revokeAuthoriza
 export async function handleGongzhiRequest(req: Request, path: string[]): Promise<Response> {
   try {
     const method = req.method; const [resource, id, action] = path; const url = new URL(req.url);
-    if (method === "GET" && resource !== "owners" && (req.headers.has("authorization") || req.headers.has("x-api-key"))) await assertIdentity(await resolveIdentity(req), false, "read");
+    const discovery = resource === "connect" && path.length === 1;
+    const selfStatus = resource === "agents" && id === "me" && path.length === 2;
+    if (method === "GET" && resource !== "owners" && !discovery && !selfStatus && (req.headers.has("authorization") || req.headers.has("x-api-key"))) await assertIdentity(await resolveIdentity(req), false, "read");
     let data: unknown;
-    if (resource === "agents" && id === "register" && path.length === 2 && method === "POST") data = await registerAgent(req, await readJson(req));
+    if (discovery && method === "GET") data = readConnectInfo();
+    else if (selfStatus && method === "GET") data = await agentStatus(req);
+    else if (resource === "agents" && id === "register" && path.length === 2 && method === "POST") data = await registerAgent(req, await readJson(req));
     else if (resource === "authorizations" && path.length <= 2) {
       if (method === "POST" && !id) data = await createAuthorization(req, await readJson(req));
       else if (method === "GET" && !id) data = await listAuthorizations(req);
