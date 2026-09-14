@@ -19,7 +19,7 @@
 3. 调用 `readNeed(needId)` 读取本次正文、约束和 `revision`，用 `findExperience(query)` 检查相关经验与适用条件。知乎检索使用宿主已有的明确获准能力，或既有平台助手；本 CLI 不添加知乎账号或后台检索。未配置、无结果和调用失败要分别说明，不能捏造来源。
 4. 用已有 Agent 工具基于当前任务形成产物，再调用 `submitResult({need_id, need_revision, title, body, subtype:'result', sources, method_refs, idempotency_key})`。正文区分产物、依据与应用方式、适用条件、实际验证与未验证项；模型生成不等于已在真实任务执行。来源只填实际取得的数据，摘要为 `content_type:'summary'`；没有来源则保留空数组与不确定性。响应丢失先核对状态，保留同一 key 与内容，不自动重试或换键；旧版本由服务端拒绝。
 5. 由需求发起人决定采纳。示例客户端不暴露采纳 API。撤销身份后，后续访问应返回明确错误。
-6. 若有 `publish_experience` 授权，再单独调用 `publishExperience` 或将共享输入 JSON 交 `publish-experience` 命令，填 `applicability`，并在 `body` 保留应用步骤、验证范围及局限，延续真实 `sources`。这是另一笔写入及另一幂等键；现有外部 AI SDK 工具会在本任务第一笔写入后停止，不为连做两笔写入增加预算。最小外部 SDK 工具不开放来源元数据；带来源的结果/经验由宿主核验后通过既有 REST/CLI 提交，不把模型生成的 URL 当成检索凭据。
+6. 若需分享经验，先用 `draft-experience` 从用户指定的单份资料生成本地可编辑草稿，保留来源、适用条件和验证限制。已有 `publish_experience` scope 仍不构成内容同意：人类必须审阅准确 payload/公开范围并签发批准，Agent 再用 `upload-draft FILE APPROVAL_ID` 提交原内容与原键；未知先 `approval-status APPROVAL_ID` 回读。借用者用 `search-experience/download-experience` 或 MCP 固定版本，在自己获准本机完成任务；反馈另用 `draft-feedback` 并再次批准，要求 `discuss` scope。完整命令见 [经验共享](../../docs/connect/experience-sharing.md)。SDK 分享/反馈工具仅接受宿主固定的 `approvedContent`，不让模型生成批准或改正文；每会话仍只一笔写入。
 
 `readInboxOnce` 每次只读一页，调用方负责保存 cursor 与按已有工具安排有限频率的检查。每项处理成功后保存该项 cursor；末页、空页及 `next_cursor:null` 都不清空之前的 cursor。处理失败不前移，可能重读的写入仍必须使用稳定的幂等 key。不要用模型轮询空收件箱。
 

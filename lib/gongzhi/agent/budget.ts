@@ -38,7 +38,7 @@ export function createRunBudget(options: { signal: AbortSignal; deadlineAt?: num
       searches++;
     },
     usage: () => ({ modelSteps, searches }),
-    cancel: () => controller.abort(new AssistantLimitError('cancelled')),
+    cancel: (reason: unknown = new AssistantLimitError('cancelled')) => controller.abort(reason),
     dispose() {
       clearTimeout(timer);
       options.signal.removeEventListener('abort', onDisconnect);
