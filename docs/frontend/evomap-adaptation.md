@@ -1,5 +1,13 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## OAuth 托管测试返修（2026-09-15）
+
+读取 I 在集成产品 `f9a0b33a0d4325bdf9d9cf1037b731f1c40f14b4` 的两份真实日志 `%TEMP%/gongzhi-oauth-i-f9a0b33/oauth-browser-2.log` 与 `oauth-browser-3.log`，以及 I 的 `tests/integration/oauth-browser.spec.ts` 登录驱动，确认两处均为测试观察问题：第 2 条在登录前启动授权 GET 的 15 秒等待，计时包含 OAuth 往返、导航和绑定，先超时形成未处理拒绝；第 4 条页面背景历史反馈与正确的当前反馈弹窗都匹配 `.ex-feedback`，形成 strict mode violation，并非打开了错误产品记录。保留日志中的事实：第二次记录是 1 pass/1 fail/2 未跑，第三次是 3 pass/1 fail，均不记为四项通过。
+
+本次仅修改 `tests/frontend/evomap-oauth-flows.ts` 与本说明。第 2 条先完成真实登录/绑定并等待授权 UI 落定，再用 `page.context().request.get` 共享浏览器 Cookie 单次只读查询（仍为 15 秒）；校验 HTTP 200、live、ok、列表形状、本次 A grant 非空且不在 B 列表，并轮询 DOM 核对 UI 授权 ID 集合与该会话服务端列表完全一致。第 4 条严格限定唯一 `.cm-dialog .ex-feedback`，继续核对本次 usage 和该面板中的准确版本返回按钮，没有使用 first 或允许历史内容。审阅其余响应/下载等待，均紧邻触发点击，未发现另一处跨 OAuth 导航或绑定的提前计时；没有提高全局超时或重试写入。
+
+本地 `npm run typecheck`、`git diff --check` 通过；此任务没有修改 JS/页面/SDK/后端，没有启动浏览器 PG 套件、连接数据库、操作 3079 或云。当前测试文件与指定 f9a0b33 的修复前内容一致，无需为这两处修改额外合入集成历史，原 `test-results/` 保留。真实四项回归由 Root 转交 I 在其独占测试窗口合入后执行；本次 F **未宣称真实回归通过**。
+
 ## 知乎 OAuth 前端轮（当前，覆盖下方旧邮箱登录验收）
 
 **最终开发交接（2026-09-15）**：已普通合入 C 最终 `ee269f4d58f6e58109188df5e8e0aa22802d4dc2`，并适配其退出失败先撤下身份的安全行为。实际复现原提示随账户重绘丢失（新 SDK 组合 18/19），窄修为跨重绘保留“退出结果尚未确认”，先收起写入控件、禁用新登录，再以共享 `auth.initialize()` 重新确认服务器会话；确认仍有效后可由人再次退出，成功后恢复登录入口。没有回退 SDK 的安全处理。中间回归另发现旧隐藏错误节点使测试选择器不唯一，移除该废弃节点。
