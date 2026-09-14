@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { CreateContentApprovalSchema } from '../../lib/gongzhi/contracts.ts';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
-const preload = fileURLToPath(new URL('./fixtures/zhihu-cli-fetch.mjs', import.meta.url));
+const preload = new URL('./fixtures/zhihu-cli-fetch.mjs', import.meta.url).href;
 const cli = join(repository, 'examples/agent/cli.ts');
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const writeJson = (path, value) => writeFile(path, JSON.stringify(value));
@@ -100,6 +100,7 @@ test('CLI rejects a falsely preapproved draft and creates no published record', 
   const result = await run(paths, ['check-draft', file]);
   assert.equal(result.code, 1);
   assert.equal(result.stdout, '');
+  assert.equal(JSON.parse(result.stderr).ok, false);
   assert.deepEqual(await requests(paths), []);
   assert.deepEqual((await readdir(paths.dir)).sort(), ['http.json', 'requests.jsonl', 'unreviewed.json']);
 });
