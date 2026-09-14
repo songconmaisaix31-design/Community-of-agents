@@ -355,6 +355,21 @@ test('disconnect propagates to the provider and does not submit', async () => {
   assert.equal(provider.count(), 1);
 });
 
+test('a cancelled later SDK step retains observed earlier usage without claiming complete billing', async () => {
+  const h = harness();
+  const provider = modelSteps([[toolCall('readNeed')], options => {
+    h.request.abort();
+    assert.equal(options.abortSignal.aborted, true);
+    throw Error('Synthetic second-call disconnect, its usage is unknown');
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(result.usage.model_steps, 2);
+  assert.equal(result.usage.input_tokens, 10);
+  assert.equal(result.usage.output_tokens, 20);
+  assert.equal(h.submitted(), 0);
+});
+
 test('deadline expires during provider work and reports timeout', async () => {
   let now = 0;
   const h = harness({ options: { now: () => now } });
