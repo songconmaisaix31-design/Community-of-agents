@@ -10,7 +10,7 @@ const legacy = {
 const isolated = {
   SITE_URL: 'http://127.0.0.1:3079', SUPABASE_URL: 'http://127.0.0.1:56641',
   GONGZHI_LOCAL_PROJECT: 'gongzhi-fulltest-c-20260914',
-  GONGZHI_ONBOARDING_CREDENTIAL_DIR: 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914',
+  GONGZHI_ONBOARDING_CREDENTIAL_DIR: 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914/integration-credentials',
   GONGZHI_ONBOARDING_PROFILE: 'fulltest-c-20260914',
 };
 
@@ -46,6 +46,7 @@ test('public, alternate loopback and decorated URLs cannot target production', (
 });
 
 test('private files cannot escape to another account, project, share or subdirectory', () => {
+  assert.throws(() => onboardingTarget({ ...isolated, GONGZHI_ONBOARDING_CREDENTIAL_DIR: 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914' }), /private directory mismatch/);
   for (const dir of ['', '.', 'C:/Users/DW/.ssh', 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914/child', 'C:/Users/DW/AppData/Local/gongzhi/other/../fulltest-c-20260914', '//server/share/fulltest-c-20260914', 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914\0']) {
     assert.throws(() => onboardingTarget({ ...isolated, GONGZHI_ONBOARDING_CREDENTIAL_DIR: dir }), /private directory mismatch/);
   }
