@@ -1,6 +1,7 @@
 /* 本地内容只在显式审阅确认后发送；唯一 DTO 来自 Core 生成客户端。 */
 (function () {
   "use strict";
+  var fixtureMode = new URLSearchParams(location.search).get("demo") === "atlas";
   var root = document.querySelector("[data-ex-library]");
   var C = window.GongzhiCommunity;
   if (!C) return;
@@ -9,7 +10,10 @@
     if (!modulePromise) modulePromise = import("/community/assets/gongzhi-client.js").catch(function (e) { modulePromise = null; throw e; });
     return modulePromise;
   }
-  function publicApi() { return shared().then(function (m) { return m.createApiClient("live"); }); }
+  function publicApi() {
+    if (fixtureMode) return window.GongzhiAtlas ? Promise.resolve(window.GongzhiAtlas.client) : Promise.reject(new Error("Fixture 资源加载失败，未请求真实服务。"));
+    return shared().then(function (m) { return m.createApiClient("live"); });
+  }
   function context() { return window.GongzhiAccount ? window.GongzhiAccount.context() : {}; }
   function node(tag, cls, text) {
     var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n;
@@ -55,6 +59,7 @@
     return value;
   }
   function openDraft(initial) {
+    if (fixtureMode) { if (window.GongzhiAtlas) window.GongzhiAtlas.share(); return; }
     if (initial) draftText = json(initial);
     if (!draftText) draftText = json(blank());
     var panel = C.openDialog("本地草稿与公开确认", "资料仅在本页内存中处理。先保存草稿，再登录批准；接入 MCP 或签发 grant 不等于同意上传。");
@@ -205,7 +210,7 @@
     out.append(check, revoke);
   }
   async function openVersion(id, revision) {
-    var panel = C.openDialog("借用固定版本经验", "经验保存在云端，任务在你自己的电脑执行。作者离线仍可借用；下载不等于执行，也不会自动运行附带脚本。");
+    var panel = C.openDialog("借用固定版本经验", window.GongzhiAtlas ? "Fixture：A 已离线，B 读取本地合成样本的固定版本。下载不等于执行，不自动运行脚本。" : "经验保存在云端，任务在你自己的电脑执行。作者离线仍可借用；下载不等于执行，也不会自动运行附带脚本。");
     panel.classList.add("ex-dialog");
     var status = node("p", "cm-sub", "正在读取第 " + revision + " 版…"); panel.append(status);
     try {
@@ -219,7 +224,8 @@
       actions.append(button("下载 SKILL.md", function () { download(version.skill_md, "SKILL.md", "text/markdown;charset=utf-8"); }), button("复制 SKILL.md", function () { copy(version.skill_md, status); }), button("下载完整引用 JSON", function () { download(json(version), "gongzhi-experience-v" + exp.revision + ".json"); }), button("复制完整引用 JSON", function () { copy(json(version), status); }));
       panel.append(actions, node("p", "cm-sub", "先检查来源与适用条件，再让本机 Agent 按你允许的范围执行。复杂任务可选本机 Kernel，无需强制安装。"));
       var full = node("details"); full.append(node("summary", null, "查看完整 SKILL.md"), node("pre", "ex-exact", version.skill_md)); panel.append(full);
-      panel.append(button("记录本机使用反馈", function () { openFeedback(exp); }, true));
+      if (window.GongzhiAtlas) window.GongzhiAtlas.enhanceVersion(panel, exp);
+      else panel.append(button("记录本机使用反馈", function () { openFeedback(exp); }, true));
     } catch (e) { error(status, e); }
   }
   function openFeedback(exp) {
@@ -250,7 +256,14 @@
       } catch (e) { if (seq === generation) { list.replaceChildren(); var err = node("p"); error(err, e); list.append(err, button("重试读取经验", discover)); } }
     }
     search.addEventListener("submit", function (e) { e.preventDefault(); discover(); });
-    root.querySelector("[data-ex-draft]").addEventListener("click", function () { openDraft(); });
+    var draftButton = root.querySelector("[data-ex-draft]");
+    if (fixtureMode) {
+      draftButton.hidden = true;
+      root.querySelector(".cm-eyebrow").textContent = "FIXTURE · 合成占位方法 · 本地演练";
+      root.querySelector(".ex-heading .cm-sub").textContent = "先让 A 分享，再由 B 搜索并选择固定第 1 版。没有真实作者或知乎引用，A 离线仍可借用。";
+      window.addEventListener("gongzhi-atlas-change", discover);
+    }
+    draftButton.addEventListener("click", function () { openDraft(); });
     discover();
   }
   window.GongzhiExperience = { openDraft: openDraft, openVersion: openVersion };

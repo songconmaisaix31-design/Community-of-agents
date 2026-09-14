@@ -5,6 +5,7 @@
    令牌只在签发后显示一次，不写入 localStorage；写失败保留草稿与同一幂等键，由人决定是否重试。 */
 (function () {
   "use strict";
+  if (new URLSearchParams(location.search).get("demo") === "atlas") return; // Guard even when fixture assets fail.
 
   var SCOPES = [
     ["read", "读取公开公告"],
