@@ -59,9 +59,15 @@ function applyData(graph) {
   for (const n of graph.nodes) if (!previousIds.has(n.id)) ids.push(n.id);
   const indices = new Map(ids.map((id, i) => [id, i]));
   const seedRadius = Math.min(900, Math.max(180, Math.sqrt(graph.nodes.length) * 90));
-  const positions = new Float32Array(ids.flatMap((id, i) => !byId.has(id) ? [NaN, NaN]
-    : previousIds.has(id) && Number.isFinite(existing[i * 2]) ? [existing[i * 2], existing[i * 2 + 1]]
-    : [centerX + Math.sin(i * 13.7 + 1) * seedRadius, centerY + Math.cos(i * 7.3 + 1) * seedRadius]));
+  const positions = new Float32Array(ids.flatMap((id, i) => {
+    if (!byId.has(id)) return [NaN, NaN];
+    if (previousIds.has(id) && Number.isFinite(existing[i * 2])) return [existing[i * 2], existing[i * 2 + 1]];
+    // Deterministic disk seeds avoid square edges; existing points and camera stay intact.
+    const noise = Math.sin((i + 1) * 12.9898) * 43758.5453;
+    const radius = seedRadius * Math.sqrt(noise - Math.floor(noise));
+    const angle = (i + 1) * 2.399963229728653;
+    return [centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius];
+  }));
   cosmos.setPointPositions(positions, fitted);
   cosmos.setPointSizes(new Float32Array(ids.map(id => !byId.has(id) ? 0 : selected === id ? 7 : 4)));
   cosmos.setPointColors(pointColors());
