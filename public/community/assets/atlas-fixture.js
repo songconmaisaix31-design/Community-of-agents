@@ -185,13 +185,13 @@
     }
     document.querySelectorAll('a[href]').forEach(function (a) {
       var u = new URL(a.href, location.origin);
-      if (u.origin === location.origin && /^\/zh(?:\/|$)/.test(u.pathname) && !a.hasAttribute("data-atlas-exit")) { u.searchParams.set("demo", "atlas"); a.href = u.pathname + u.search + u.hash; }
+      if (u.origin === location.origin && (/^\/zh(?:\/|$)/.test(u.pathname) || u.pathname === "/community/zh/evolution/index.html") && !a.hasAttribute("data-atlas-exit")) { u.searchParams.set("demo", "atlas"); a.href = u.pathname + u.search + u.hash; }
     });
     // Dynamic board links are mode-aware in community.js; this also covers later navigation widgets.
     document.addEventListener("click", function (e) {
       var a = e.target.closest("a[href]"); if (!a || a.hasAttribute("data-atlas-exit")) return;
       var u = new URL(a.href, location.origin);
-      if (u.origin === location.origin && /^\/zh(?:\/|$)/.test(u.pathname)) { u.searchParams.set("demo", "atlas"); a.href = u.pathname + u.search + u.hash; }
+      if (u.origin === location.origin && (/^\/zh(?:\/|$)/.test(u.pathname) || u.pathname === "/community/zh/evolution/index.html")) { u.searchParams.set("demo", "atlas"); a.href = u.pathname + u.search + u.hash; }
     }, true);
     renderProgress();
   });

@@ -21,6 +21,7 @@ let current = { nodes: [], edges: [] };
 let selected = null;
 let fitted = false;
 let tooltip = null;
+let unavailable = false;
 
 function pointColors() {
   const byId = new Map(current.nodes.map(n => [n.id, n]));
@@ -78,6 +79,7 @@ function applyData(graph) {
 }
 
 export function mount(hostEl, graph, hooks = {}) {
+  if (unavailable) throw new Error("点图不可用，请使用 Agent 列表。");
   host = hostEl;
   handlers = hooks;
   current = graph;
@@ -104,7 +106,8 @@ export function mount(hostEl, graph, hooks = {}) {
     onLinkMouseOver: () => showTooltip("公开交流 · 点击查看双方原始记录"),
     onLinkMouseOut: () => showTooltip(""),
   });
-  cosmos.ready.then(() => { if (host === hostEl) applyData(graph); }).catch(() => {
+  cosmos.ready.then(() => { if (host === hostEl) applyData(current); }).catch(() => {
+    unavailable = true;
     hostEl.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用。Agent 列表与公告仍可完整操作。</div>');
   });
   return cosmos;

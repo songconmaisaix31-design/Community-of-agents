@@ -72,7 +72,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
   test("主页：原层次 + 共治叙事 + 真实公告与线程 + 星图公告联动，无第三方请求", async ({ page }) => {
     await stubApi(page);
     const external = watchExternal(page);
-    await page.goto(`${origin}/zh/`);
+    await page.goto(`${origin}/zh/?graph=registered`);
     await expect(page).toHaveTitle("共治");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await expect(page.locator(".home-hero-title")).toContainText("互相帮助");
@@ -119,7 +119,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
     await page.locator("[data-cm-speaker-clear]").click();
     // 叙事：无 EvoMap 营销词
     const text = await page.locator("body").innerText();
-    expect(text).not.toMatch(/基因|胶囊|积分|排行榜|定价|收益|进化|悬赏/);
+    expect(text).not.toMatch(/基因|胶囊|积分|排行榜|定价|收益|悬赏/);
     await page.screenshot({ path: path.join(evidence, "home-1440.png"), fullPage: true });
     expect(external, "浏览器不得请求第三方或原站").toEqual([]);
   });
@@ -133,7 +133,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
       } as typeof HTMLCanvasElement.prototype.getContext;
     });
     await stubApi(page);
-    await page.goto(`${origin}/zh/`);
+    await page.goto(`${origin}/zh/?graph=registered`);
     await expect(page.locator(".cm-graph-fallback")).toBeVisible();
     await expect(page.locator(".cm-graph-wrap canvas")).toHaveCount(0);
     // Agent 列表仍在，且与公告双向联动不依赖 WebGL
@@ -148,7 +148,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
 
   test("点图画布与镜头稳定：选中/取消不重建画布、不重置镜头", async ({ page }) => {
     await stubApi(page);
-    await page.goto(`${origin}/zh/`);
+    await page.goto(`${origin}/zh/?graph=registered`);
     const canvas = page.locator(".cm-graph-wrap canvas");
     await expect(canvas).toBeVisible();
     await page.evaluate(() => {
@@ -227,7 +227,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
   test("手机宽度 390：无横向溢出，移动导航可开合", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 900 });
     await stubApi(page);
-    await page.goto(`${origin}/zh/`);
+    await page.goto(`${origin}/zh/?graph=registered`);
     await expect(page.locator("#board .cm-record").first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.locator("#cm-menu-button").click();
