@@ -10,7 +10,8 @@ const recordsSql = `select p.id,p.title,p.body,p.created_at,p.created_at::text c
   case when p.parent_id is not null then coalesce(p.metadata->'gongzhi'->>'reply_to_id',p.parent_id) end reply_to_id,
   case p.metadata->'gongzhi'->>'subtype' when 'help' then 'reply' else p.metadata->'gongzhi'->>'subtype' end kind,
   coalesce(p.metadata->'gongzhi'->>'need_revision',case when p.metadata->'gongzhi'->>'subtype'='need' then p.metadata->'gongzhi'->>'revision' end) need_revision,
-  o.id speaker_id,h.id owner_id,to_jsonb(o)||jsonb_build_object('name',u.name,'last_seen_at',u.last_seen_at,'status',u.status) speaker
+  o.id speaker_id,h.id owner_id,to_jsonb(o)||jsonb_build_object('name',u.name,'last_seen_at',u.last_seen_at,'status',u.status) speaker,
+  p.metadata->'gongzhi'->'experience_feedback' experience_feedback
   from posts p join gongzhi_owners o on o.publisher_id=p.publisher_id
   join publishers u on u.id=p.publisher_id
   join gongzhi_owners h on h.user_id=o.user_id and h.kind='human'
@@ -30,7 +31,7 @@ const recordsSql = `select p.id,p.title,p.body,p.created_at,p.created_at::text c
 type RecordRow = Omit<BulletinRecord, "mode" | "created_at" | "speaker" | "need_revision"> & { created_at: Date; cursor_time: string; speaker: OwnerRow; need_revision: string | null };
 function record(row: RecordRow): BulletinRecord {
   const speaker = { ...row.speaker, created_at: new Date(row.speaker.created_at), revoked_at: row.speaker.revoked_at ? new Date(row.speaker.revoked_at) : null, last_seen_at: row.speaker.last_seen_at ? new Date(row.speaker.last_seen_at) : null };
-  return { id: row.id, title: row.title, body: row.body, thread_id: row.thread_id, reply_to_id: row.reply_to_id, kind: row.kind, speaker_id: row.speaker_id, owner_id: row.owner_id, speaker: toOwner(speaker), need_revision: row.need_revision ? Number(row.need_revision) : null, created_at: row.created_at.toISOString(), mode: "live" };
+  return { id: row.id, title: row.title, body: row.body, thread_id: row.thread_id, reply_to_id: row.reply_to_id, kind: row.kind, speaker_id: row.speaker_id, owner_id: row.owner_id, speaker: toOwner(speaker), need_revision: row.need_revision ? Number(row.need_revision) : null, created_at: row.created_at.toISOString(), mode: "live", ...(row.experience_feedback ? { experience_feedback: row.experience_feedback } : {}) };
 }
 function cursor(value?: string): [string, string] | null {
   if (!value) return null;
@@ -70,6 +71,6 @@ export async function getAgentGraph(): Promise<AgentGraph> {
   assertDatabaseConfigured();
   // No content/ownership/tag/acceptance edges. Both endpoints must be public bound Agent speech.
   const nodes = await sql()`select o.id,o.kind,p.name label,h.id owner_id,'live' mode from gongzhi_owners o join publishers p on p.id=o.publisher_id join gongzhi_owners h on h.user_id=o.user_id and h.kind='human' where o.kind in ('external_agent','platform_agent') order by o.id`;
-  const edges = await sql().unsafe(`with visible as (${recordsSql}) select 'communication:'||a.id id,a.speaker_id source,b.speaker_id target,a.id evidence_id,b.id reply_to_id,a.thread_id,'live' mode from visible a join visible b on b.id=a.reply_to_id and b.thread_id=a.thread_id where a.speaker->>'kind' in ('external_agent','platform_agent') and b.speaker->>'kind' in ('external_agent','platform_agent') and a.speaker_id<>b.speaker_id order by a.created_at desc,a.id desc limit 1000`);
+  const edges = await sql().unsafe(`with visible as (${recordsSql}) select 'communication:'||a.id id,a.speaker_id source,b.speaker_id target,a.id evidence_id,b.id reply_to_id,a.thread_id,'live' mode from visible a join visible b on b.id=a.reply_to_id and b.thread_id=a.thread_id where a.speaker->>'kind' in ('external_agent','platform_agent') and b.speaker->>'kind' in ('external_agent','platform_agent') and a.speaker_id<>b.speaker_id and a.experience_feedback is null and b.experience_feedback is null order by a.created_at desc,a.id desc limit 1000`);
   return { nodes: nodes as unknown as AgentGraph["nodes"], edges: edges as unknown as AgentGraph["edges"], mode: "live" };
 }

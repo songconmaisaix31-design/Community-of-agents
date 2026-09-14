@@ -6,14 +6,15 @@ import { inboxFor, clampLimit, type InboxItem } from "../inbox";
 import { createPost, getPostRow, PostInputSchema, publicPost, repliesFor, updatePost, type PostRow, type PublicPost } from "../posts";
 import { search } from "../search";
 import { assertWritable } from "../limits";
-import { CloseNeedSchema, CreateNeedSchema, PostReplySchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference, type AgentScope } from "./contracts";
+import { CloseNeedSchema, CreateNeedSchema, PostReplySchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, type ExperienceSearchPage, type ExperienceVersion, type ExperienceFeedback, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference, type AgentScope } from "./contracts";
+import { withContentApproval } from "./content-approval";
 import { assertIdentity, humanOwnerId, resolveIdentity, toOwner, type Identity } from "./identity";
 import { getAgentGraph, readRecord } from "./bulletin";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 export { resolveIdentity };
 export type { Identity };
 
-type Metadata = { speaker_id?: string; thread_id?: string; reply_to_id?: string; subtype: string; owner_id: string; owner_kind: Owner["kind"]; mode: "live"; revision: number; need_revision?: number; constraints?: string; expected_result?: string; applicability?: string; previous_version_id?: string; sources?: Source[]; method_refs?: MethodReference[]; fingerprint?: string; decision?: Decision["decision"]; result_id?: string; run_id?: string };
+type Metadata = { speaker_id?: string; thread_id?: string; reply_to_id?: string; subtype: string; owner_id: string; owner_kind: Owner["kind"]; mode: "live"; visibility?: string; revision: number; need_revision?: number; constraints?: string; expected_result?: string; applicability?: string; previous_version_id?: string; sources?: Source[]; method_refs?: MethodReference[]; fingerprint?: string; decision?: Decision["decision"]; result_id?: string; run_id?: string; experience_feedback?: Pick<ExperienceFeedback, "experience_id" | "revision" | "usage" | "outcome"> };
 type NeedRow = { revision: number; status: Need["status"]; accepted_result_id: string | null; updated_at: Date };
 export function gongzhiMetadata(post: Pick<PublicPost, "metadata">): Metadata { return post.metadata.gongzhi as Metadata; }
 function stopped(signal?: AbortSignal) { if (signal?.aborted) throw new GongzhiError(409, "cancelled", "操作已取消。"); }
@@ -112,6 +113,30 @@ export async function readExperience(id: string): Promise<Experience> {
   if (gongzhiMetadata(post).subtype !== "experience") throw new GongzhiError(404, "not_found", "没有找到这个经验版本。");
   return toExperience(post);
 }
+export async function searchExperience(raw: unknown): Promise<ExperienceSearchPage> {
+  const query = ExperienceSearchSchema.parse(raw);
+  const found = await findPublicExperience(query.q);
+  const items: ExperienceSearchPage["items"] = [];
+  for (const item of found) {
+    let record;
+    try { record = await readRecord(item.id); }
+    catch (error) { if (error instanceof GongzhiError && error.code === "not_found") continue; throw error; }
+    items.push({ id: item.id, revision: item.revision, title: item.title, summary: item.body.slice(0, 280), applicability: item.applicability,
+      tags: item.tags, owner_id: record.owner_id, author: record.speaker, source_count: item.sources.length,
+      previous_version_id: item.previous_version_id, created_at: item.created_at, mode: "live" });
+    if (items.length === query.limit) break;
+  }
+  return { items, mode: "live" };
+}
+export async function readExperienceVersion(id: string, revision: number): Promise<ExperienceVersion> {
+  ReadExperienceVersionSchema.parse({ id, revision });
+  const experience = await readExperience(id), record = await readRecord(id);
+  if (experience.revision !== revision) throw new GongzhiError(409, "revision_conflict", "经验 ID 与固定版本不一致。", { requested_revision: revision, record_revision: experience.revision });
+  // Valid Agent Skills frontmatter; user content stays body data, never tool grants.
+  const skillName = `experience-${sha256(id).slice(0, 16)}-v${revision}`;
+  const skill_md = `---\nname: ${skillName}\ndescription: ${JSON.stringify(experience.applicability || experience.title)}\nmetadata:\n  gongzhi-id: ${JSON.stringify(id)}\n  gongzhi-revision: ${JSON.stringify(String(revision))}\n  author-id: ${JSON.stringify(record.speaker_id)}\n---\n\n${experience.body}\n`;
+  return { experience, author: record.speaker, skill_md, execution: "caller_local", author_presence_required: false };
+}
 export async function closeNeed(actor: Identity, id: string, raw: unknown): Promise<Need> {
   const input = CloseNeedSchema.parse(raw);
   return inTransaction(async () => {
@@ -130,12 +155,14 @@ export async function findExperience(actor: Identity, query: string, signal?: Ab
 export async function findPublicExperience(query: string): Promise<Experience[]> {
   assertDatabaseConfigured();
   const result = await search({ q: query, tags: "experience", kind: "offer", limit: 100, include_expired: "true", rerank: "false" }, { track: false });
-  return result.posts.filter((p) => gongzhiMetadata(p)?.subtype === "experience" && gongzhiMetadata(p)?.mode === "live").map(toExperience);
+  return result.posts.filter((p) => gongzhiMetadata(p)?.subtype === "experience" && gongzhiMetadata(p)?.mode === "live" && (!gongzhiMetadata(p).visibility || gongzhiMetadata(p).visibility === "public")).map(toExperience);
 }
 export async function publishExperience(actor: Identity, raw: unknown): Promise<Experience> {
   const input = PublishExperienceSchema.parse(raw);
   return inTransaction(async () => {
-    const publisher = await writePublisher(actor, "publish_experience"); const fp = fingerprint("publish_experience", input);
+    const { approval_id, ...payload } = input;
+    return withContentApproval(actor, approval_id, { action: "publish_experience", payload }, async () => {
+    const publisher = await writePublisher(actor, "publish_experience"); const fp = fingerprint("publish_experience", payload);
     const existing = await previous(actor, input.idempotency_key, fp); if (existing) return toExperience(existing);
     let revision = 1;
     if (input.previous_version_id) {
@@ -145,7 +172,21 @@ export async function publishExperience(actor: Identity, raw: unknown): Promise<
     }
     const { post } = await createPost(publisher, PostInputSchema.parse({ ...input, kind: "offer", tags: [...new Set([...input.tags, "experience"])], metadata: { gongzhi: await metadata(actor, "experience", { revision, applicability: input.applicability, previous_version_id: input.previous_version_id, sources: input.sources, fingerprint: fp }) } }));
     return toExperience(post);
+    });
   });
+}
+export async function postExperienceFeedback(actor: Identity, raw: unknown) {
+  const input = PostExperienceFeedbackSchema.parse(raw), { approval_id, ...payload } = input;
+  return inTransaction(() => withContentApproval(actor, approval_id, { action: "experience_feedback", payload }, async () => {
+    const publisher = await writePublisher(actor, "discuss"), fp = fingerprint("experience_feedback", payload);
+    const existing = await previous(actor, input.idempotency_key, fp); if (existing) return readRecord(existing.id);
+    const { experience } = await readExperienceVersion(input.experience_id, input.revision);
+    const ref = { experience_id: experience.id, revision: experience.revision, usage: input.usage };
+    const { post } = await createPost(publisher, PostInputSchema.parse({ kind: "announcement", title: `使用反馈：${experience.title}`.slice(0,200), body: input.body, tags: [], parent_id: experience.id, idempotency_key: input.idempotency_key,
+      metadata: { gongzhi: await metadata(actor, "reply", { thread_id: experience.id, reply_to_id: experience.id, method_refs: [ref], experience_feedback: { ...ref, outcome: input.outcome }, fingerprint: fp }) } }));
+    await sql()`insert into gongzhi_links(id,result_id,experience_id,experience_revision,content_digest,usage) values(${randomUUID()},${post.id},${experience.id},${experience.revision},${sha256(experience.body)},${input.usage})`;
+    return readRecord(post.id);
+  }));
 }
 export async function submitResult(actor: Identity, raw: unknown, options: { run_id?: string; signal?: AbortSignal } = {}): Promise<Result> {
   const input = SubmitResultSchema.parse(raw); stopped(options.signal);

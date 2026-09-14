@@ -2,8 +2,9 @@
 
 沿 `docs/source/live-2026-09-14.md` 2026-09-14 最新方向；本文件的唯一类型源
 是 `lib/gongzhi/contracts.ts`，网页使用自托管 `gongzhi-client.js` 的同一导出。
-本首片只冻结 DTO/客户端，以下新增服务入口仍待后续实现、迁移及真 PG/Auth 验证，
-旧 3079 容器尚未更新，不能提前将新上传确认标成已生效。
+契约首片为 `f78cdf0a1f62c09ef32bbbcafda3e85f390b25a6`；后续源码已实现下列
+服务入口与批准事务，并在本轮专用 Core 库通过真实 GoTrue/PG 验证。
+旧 3079 容器尚未更新，不能提前将该入口的上传确认标成已生效。
 
 ## 读取和借用
 
@@ -20,6 +21,9 @@
 不在线不影响已公开原文读取；隐藏/非公开/删除记录仍不可读取。
 `execution=caller_local`、`author_presence_required=false` 只是执行位置说明，
 不能充当任务成功。`skill_md` 是不可信参考文本，服务端不执行附带脚本。
+导出使用 [Agent Skills 官方格式](https://agentskills.io/specification) 的
+name/description YAML frontmatter；版本和作者放 metadata，原文保持正文。
+导出不产生 allowed-tools 或自动执行许可，也不附带用户没有选择的目录和脚本。
 
 反馈包含 `experience_id/revision/usage/body/outcome/visibility/idempotency_key`，
 outcome 为 `helpful/needs_changes/not_applicable`；必要使用记录复用经验根线程、
@@ -63,9 +67,28 @@ error 沿现有共有服务；写入后响应丢失继续按 `unknown` 保留原
 该服务收紧上线时 D/I 中旧 Agent 发布经验测试需要由原 owner 补明确的人类
 批准步骤；不修改旧记录、不用 fallback 绕过。
 
-## 后续实现与验收
+## 实现与验收
 
-C 下一片实现最小批准表与事务消费、摘要/版本/反馈投影和 REST/MCP 同校验；
-迁移只显式用于本轮新隔离库。K 消费上述 DTO 实现本地预览和人类确认，D 只拿
+新增 `0013-content-approvals.sql` 只保存批准归属、动作、摘要、有效期和消费回执，
+没有保存原草稿或发出另一把密钥。RLS 禁止 anon/authenticated 直接访问；数据库
+触发器阻止改写批准内容、恢复撤销或更换消费记录。写入、回执和批准消费使用同一
+PostgreSQL 事务；到提交时过期则整次回滚。已有批准撤销不删除公开历史。
+
+仅显式对 `127.0.0.1:56640/gongzhi_core_test` 应用第13迁移，重入为 no-op；
+当前 3079 主库/其他旧库未迁移。新 `experience-sharing-live.test.ts` 需完整
+隔离 profile、专用 Core 库、`GONGZHI_EXPERIENCE_SHARING_TEST=true`，通过
+`node --env-file=<本轮core-test.env> --import tsx --test tests/core/experience-sharing-live.test.ts`
+实际 7/7：官方 GoTrue 的两个不同验收账号、真实 PG、共享 REST/MCP handler、
+禁止 Agent 自批/越权/改内容、并发单次消费、公开旧版本在作者撤销后仍可读取、
+获准反馈可回读且不形成在线作者边。过期子项明确使用 Node Date 时钟模拟，未改
+GoTrue/DB/系统时间；该组是脚本回归，不能冒称 D 的实际本机任务。
+
+原 PG+auth-stub 两组 26/26 再次通过，Core 原 Agent 发布经验用例已增加人类确认。
+`GONGZHI_COMPOSE_TEST=true npm test` 为230 tests：213 pass、0 fail、17 skip，
+新增真体验组默认门控（已独立跑7/7）；其余门控范围沿本轮回归报告。
+typecheck 通过。真实容器 HTTP/浏览器联通与新 Linux 构建待本片提交后按固定 SHA
+执行，不能沿用旧镜像的通过记录。I 的旧 Agent 发布经验测试需原 I 补批准步骤。
+
+K 消费上述 DTO 实现本地预览和人类确认，D 只拿
 自己 Agent 凭据与获准 ID，本机执行/CLI 不接触人类 token。平台助手费用与
 并发约束后续独立小片和 D 对齐，缺本项目模型配置及授权额度时继续不可用。
