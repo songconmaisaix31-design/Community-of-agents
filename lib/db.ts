@@ -33,6 +33,36 @@ export const sideWrite = makeSideWrite({
 });
 
 const transactionContext = new AsyncLocalStorage<postgres.Sql>();
+export type BoundedReadOptions = { signal?: AbortSignal; timeout_ms?: number };
+/** Dedicated scalar/JSON Run reads; no PG array decoding or writes. */
+export async function withBoundedRead<T>(fn: () => Promise<T>, options: BoundedReadOptions): Promise<T> {
+  const ms = options.timeout_ms ?? 1000;
+  if (!Number.isInteger(ms) || ms < 1 || ms > 2000) throw new RangeError("read timeout must be within 1..2000 ms");
+  options.signal?.throwIfAborted();
+  const db = postgres(env.DATABASE_URL, {
+    prepare: false, max: 1, connect_timeout: 1, idle_timeout: 1, max_lifetime: 3,
+    // postgres.js 3.4.9 starts an unawaited catalog array-type discovery after
+    // authentication. Interrupting that hidden query can reject outside the
+    // caller's promise. These Run/identity checks consume scalar/JSON fields.
+    fetch_types: false,
+    ssl: databaseSsl(env.DATABASE_URL), transform: { undefined: null },
+    connection: { statement_timeout: ms, lock_timeout: ms, default_transaction_read_only: true },
+  });
+  let interruption: unknown;
+  let closing: Promise<void> | undefined;
+  const close = () => closing ??= db.end({ timeout: 0 });
+  const stop = (reason: unknown) => { interruption ??= reason; void close(); };
+  const abort = () => stop(options.signal!.reason ?? new DOMException("Read cancelled", "AbortError"));
+  const timer = setTimeout(() => stop(new DOMException("Run read timed out", "TimeoutError")), ms);
+  options.signal?.addEventListener("abort", abort, { once: true });
+  try {
+    if (options.signal?.aborted) abort();
+    const result = await transactionContext.run(db, fn);
+    if (interruption) throw interruption;
+    return result;
+  } catch (error) { throw interruption ?? error; }
+  finally { clearTimeout(timer); options.signal?.removeEventListener("abort", abort); await close(); }
+}
 export async function inTransaction<T>(fn: () => Promise<T>): Promise<T> {
   if (transactionContext.getStore()) return fn();
   return sql().begin(async (tx) => {

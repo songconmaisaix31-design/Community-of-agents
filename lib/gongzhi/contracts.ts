@@ -75,11 +75,22 @@ export interface Decision {
   id: string; need_id: string; need_revision: number; result_id: string;
   decision: "accept" | "request_revision" | "reject"; note: string; owner_id: string; created_at: string; mode: SourceMode;
 }
+export interface RunExecutionLimits {
+  model_id: string; model_context_tokens: number; max_output_tokens: number;
+  max_steps: number; max_zhihu_queries: number; deadline_ms: number;
+  input_price_microusd_per_million: number; output_price_microusd_per_million: number;
+}
+export interface RunBudget {
+  limits: RunExecutionLimits; currency: "USD"; reserved_microusd: number;
+  settled_microusd: number | null; usage_complete: boolean;
+}
 export interface Run {
   id: string; need_id: string; need_revision: number; owner_id: string; status: RunStatus;
   idempotency_key: string; deadline_at: string; created_at: string; updated_at: string;
   result_id: string | null; error: ApiError | null;
   usage: { model_steps: number; zhihu_queries: number; input_tokens: number | null; output_tokens: number | null };
+  /** Absent only on runs created before cost admission was introduced. */
+  budget?: RunBudget | null;
   mode: SourceMode;
 }
 export interface GraphNode { id: string; type: "owner" | "need" | "experience" | "result"; label: string; mode: SourceMode }
@@ -135,6 +146,8 @@ export type BindOwnerInput = z.infer<typeof BindOwnerSchema>;
 export interface BoundOwner { owner: Owner; api_key?: string }
 export const StartRunSchema = z.object({ need_id: id, need_revision: revision, idempotency_key: key }).strict();
 export type StartRunInput = z.infer<typeof StartRunSchema>;
+export const RunLookupSchema = StartRunSchema.pick({ need_id: true, idempotency_key: true });
+export type RunLookupInput = z.infer<typeof RunLookupSchema>;
 
 // Public corrections contract. Identity/provenance fields are always server-derived.
 export const AgentScopeSchema = z.enum(["read", "publish_need", "publish_experience", "submit_result", "discuss"]);
