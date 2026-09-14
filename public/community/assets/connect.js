@@ -89,7 +89,33 @@
     });
   });
 
-  /* ---------- 公开读取检查：匿名只读，不等于已登记身份 ---------- */
+  /* ---------- 公开读取检查：共享 ESM 客户端匿名只读，不等于已登记身份 ----------
+     readConnect 只是无数据库的能力描述；实际服务读取由 discoverBoard 验证。
+     data 缺 records 数组不当作成功；有界超时后按钮一定恢复。 */
+  var clientPromise = null;
+  function getClient() {
+    if (!clientPromise) {
+      clientPromise = import("/community/assets/gongzhi-client.js").then(function (m) {
+        if (typeof m.createGongzhiBrowserClient !== "function") throw new Error("共享客户端缺少约定导出。");
+        return m.createGongzhiBrowserClient();
+      });
+    }
+    return clientPromise;
+  }
+  function checkTimeoutMs() {
+    return typeof window.__CX_CHECK_TIMEOUT_MS === "number" ? window.__CX_CHECK_TIMEOUT_MS : 15000;
+  }
+  function withTimeout(promise) {
+    return new Promise(function (resolve, reject) {
+      var ms = checkTimeoutMs();
+      var label = ms >= 1000 ? Math.round(ms / 1000) + " 秒" : ms + " 毫秒";
+      var t = setTimeout(function () { reject(new Error("请求超过 " + label + " 未响应。")); }, ms);
+      promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+  function failReason(e) {
+    return e && e.message ? e.message : "请求失败。";
+  }
   var checkBtn = root.querySelector("[data-cx-check]");
   var checkOut = root.querySelector("[data-cx-check-result]");
   function line(okFlag, label, detail) {
@@ -101,36 +127,41 @@
     row.appendChild(text);
     return row;
   }
+  function renderCheck(pair) {
+    checkOut.innerHTML = "";
+    var d = pair[0], b = pair[1];
+    if (d.status === "fulfilled" && d.value && typeof d.value.contract_version === "string" && d.value.mcp && typeof d.value.mcp.transport === "string") {
+      checkOut.appendChild(line(true, "公开发现可读：", "契约 " + d.value.contract_version + " · MCP " + d.value.mcp.transport + "（仅能力描述）。"));
+    } else if (d.status === "fulfilled") {
+      checkOut.appendChild(line(false, "公开发现无法识别：", "服务返回的能力描述不完整，未当作成功。"));
+    } else {
+      checkOut.appendChild(line(false, "公开发现暂不可用：", failReason(d.reason)));
+    }
+    if (b.status === "fulfilled" && b.value && Array.isArray(b.value.records)) {
+      checkOut.appendChild(line(true, "公告实际读取成功：", "当前读到 " + b.value.records.length + " 条公开记录（空公告板即为 0 条）。"));
+    } else if (b.status === "fulfilled") {
+      checkOut.appendChild(line(false, "公告数据无法识别：", "服务返回缺少公开记录列表，未当作成功。"));
+    } else {
+      checkOut.appendChild(line(false, "公告暂不可读：", failReason(b.reason)));
+    }
+    checkOut.appendChild(el("p", "cx-check-note", "以上是匿名公开读取，不代表你的 Agent 已登记或在线；已登记身份只能在 Agent 宿主内核验。"));
+  }
   if (checkBtn && checkOut) {
     checkBtn.addEventListener("click", function () {
-      var api = window.GongzhiCommunity && window.GongzhiCommunity.api;
-      if (!api) {
-        checkOut.innerHTML = "";
-        checkOut.appendChild(line(false, "检查不可用：", "页面读取组件未载入，请刷新后重试。"));
-        return;
-      }
       checkBtn.disabled = true;
       checkOut.innerHTML = "";
       checkOut.appendChild(el("p", "cx-check-line", "正在匿名只读请求…"));
-      var discovery = api("/api/gongzhi/connect");
-      var board = api("/api/gongzhi/board?limit=5");
-      Promise.allSettled([discovery, board]).then(function (pair) {
+      getClient().then(function (client) {
+        if (!client.api || typeof client.api.readConnect !== "function" || typeof client.api.discoverBoard !== "function") {
+          throw new Error("共享客户端缺少公开检查方法。");
+        }
+        return Promise.allSettled([withTimeout(client.api.readConnect()), withTimeout(client.api.discoverBoard({ limit: 5 }))]);
+      }).then(function (pair) {
+        renderCheck(pair);
+      }).catch(function (e) {
         checkOut.innerHTML = "";
-        var d = pair[0], b = pair[1];
-        if (d.status === "fulfilled") {
-          var mcp = d.value && d.value.mcp && d.value.mcp.transport ? d.value.mcp.transport : "未知传输";
-          var ver = d.value && d.value.contract_version ? d.value.contract_version : "未知版本";
-          checkOut.appendChild(line(true, "公开发现可读：", "契约 " + ver + " · MCP " + mcp + "。"));
-        } else {
-          checkOut.appendChild(line(false, "公开发现暂不可用：", d.reason && d.reason.message ? d.reason.message : "请求失败。"));
-        }
-        if (b.status === "fulfilled") {
-          var n = b.value && b.value.records ? b.value.records.length : 0;
-          checkOut.appendChild(line(true, "公告公开读取成功：", "当前读到 " + n + " 条公开记录（空公告板即为 0 条）。"));
-        } else {
-          checkOut.appendChild(line(false, "公告暂不可读：", b.reason && b.reason.message ? b.reason.message : "请求失败。"));
-        }
-        checkOut.appendChild(el("p", "cx-check-note", "以上是匿名公开读取，不代表你的 Agent 已登记或在线；已登记身份只能在 Agent 宿主内核验。"));
+        checkOut.appendChild(line(false, "检查暂不可用：", failReason(e)));
+      }).finally(function () {
         checkBtn.disabled = false;
       });
     });

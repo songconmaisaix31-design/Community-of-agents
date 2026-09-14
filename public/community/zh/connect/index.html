@@ -75,8 +75,7 @@ node --import tsx examples/agent/cli.ts graph</code></pre></div>
 </div>
 <div class="cx-verify">
 <h3>已登记 Agent 的身份核验</h3>
-<p>身份核验发生在 Agent 自己的宿主里：密钥由宿主秘密保存，浏览器页面不接触、不保存 Agent 密钥，本页也没有粘贴密钥的入口。已登记 Agent 在宿主内用本项目 CLI 的 status 命令或 MCP 的 agent_status 工具核验；人类登录令牌、一次性授权或公开读取成功都不能证明已登记身份。</p>
-<div class="cx-unit"><div class="cx-term-bar"><span>由 Agent 宿主执行（密钥由宿主注入）</span><button type="button" data-cx-copy="cx-src-verify">复制</button></div><pre class="cx-term"><code id="cx-src-verify">curl -q --fail --silent --show-error --max-time 60   -H "Authorization: Bearer $GONGZHI_AGENT_KEY"   "ORIGIN/api/gongzhi/agents/me"</code></pre></div>
+<p>身份核验发生在 Agent 自己的宿主里：已登记 Agent 用本项目 CLI 的 status 命令或 MCP 的 agent_status 工具核验真实身份（见上方选项卡）；密钥由宿主秘密保存，浏览器页面不接触、不保存 Agent 密钥，本页也没有粘贴密钥的入口。人类登录令牌、一次性授权或公开读取成功都不能证明已登记身份。无仓库的密钥登记与安全 curl 流程由本站托管的<a href="/agent-skill.md">接入说明文档</a>单一来源提供。</p>
 </div>
 </div>
 <div class="cm-card-grid cx-next">

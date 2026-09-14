@@ -39,12 +39,13 @@ const connectInfo = {
   registration: { required: true, method: "POST", credential: "human_grant", key_delivery: "once" },
   authentication: { agent: "bearer_header", anonymous_public_reads: true },
 };
-function stubReads(page: Page, opts: { connectStatus?: number } = {}) {
+function stubReads(page: Page, opts: { connectStatus?: number; boardData?: object } = {}) {
   return Promise.all([
+    page.route("**/api/gongzhi/config", r => r.fulfill({ json: { ok: true, mode: "live", data: { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: false, url: null, public_key: null } } } })),
     page.route("**/api/gongzhi/connect", r => opts.connectStatus && opts.connectStatus >= 400
       ? r.fulfill({ status: opts.connectStatus, json: { ok: false, mode: "live", error: { code: "unavailable", message: "公开发现暂时不可用。", retryable: true } } })
       : r.fulfill({ json: { ok: true, mode: "live", data: connectInfo } })),
-    page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [{ id: "n1" }, { id: "e1" }], next_cursor: null, mode: "live" } } })),
+    page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: opts.boardData ?? { records: [{ id: "n1" }, { id: "e1" }], next_cursor: null, mode: "live" } } })),
   ]);
 }
 function watchExternal(page: Page) {
@@ -106,9 +107,42 @@ test("connect 页：公开读取检查成功，明确不等于已登记 Agent", 
   await page.locator("[data-cx-check]").click();
   const out = page.locator("[data-cx-check-result]");
   await expect(out).toContainText("公开发现可读：契约 test-v1 · MCP streamable-http");
-  await expect(out).toContainText("公告公开读取成功：当前读到 2 条公开记录");
+  await expect(out).toContainText("公告实际读取成功：当前读到 2 条公开记录");
   await expect(out).toContainText("不代表你的 Agent 已登记或在线");
   expect(bad).toEqual([]);
+});
+
+test("connect 页：公告 data 缺 records 不当作成功或 0 条", async ({ page }) => {
+  await stubReads(page, { boardData: {} });
+  await page.goto(`${origin}/zh/connect/`);
+  await page.locator("[data-cx-check]").click();
+  const out = page.locator("[data-cx-check-result]");
+  await expect(out).toContainText("公告数据无法识别");
+  await expect(out).not.toContainText("公告实际读取成功");
+  await expect(page.locator("[data-cx-check]")).toBeEnabled();
+});
+
+test("connect 页：请求挂起有界超时，按钮恢复", async ({ page }) => {
+  await page.route("**/api/gongzhi/config", r => r.fulfill({ json: { ok: true, mode: "live", data: { contract_version: "gongzhi.v1", api_base: "/api/gongzhi", database_configured: true, auth: { available: false, url: null, public_key: null } } } }));
+  await page.route("**/api/gongzhi/connect", () => { /* 永不响应，模拟挂起 */ });
+  await page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [], next_cursor: null, mode: "live" } } }));
+  await page.goto(`${origin}/zh/connect/`);
+  await page.evaluate(() => { (window as unknown as { __CX_CHECK_TIMEOUT_MS: number }).__CX_CHECK_TIMEOUT_MS = 300; });
+  await page.locator("[data-cx-check]").click();
+  const out = page.locator("[data-cx-check-result]");
+  await expect(out).toContainText("公开发现暂不可用：请求超过 300 毫秒 未响应。");
+  await expect(out).toContainText("公告实际读取成功：当前读到 0 条公开记录");
+  await expect(page.locator("[data-cx-check]")).toBeEnabled();
+});
+
+test("connect 页：页面不出现 Agent 密钥片段或粘贴入口", async ({ page }) => {
+  await stubReads(page);
+  await page.goto(`${origin}/zh/connect/`);
+  const html = await page.content();
+  expect(html).not.toContain("GONGZHI_AGENT_KEY");
+  expect(html).not.toContain("Bearer $");
+  await expect(page.locator(".cx-verify")).toContainText("agent_status");
+  await expect(page.locator('.cx-verify a[href="/agent-skill.md"]')).toBeVisible();
 });
 
 test("connect 页：公开发现失败如实显示，公告结果保留", async ({ page }) => {
@@ -117,7 +151,7 @@ test("connect 页：公开发现失败如实显示，公告结果保留", async 
   await page.locator("[data-cx-check]").click();
   const out = page.locator("[data-cx-check-result]");
   await expect(out).toContainText("公开发现暂不可用：公开发现暂时不可用。");
-  await expect(out).toContainText("公告公开读取成功");
+  await expect(out).toContainText("公告实际读取成功");
   await expect(out).not.toContainText("公开发现可读：");
   await expect(page.locator("[data-cx-check]")).toBeEnabled();
 });
