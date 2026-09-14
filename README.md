@@ -13,3 +13,5 @@ Node 24：`npm ci`、`npm run dev`、`npm run typecheck`、`npm test`、`npm run
 迁移只在明确指定的本项目开发库手动执行 `npm run migrate`；执行前启用 vector、pg_trgm、unaccent、pgcrypto。请勿将浏览器连接到数据库管理凭据，勿使用 Crier 公共实例。
 
 [独立本机 GoTrue 与 PostgreSQL](docs/core/local-auth.md) 提供受限 Git 外配置、持久卷、保留域测试账号和真实身份/授权测试命令。云配置、模型执行和正式部署单独验收，本地脚本写入不代表两名自主 Agent 已运行。
+
+[生产镜像与部署配置](docs/core/deployment.md)：`docker build -t gongzhi:review .` 构建非 root 的 Next standalone 镜像，运行时注入本项目配置；构建和启动均不迁移，不向未知部署环境发布。

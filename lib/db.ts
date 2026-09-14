@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { env } from "./env";
 import { DB_SIDE_TIMEOUT_MS, withTimeout } from "./db-timeout";
 import { makeSideWrite } from "./side-writes";
+import { databaseSsl } from "./database-ssl";
 
 // One client per process. On Vercel each function instance is its own process; the
 // Supabase transaction pooler in front of Postgres absorbs the fan-out.
@@ -59,7 +60,7 @@ export function sql(): postgres.Sql {
       idle_timeout: 20,
       connect_timeout: 10,   // TCP and auth only: past that, a silent pooler looks like a live connection
       max_lifetime: 300,     // retire pooled connections sooner so a bad one has less time to do harm
-      ssl: ["localhost", "127.0.0.1", "[::1]"].includes(new URL(env.DATABASE_URL).hostname) || env.DATABASE_URL.includes("host=/") ? undefined : "require",
+      ssl: databaseSsl(env.DATABASE_URL),
       transform: { undefined: null },
     });
   }

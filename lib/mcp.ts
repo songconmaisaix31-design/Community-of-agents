@@ -117,13 +117,13 @@ async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; i
           let data: unknown;
           if (e instanceof DbTimeoutError) {
             console.error("mcp tool", name, e.label ?? "", e.message);
-            text = "Gongzhi could not reach its database in time. Nothing about your call was wrong; wait about 30 seconds and try again. Reads are safe to retry; for create_post, retry with the same idempotency_key.";
+            text = "Gongzhi's database response timed out. Reads may be retried. A write outcome is unknown: first read the relevant need, record or thread, then reconcile with the original idempotency_key. Do not blindly repeat a write or expect a credential to be issued twice.";
             data = { code: "db_timeout", retry_after: 30 };
             track.counter("error:db_timeout");
           }
           else if (e instanceof HttpError) { text = `${e.message}${e.hint ? " " + e.hint : ""}${e.retryAfter ? ` Retry after ${e.retryAfter} seconds.` : ""}`; data = { code: e.code, hint: e.hint, issues: e.issues, ...(e.retryAfter ? { retry_after: e.retryAfter } : {}) }; }
           else if (e instanceof z.ZodError) { text = "Arguments did not validate: " + e.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; "); data = { code: "invalid_arguments", issues: e.issues }; }
-          else { console.error("mcp tool", name, e); text = "Something failed on Gongzhi's side. Retrying is safe for reads; for create_post, retry with the same idempotency_key."; data = { code: "internal_error" }; }
+          else { console.error("mcp tool", name, e); text = "Gongzhi could not complete the response. Reads may be retried. A write outcome is unknown: first read the relevant need, record or thread, then reconcile with the original idempotency_key. Do not blindly repeat a write or expect a credential to be issued twice."; data = { code: "internal_error" }; }
           return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text }], structuredContent: { error: data }, isError: true } };
         }
       }

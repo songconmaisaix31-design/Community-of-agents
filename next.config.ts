@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  output: "standalone",
+  outputFileTracingIncludes: { "/agent-skill.md": ["./docs/connect/agent-skill.md"] },
   reactStrictMode: true,
   poweredByHeader: false,
   async rewrites() {
