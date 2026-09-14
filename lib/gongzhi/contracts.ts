@@ -56,6 +56,16 @@ export interface Experience {
   applicability: string; tags: string[]; revision: number; previous_version_id: string | null;
   sources: Source[]; visibility: "public"; created_at: string; mode: SourceMode;
 }
+export interface ExperienceSummary {
+  id: string; revision: number; title: string; summary: string; applicability: string;
+  tags: string[]; owner_id: string; author: Owner; source_count: number;
+  previous_version_id: string | null; created_at: string; mode: SourceMode;
+}
+export interface ExperienceSearchPage { items: ExperienceSummary[]; mode: SourceMode }
+export interface ExperienceVersion {
+  experience: Experience; author: Owner; skill_md: string;
+  execution: "caller_local"; author_presence_required: false;
+}
 export interface Result {
   id: string; need_id: string; need_revision: number; owner_id: string; publisher_id: string;
   title: string; body: string; subtype: "help" | "result"; sources: Source[];
@@ -65,11 +75,22 @@ export interface Decision {
   id: string; need_id: string; need_revision: number; result_id: string;
   decision: "accept" | "request_revision" | "reject"; note: string; owner_id: string; created_at: string; mode: SourceMode;
 }
+export interface RunExecutionLimits {
+  model_id: string; model_context_tokens: number; max_output_tokens: number;
+  max_steps: number; max_zhihu_queries: number; deadline_ms: number;
+  input_price_microusd_per_million: number; output_price_microusd_per_million: number;
+}
+export interface RunBudget {
+  limits: RunExecutionLimits; currency: "USD"; reserved_microusd: number;
+  settled_microusd: number | null; usage_complete: boolean;
+}
 export interface Run {
   id: string; need_id: string; need_revision: number; owner_id: string; status: RunStatus;
   idempotency_key: string; deadline_at: string; created_at: string; updated_at: string;
   result_id: string | null; error: ApiError | null;
   usage: { model_steps: number; zhihu_queries: number; input_tokens: number | null; output_tokens: number | null };
+  /** Absent only on runs created before cost admission was introduced. */
+  budget?: RunBudget | null;
   mode: SourceMode;
 }
 export interface GraphNode { id: string; type: "owner" | "need" | "experience" | "result"; label: string; mode: SourceMode }
@@ -86,8 +107,36 @@ export const UpdateNeedSchema = CreateNeedSchema.omit({ idempotency_key: true })
 export type UpdateNeedInput = z.infer<typeof UpdateNeedSchema>;
 export const CloseNeedSchema = z.object({ expected_revision: revision, idempotency_key: key }).strict();
 export type CloseNeedInput = z.infer<typeof CloseNeedSchema>;
-export const PublishExperienceSchema = z.object({ title, body, applicability: z.string().max(1000).default(""), tags, sources: z.array(SourceSchema).max(6).default([]), previous_version_id: id.optional(), visibility: z.literal("public").default("public"), idempotency_key: key }).strict();
+export const PublishExperienceSchema = z.object({ title, body, applicability: z.string().max(1000).default(""), tags, sources: z.array(SourceSchema).max(6).default([]), previous_version_id: id.optional(), visibility: z.literal("public").default("public"), idempotency_key: key, approval_id: id.optional() }).strict();
 export type PublishExperienceInput = z.infer<typeof PublishExperienceSchema>;
+export const ExperienceSearchSchema = z.object({ q: z.string().max(500).default(""), limit: z.coerce.number().int().min(1).max(30).default(20) }).strict();
+export type ExperienceSearchQuery = z.input<typeof ExperienceSearchSchema>;
+export const ReadExperienceVersionSchema = z.object({ id, revision }).strict();
+export const ExperienceFeedbackPayloadSchema = z.object({
+  experience_id: id, revision, usage: z.string().trim().min(1).max(500), body,
+  outcome: z.enum(["helpful", "needs_changes", "not_applicable"]),
+  visibility: z.literal("public"), idempotency_key: key,
+}).strict();
+export type ExperienceFeedback = z.infer<typeof ExperienceFeedbackPayloadSchema>;
+export const PostExperienceFeedbackSchema = ExperienceFeedbackPayloadSchema.extend({ approval_id: id.optional() }).strict();
+export type PostExperienceFeedbackInput = z.infer<typeof PostExperienceFeedbackSchema>;
+// This is a human-authenticated confirmation of one exact public write, not an
+// Agent assertion or another credential. The action's stable request key is bound.
+export const CreateContentApprovalSchema = z.object({
+  agent_id: id, visibility: z.literal("public"),
+  content: z.discriminatedUnion("action", [
+    z.object({ action: z.literal("publish_experience"), payload: PublishExperienceSchema.omit({ approval_id: true }) }).strict(),
+    z.object({ action: z.literal("experience_feedback"), payload: ExperienceFeedbackPayloadSchema }).strict(),
+  ]),
+  expires_in_seconds: z.number().int().min(60).max(3600).default(900), idempotency_key: key,
+}).strict();
+export type CreateContentApprovalInput = z.infer<typeof CreateContentApprovalSchema>;
+export interface ContentApproval {
+  id: string; human_owner_id: string; agent_id: string;
+  action: "publish_experience" | "experience_feedback"; visibility: "public";
+  content_digest: string; expires_at: string; revoked_at: string | null;
+  consumed_at: string | null; record_id: string | null; created_at: string; mode: SourceMode;
+}
 export const SubmitResultSchema = z.object({ need_id: id, need_revision: revision, title, body, subtype: z.enum(["help", "result"]).default("result"), sources: z.array(SourceSchema).max(6).default([]), method_refs: z.array(MethodReferenceSchema).max(6).default([]), idempotency_key: key }).strict();
 export type SubmitResultInput = z.infer<typeof SubmitResultSchema>;
 export const DecideResultSchema = z.object({ result_id: id, expected_revision: revision, decision: z.enum(["accept", "request_revision", "reject"]), note: z.string().max(1000).default(""), idempotency_key: key }).strict();
@@ -97,6 +146,8 @@ export type BindOwnerInput = z.infer<typeof BindOwnerSchema>;
 export interface BoundOwner { owner: Owner; api_key?: string }
 export const StartRunSchema = z.object({ need_id: id, need_revision: revision, idempotency_key: key }).strict();
 export type StartRunInput = z.infer<typeof StartRunSchema>;
+export const RunLookupSchema = StartRunSchema.pick({ need_id: true, idempotency_key: true });
+export type RunLookupInput = z.infer<typeof RunLookupSchema>;
 
 // Public corrections contract. Identity/provenance fields are always server-derived.
 export const AgentScopeSchema = z.enum(["read", "publish_need", "publish_experience", "submit_result", "discuss"]);
@@ -110,7 +161,7 @@ export type RegisterAgentInput = z.infer<typeof RegisterAgentSchema>;
 export interface RegisteredAgent { owner: Owner; human_owner_id: string; scopes: AgentScope[]; api_key?: string; credential_state: "issued" | "not_recoverable" }
 export interface AgentStatus { owner: Owner & { kind: "external_agent" }; human_owner_id: string; scopes: AgentScope[]; mode: "live" }
 export type BulletinKind = "need" | "experience" | "reply" | "supplement" | "result";
-export interface BulletinRecord { id: string; thread_id: string; reply_to_id: string | null; kind: BulletinKind; title: string; body: string; speaker_id: string; owner_id: string; speaker: Owner; need_revision: number | null; created_at: string; mode: SourceMode }
+export interface BulletinRecord { id: string; thread_id: string; reply_to_id: string | null; kind: BulletinKind; title: string; body: string; speaker_id: string; owner_id: string; speaker: Owner; need_revision: number | null; created_at: string; mode: SourceMode; experience_feedback?: Pick<ExperienceFeedback, "experience_id" | "revision" | "usage" | "outcome"> }
 export const BoardQuerySchema = z.object({ cursor: z.string().max(500).optional(), limit: z.coerce.number().int().min(1).max(100).default(30), kind: z.enum(["need", "experience", "reply", "supplement", "result"]).optional(), speaker_id: id.optional() }).strict();
 export type BoardQuery = z.input<typeof BoardQuerySchema>;
 export interface BulletinPage { records: BulletinRecord[]; next_cursor: string | null; mode: SourceMode }

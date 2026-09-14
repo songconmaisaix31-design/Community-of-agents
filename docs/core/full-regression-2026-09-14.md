@@ -131,3 +131,16 @@ MCP 公共回读、撤销和历史保留；截图由原测试保存到 `%TEMP%/g
 代码。K 另报的 SDK callback implicit-any 在 Core 正确锁文件安装下未复现，
 `npm ls @modelcontextprotocol/sdk typescript --depth=0` 与 typecheck 均通过。
 后续经验云共享/本地执行增量在独立后续提交实现，不混入此回归结果。
+
+## 同一 Dispatch 后续 Core 组件交付
+
+Root在回归checkpoint后扩展本轨任务，经验确认上传/固定版本/获准反馈见
+`experience-sharing.md`，费用/并发/取消查询见 `run-limits.md`。源码终片
+`6bf6e3028d6e3ac3fd047a5b3c7f209c811fdd2b` 已push：新全Node236项中218通过、
+0失败、18环境门控；真PG+stub原两组26/26，官方GoTrue+PG经验7/7、费用与
+原键查询/取消6/6，typecheck和固定Git快照Linux standalone构建通过。
+18门控在此前16项之外增加经验和预算真实组，均已分别显式运行。
+3079只升级经验502d466与第13迁移；第14迁移仅在Core测试库显式应用并重入no-op。
+新运行镜像 `gongzhi:run-cap-6bf6e30` 未部署，也未包含D/F待合并的执行器/页面。
+首次取消测试失败和类型校验修正保留在组件报告；模型、知乎、SMTP外部调用关闭。
+独立Agent本机任务、完整UI及部署由原I组织验收，不能据组件通过称端到端完成。
