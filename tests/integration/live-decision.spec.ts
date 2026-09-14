@@ -1,5 +1,27 @@
 import { test, expect } from "@playwright/test";
 
+test("real cross-tab sign-out clears the previous human publishing state", async ({ page, context }) => {
+  const email = process.env.GONGZHI_TEST_EMAIL;
+  const password = process.env.GONGZHI_TEST_PASSWORD;
+  expect(Boolean(email && password), "Explicit local test account is required").toBe(true);
+  await page.goto("/zh/connect");
+  await page.locator('[data-cm-account] input[type="password"]').waitFor();
+  await page.evaluate(({ email, password }) => {
+    (document.querySelector('[data-cm-account] input[type="email"]') as HTMLInputElement).value = email!;
+    (document.querySelector('[data-cm-account] input[type="password"]') as HTMLInputElement).value = password!;
+  }, { email, password });
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByText("已登录 · 发言身份已绑定", { exact: true })).toBeVisible();
+  const board = await context.newPage();
+  await board.goto("/zh/board");
+  await expect(board.getByRole("button", { name: "发布求助", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page.locator('[data-cm-account] input[type="password"]')).toBeVisible();
+  await expect.poll(() => board.evaluate(() => Boolean(localStorage.getItem("gongzhi.live.auth.v1")))).toBe(false);
+  await expect(board.getByRole("button", { name: "发布求助", exact: true })).toHaveCount(0);
+  await expect(board.locator("[data-cm-publish]")).not.toContainText("的身份公开发布");
+});
+
 test("reserved human account adopts the independently submitted real result through the page", async ({ page, request }, info) => {
   const email = process.env.GONGZHI_TEST_EMAIL;
   const password = process.env.GONGZHI_TEST_PASSWORD;
