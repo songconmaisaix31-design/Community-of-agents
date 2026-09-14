@@ -162,35 +162,31 @@ async function assertPlainDirectory(path: string) {
   }
 }
 
-const processAlive = (pid: number) => {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
-};
-
-/** Minimal exclusivity for one state directory: no scheduler, no cross-process budget merge. */
+/**
+ * Minimal exclusivity for one state directory: no scheduler, no cross-process
+ * budget merge. An existing lock is never auto-removed, even when its owner
+ * looks dead or unreadable: removing it could delete a lock a concurrent
+ * invocation just created. The operator confirms no collector is running and
+ * deletes the file manually. Only a lock this invocation created is released.
+ */
 async function acquireLock(stateDir: string) {
   const path = join(stateDir, 'state.lock');
   await assertRegularFile(path);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const file = await open(path, 'wx', 0o600);
-      try { await file.writeFile(JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() }) + '\n'); }
-      catch (error) { await file.close(); await rm(path, { force: true }); throw error; }
-      await file.close();
-      return async () => { await rm(path, { force: true }); };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      await assertRegularFile(path);
-      let owner: unknown;
-      try { owner = JSON.parse(await readFile(path, 'utf8')); }
-      catch { throw invalid('state.lock 内容无法解析；请人工确认无采集进程后删除，不自动清除。'); }
-      const pid = owner && typeof owner === 'object' ? (owner as { pid?: unknown }).pid : undefined;
-      if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) throw invalid('state.lock 内容无法解析；请人工确认无采集进程后删除，不自动清除。');
-      if (processAlive(pid)) throw invalid(`状态目录正被进程 ${pid} 使用；同一批次只能串行运行。`);
-      await rm(path, { force: true });
-    }
+  try {
+    const file = await open(path, 'wx', 0o600);
+    try { await file.writeFile(JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() }) + '\n'); }
+    catch (error) { await file.close(); await rm(path, { force: true }); throw error; }
+    await file.close();
+    return async () => { await rm(path, { force: true }); };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    await assertRegularFile(path);
+    let owner: unknown;
+    try { owner = JSON.parse(await readFile(path, 'utf8')); } catch { owner = undefined; }
+    const pid = owner && typeof owner === 'object' ? (owner as { pid?: unknown }).pid : undefined;
+    const who = typeof pid === 'number' && Number.isInteger(pid) && pid > 0 ? `记录的进程 ${pid}` : '记录的进程未知';
+    throw invalid(`state.lock 已存在（${who}），本工具不会自动删除。请确认该采集进程已退出后，人工删除 ${path} 再运行。`);
   }
-  throw invalid('无法取得状态目录独占锁；停止。');
 }
 
 async function writeJsonDurable(path: string, value: unknown) {
@@ -351,7 +347,9 @@ export async function collectZhihuCorpus(options: ZhihuCorpusOptions) {
     const { keys: seen, total, duplicates } = await loadRecords(recordsPath);
     if (previous && total < previous.records) throw invalid('records.jsonl 少于状态已记录数；停止以免重复请求或丢失记录。');
     state.records = seen.size;
-    state.duplicates = duplicates;
+    // Cumulative, never reset by a resume: the records file only holds unique
+    // rows, so its own duplicate count is zero even after real duplicates.
+    state.duplicates = Math.max(state.duplicates, duplicates);
 
     const writeState = async () => { state.updated_at = nowIso(); await writeJsonDurable(statePath, state); };
     const counts = (items: Array<{ state: string }>) => ({

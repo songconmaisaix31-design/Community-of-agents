@@ -332,14 +332,66 @@ test('an unresolved in-flight request stops for review and retries only when the
   } finally { await rm(paths.dir, { recursive: true, force: true }); }
 });
 
-test('a second collector on the same state directory is refused without sending requests', async () => {
+test('an active lock is never removed and refuses the second collector without requests', async () => {
   const paths = await workspace({ batch_id: 'fixture-lock', queries: ['one'] });
+  const lockPath = join(paths.stateDir, 'state.lock');
   let calls = 0;
   try {
     await mkdir(paths.stateDir, { recursive: true });
-    await writeFile(join(paths.stateDir, 'state.lock'), JSON.stringify({ pid: process.pid, started_at: 'fixture' }));
+    await writeFile(lockPath, JSON.stringify({ pid: process.pid, started_at: 'fixture' }));
     await assert.rejects(collect(paths, async () => { calls++; throw Error('must not fetch'); }), e => e.error.code === 'invalid_request');
     assert.equal(calls, 0);
+    assert.match(await readFile(lockPath, 'utf8'), new RegExp(`"pid":${process.pid}`));
+  } finally { await rm(paths.dir, { recursive: true, force: true }); }
+});
+
+test('a stale lock is never auto-removed and blocks concurrent invocations until manual recovery', async () => {
+  const paths = await workspace({ batch_id: 'fixture-stale-lock', queries: ['one'] });
+  const lockPath = join(paths.stateDir, 'state.lock');
+  let calls = 0;
+  const fetch = async () => { calls++; throw Error('must not fetch'); };
+  try {
+    await mkdir(paths.stateDir, { recursive: true });
+    await writeFile(lockPath, JSON.stringify({ pid: 999999999, started_at: 'fixture' }));
+    const outcomes = await Promise.allSettled([collect(paths, fetch), collect(paths, fetch)]);
+    for (const outcome of outcomes) {
+      assert.equal(outcome.status, 'rejected');
+      assert.equal(outcome.reason.error.code, 'invalid_request');
+    }
+    assert.equal(calls, 0);
+    assert.match(await readFile(lockPath, 'utf8'), /999999999/);
+    // Manual recovery after confirming no collector runs: delete the lock, then proceed.
+    await rm(lockPath);
+    const recovered = await collect(paths, async () => { calls++; return Response.json(searchEnvelope()); });
+    assert.equal(recovered.status, 'completed');
+    assert.equal(calls, 1);
+    // A normal run releases only its own lock.
+    await assert.rejects(readFile(lockPath));
+  } finally { await rm(paths.dir, { recursive: true, force: true }); }
+});
+
+test('a duplicate result is counted once and the cumulative count survives completed resumes', async () => {
+  const paths = await workspace({ batch_id: 'fixture-dup-resume', queries: ['dup'] });
+  let calls = 0;
+  try {
+    const first = await collect(paths, async () => {
+      calls++;
+      return Response.json(searchEnvelope([
+        { ...searchItem, ContentID: 'dup-a', Url: 'https://zhuanlan.zhihu.com/p/dup' },
+        { ...searchItem, ContentID: 'dup-b', Url: 'https://zhuanlan.zhihu.com/p/dup?utm_source=same' },
+      ]));
+    });
+    assert.equal(first.status, 'completed');
+    assert.deepEqual(first.records, { total: 1, duplicates: 1 });
+    const second = await collect(paths, async () => { calls++; throw Error('must not fetch'); });
+    const third = await collect(paths, async () => { calls++; throw Error('must not fetch'); });
+    assert.equal(calls, 1);
+    assert.equal(second.status, 'completed');
+    assert.equal(third.status, 'completed');
+    assert.deepEqual(second.records, { total: 1, duplicates: 1 });
+    assert.deepEqual(third.records, { total: 1, duplicates: 1 });
+    assert.equal(JSON.parse(await readFile(join(paths.stateDir, 'state.json'), 'utf8')).duplicates, 1);
+    assert.equal((await records(paths)).length, 1);
   } finally { await rm(paths.dir, { recursive: true, force: true }); }
 });
 
