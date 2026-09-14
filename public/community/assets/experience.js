@@ -18,10 +18,10 @@
     var b = node("button", "cm-button " + (primary ? "cm-button-primary" : "cm-button-ghost"), text);
     b.type = "button"; b.addEventListener("click", fn); return b;
   }
-  function label(text, input) { var n = node("label", "cm-field"); n.append(node("span", null, text), input); return n; }
+  function label(text, input) { var n = node("label", "cm-field"); input.setAttribute("aria-label", text); n.append(node("span", null, text), input); return n; }
   function key() { return "content-" + crypto.randomUUID(); }
   function json(value) { return JSON.stringify(value, null, 2); }
-  function error(out, e) { out.textContent = (e && e.message) || "操作失败，未显示成功。"; out.className = "cm-form-error"; }
+  function error(out, e) { out.textContent = (e && e.message) || "操作失败，未显示成功。"; out.classList.add("cm-form-error"); }
   function download(text, name, type) {
     var url = URL.createObjectURL(new Blob([text], { type: type || "application/json;charset=utf-8" }));
     var a = node("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -32,6 +32,7 @@
     navigator.clipboard.writeText(text).then(function () { out.textContent = "已复制。下载或复制不代表已执行。"; }).catch(function (e) { error(out, e); });
   }
   var draftText = "";
+  var approvalKeys = new Map();
   function blank() { return { action: "publish_experience", payload: { title: "", body: "", applicability: "", tags: [], sources: [], visibility: "public", idempotency_key: key() } }; }
   function redact(text) {
     return text.replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [已移除]")
@@ -57,15 +58,18 @@
     var file = node("input", "cm-input"); file.type = "file"; file.accept = ".md,.txt,.json";
     var editor = node("textarea", "cm-input ex-editor"); editor.rows = 14; editor.spellcheck = false; editor.value = draftText;
     var preview = node("div", "ex-preview");
+    var editRevision = 0;
     var actions = node("div", "ex-actions");
     panel.append(label("选择一份资料 / SKILL.md / content 草稿 JSON（不读取其他文件）", file), label("编辑完整草稿 JSON（action 与 payload）", editor), actions, status, preview);
-    function invalidate() { draftText = editor.value; preview.replaceChildren(); status.textContent = "草稿已修改，尚未上传；请重新预览并审阅。"; status.className = "cm-sub"; }
+    function invalidate() { editRevision++; draftText = editor.value; preview.replaceChildren(); status.textContent = "草稿已修改，尚未上传；请重新预览并审阅。"; status.className = "cm-sub"; }
     editor.addEventListener("input", invalidate);
     file.addEventListener("change", async function () {
       try {
         var selected = file.files[0]; if (!selected) return;
         if (!/\.(md|txt|json)$/i.test(selected.name) || selected.size > 65536) throw new Error("请选择不超过 64 KB 的单份 Markdown、文本或草稿 JSON。");
+        invalidate(); var reading = editRevision;
         var text = await selected.text();
+        if (!panel.isConnected || reading !== editRevision) return;
         if (/\0/.test(text)) throw new Error("文件不是可读取的文本。");
         if (/\.json$/i.test(selected.name)) editor.value = json(JSON.parse(text));
         else {
@@ -86,27 +90,53 @@
       draftText = editor.value; download(editor.value, "gongzhi-content-draft.json"); status.textContent = "已下载本地草稿，未上传。";
     }), button("预览准确内容", async function () {
       try {
+        var capturedText = editor.value, revision = ++editRevision;
+        preview.replaceChildren();
         var m = await shared();
-        var result = m.CreateContentApprovalSchema.shape.content.safeParse(JSON.parse(editor.value));
+        if (!panel.isConnected || revision !== editRevision || editor.value !== capturedText) return;
+        var result = m.CreateContentApprovalSchema.shape.content.safeParse(JSON.parse(capturedText));
         if (!result.success) throw new Error("草稿格式不符合共享契约：" + result.error.issues.map(function (i) { return i.path.join(".") + " " + i.message; }).join("；"));
         var content = result.data;
         // 审核和保存使用同一份规范化内容，包含固定写入键；批准 ID 永不写进草稿。
         editor.value = json(content); draftText = editor.value;
         preview.replaceChildren();
         preview.append(node("h3", null, content.action === "publish_experience" ? "请审阅这次经验分享" : "请审阅这次使用反馈"), node("p", "cm-sub", "公开范围：public，任何人可读取。以下是将获准上传的完整内容，包含来源、版本和固定请求键。"));
-        preview.append(node("pre", "ex-exact", json(content)));
+        readableContent(preview, content);
+        var advanced = node("details"); advanced.append(node("summary", null, "完整草稿 JSON 与固定请求键"), node("pre", "ex-exact", json(content))); preview.append(advanced);
+        preview.scrollIntoView({ block: "start" });
         status.textContent = "格式有效，尚未上传。人工确认内容与公开范围后才能继续。";
-        await approvalControls(preview, content, editor);
+        await approvalControls(preview, content, editor, function () {
+          return panel.isConnected && revision === editRevision && editor.value === json(content);
+        }, function () {
+          file.disabled = true; editor.readOnly = true;
+          actions.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+        });
       } catch (e) { error(status, e); }
     }, true));
   }
-  async function approvalControls(preview, content, editor) {
+  function readableContent(preview, content) {
+    var p = content.payload;
+    preview.append(node("h4", null, p.title || "使用反馈"), node("p", "cm-body", p.body));
+    if (content.action === "publish_experience") {
+      preview.append(node("p", "cm-sub", "适用条件：" + (p.applicability || "未提供")), node("p", "cm-sub", "版本：" + (p.previous_version_id ? "基于 " + p.previous_version_id + " 创建新版本" : "新经验首版")), node("p", "cm-sub", "标签：" + (p.tags.join("、") || "未提供")));
+      preview.append(node("h4", null, "来源与署名"));
+      if (!p.sources.length) preview.append(node("p", "cm-sub", "未提供来源"));
+      p.sources.forEach(function (s) {
+        var card = node("div", "cm-source-card");
+        card.append(node("strong", null, s.title), node("p", "cm-sub", "原作者：" + (s.author || "未提供") + " · " + s.kind + " · " + s.content_type + " · " + s.retrieved_at));
+        if (s.excerpt) card.append(node("p", "cm-body", s.excerpt));
+        if (s.url) { var link = node("a", "cm-source-link", s.url); link.href = s.url; link.target = "_blank"; link.rel = "noopener noreferrer"; card.append(link); }
+        preview.append(card);
+      });
+    } else preview.append(node("p", "cm-sub", "引用经验：" + p.experience_id + " · 第 " + p.revision + " 版"), node("p", "cm-body", "如何使用：" + p.usage), node("p", "cm-sub", "结论：" + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[p.outcome])));
+  }
+  async function approvalControls(preview, content, editor, current, freeze) {
     var ctx = context();
     if (!ctx.ready) { var login = node("a", "cm-button cm-button-ghost", "保存草稿后前往登录"); login.href = "/zh/connect/#account"; preview.append(login); return; }
     var note = node("p", "cm-sub", "正在读取本人已登记 Agent…"); preview.append(note);
     try {
       var pair = await Promise.all([ctx.api.listOwners(), ctx.api.listAuthorizations()]);
-      if (!preview.isConnected || context().generation !== ctx.generation) return;
+      if (!current() || context().generation !== ctx.generation) return;
       var scope = content.action === "publish_experience" ? "publish_experience" : "discuss";
       var allowed = pair[1].filter(function (a) { return a.agent_id && !a.revoked_at && a.scopes.indexOf(scope) !== -1; });
       var agents = pair[0].filter(function (a) { return a.kind === "external_agent" && !a.revoked_at && allowed.some(function (g) { return g.agent_id === a.id; }); });
@@ -117,22 +147,29 @@
       var confirm = node("input"); confirm.type = "checkbox";
       preview.append(label("我已逐项审阅上述准确内容、来源和版本，同意本次向所有人公开（public）", confirm));
       var out = node("div", "ex-receipt"); out.setAttribute("role", "status");
-      var frozen = null, approvalKey = key();
+      var frozen = null;
       var approve = button("确认公开并生成 Agent 批准 ID", async function () {
         if (!confirm.checked || !select.value) return;
-        if (context().generation !== ctx.generation || !context().ready) { error(out, new Error("登录身份已变化，请重新预览。")); return; }
-        if (!frozen) frozen = { agent_id: select.value, visibility: "public", content: content, expires_in_seconds: 900, idempotency_key: approvalKey };
+        if (!current() || context().generation !== ctx.generation || !context().ready) { error(out, new Error("内容或登录身份已变化，请重新预览。")); return; }
+        if (!frozen) {
+          var intent = ctx.human.id + "|" + select.value + "|" + json(content);
+          if (!approvalKeys.has(intent)) approvalKeys.set(intent, key());
+          frozen = { agent_id: select.value, visibility: "public", content: content, expires_in_seconds: 900, idempotency_key: approvalKeys.get(intent) };
+        }
+        freeze();
         approve.disabled = true; confirm.disabled = true; select.disabled = true; editor.readOnly = true;
         try {
           var receipt = await ctx.api.createContentApproval(frozen);
-          if (!preview.isConnected || context().generation !== ctx.generation) return;
+          if (!current() || context().generation !== ctx.generation) return;
+          out.classList.remove("cm-form-error");
           out.replaceChildren(node("p", "cm-sub", "已批准此内容，尚不代表 Agent 已上传。有效期至 " + C.fmtTime(receipt.expires_at)), node("code", "ex-approval-id", receipt.id));
           var command = 'node --import tsx examples/agent/cli.ts upload-draft "gongzhi-content-draft.json" "' + receipt.id + '"';
           out.append(node("pre", "ex-exact", command), node("p", "cm-sub", "先下载这份准确草稿，再把草稿和批准 ID 交给已有 Agent。不要交出人类登录令牌。"));
           out.append(button("下载已批准草稿", function () { download(json(content), "gongzhi-content-draft.json"); }), button("复制上传命令", function () { copy(command, note); }));
           receiptControls(out, receipt, ctx);
+          out.append(button("另建本地草稿", function () { openDraft(blank()); }));
         } catch (e) {
-          if (!preview.isConnected || context().generation !== ctx.generation) return;
+          if (!current() || context().generation !== ctx.generation) return;
           error(out, e); out.append(node("p", null, "未确认批准结果；原内容与请求键已保留。可重试同一请求，不要修改后作为新批准重发。")); approve.disabled = false;
         }
       }, true);
@@ -140,7 +177,7 @@
       function enabled() { approve.disabled = !confirm.checked || !select.value; }
       select.addEventListener("change", enabled); confirm.addEventListener("change", enabled);
       preview.append(approve, out);
-    } catch (e) { error(note, e); }
+    } catch (e) { if (current()) error(note, e); }
   }
   function receiptControls(out, receipt, ctx) {
     var state = node("p", "cm-sub"); out.append(state);
@@ -153,12 +190,12 @@
         if (latest.record_id) out.append(button("查看实际公开记录", async function () {
           try { var r = await ctx.api.readRecord(latest.record_id); C.reopenThread(r); } catch (e) { error(state, e); }
         }));
-      } catch (e) { error(state, e); } finally { check.disabled = false; }
+      } catch (e) { if (context().generation === ctx.generation && out.isConnected) error(state, e); } finally { check.disabled = false; }
     });
     var revoke = button("撤销本次内容批准", async function () {
       if (context().generation !== ctx.generation) return;
       revoke.disabled = true;
-      try { await ctx.api.revokeContentApproval(receipt.id); state.textContent = "已撤销本次批准，不删除已发布记录。"; } catch (e) { error(state, e); revoke.disabled = false; }
+      try { await ctx.api.revokeContentApproval(receipt.id); if (context().generation === ctx.generation && out.isConnected) state.textContent = "已撤销本次批准，不删除已发布记录。"; } catch (e) { if (context().generation === ctx.generation && out.isConnected) { error(state, e); revoke.disabled = false; } }
     });
     out.append(check, revoke);
   }
@@ -175,7 +212,7 @@
       panel.append(node("h3", null, exp.title), node("p", "cm-body", exp.body), node("p", "cm-sub", "适用条件：" + (exp.applicability || "未提供")), node("pre", "ex-exact", json(exp.sources)));
       var actions = node("div", "ex-actions");
       actions.append(button("下载 SKILL.md", function () { download(version.skill_md, "SKILL.md", "text/markdown;charset=utf-8"); }), button("复制 SKILL.md", function () { copy(version.skill_md, status); }), button("下载完整引用 JSON", function () { download(json(version), "gongzhi-experience-v" + exp.revision + ".json"); }), button("复制完整引用 JSON", function () { copy(json(version), status); }));
-      panel.append(actions, node("p", "cm-sub", "先检查来源与适用条件，再让本机 Agent 按你允许的范围执行。复杂任务可选本机 Kernel；当前仅 start/status/stop/result，无多 Agent 拆分，无需强制安装。"));
+      panel.append(actions, node("p", "cm-sub", "先检查来源与适用条件，再让本机 Agent 按你允许的范围执行。复杂任务可选本机 Kernel，无需强制安装。"));
       var full = node("details"); full.append(node("summary", null, "查看完整 SKILL.md"), node("pre", "ex-exact", version.skill_md)); panel.append(full);
       panel.append(button("记录本机使用反馈", function () { openFeedback(exp); }, true));
     } catch (e) { error(status, e); }

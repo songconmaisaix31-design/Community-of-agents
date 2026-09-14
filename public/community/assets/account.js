@@ -22,7 +22,8 @@
     accepted: "已采纳成果", closed: "已关闭",
   };
 
-  var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null };
+  var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null, ownerStatus: "idle" };
+  var ownerLoad = null;
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -64,24 +65,25 @@
     S.auth.onChange(function (user) {
       var before = S.user && (S.user.id || S.user.email);
       var after = user && (user.id || user.email);
+      if (before === after) return; // 同人令牌刷新不重建表单或丢弃未提交输入
       if (before !== after) {
         // 身份切换/退出：清理一次性令牌与敏感状态、关闭属于旧身份的对话框；
         // 同一人的令牌刷新不算切换，草稿保留
         sessionGen++;
         S.human = null;
+        S.ownerStatus = "idle";
+        ownerLoad = null;
         lastIssued = null;
         grantKey = newKey();
         if (community().closeDialog) community().closeDialog();
       }
       S.user = user;
-      renderAll();
-      if (user) ensureHuman();
+      if (user) ensureHuman(); else renderAll();
     });
     return S.auth.initialize().then(function (user) {
       S.status = "ready";
       S.user = user;
-      renderAll();
-      if (user) ensureHuman();
+      if (user) ensureHuman(); else renderAll();
     });
   }).catch(function () {
     S.status = "unavailable";
@@ -91,15 +93,21 @@
   /* 登录后确保“人”的发言身份已绑定；未绑定时给一次自填公开称呼的入口。
      响应可能迟于换号/退出到达，用身份代际守卫，不写入过期身份。 */
   function ensureHuman() {
-    if (!S.user || S.human || !S.api) return;
+    if (!S.user || !S.api) return;
+    if (S.human) { renderAll(); return; }
+    if (ownerLoad) { renderAll(); return; }
     var gen = sessionGen;
-    S.api.listOwners().then(function (owners) {
+    S.ownerStatus = "loading";
+    renderAll();
+    ownerLoad = S.api.listOwners().then(function (owners) {
       if (gen !== sessionGen) return;
       for (var i = 0; i < owners.length; i++) {
         if (owners[i].kind === "human" && !owners[i].revoked_at) { S.human = owners[i]; break; }
       }
+      S.ownerStatus = "ready";
+      ownerLoad = null;
       renderAll();
-    }).catch(function () { if (gen === sessionGen) renderAll(); });
+    }).catch(function () { if (gen === sessionGen) { ownerLoad = null; S.ownerStatus = "error"; renderAll(); } });
   }
   function signedIn() { return S.status === "ready" && S.user && S.human; }
 
@@ -206,7 +214,14 @@
     head.appendChild(out);
     card.appendChild(head);
     card.appendChild(outErr);
-    if (!S.human) {
+    if (!S.human && S.ownerStatus !== "ready") {
+      card.appendChild(el("p", "cm-sub", S.ownerStatus === "error" ? "发言身份读取失败，请重试。" : "正在读取发言身份…"));
+      if (S.ownerStatus === "error") {
+        var retryOwner = el("button", "cm-button cm-button-ghost", "重新读取身份");
+        retryOwner.type = "button"; retryOwner.addEventListener("click", ensureHuman); card.appendChild(retryOwner);
+      }
+    }
+    if (!S.human && S.ownerStatus === "ready") {
       var bind = el("form", "cm-form cm-form-inline");
       var name = textInput("text", { required: "required", maxlength: "80", placeholder: "公开记录中显示的称呼" });
       var bindBtn = el("button", null, "登记我的身份");
@@ -341,6 +356,7 @@
       if (!items.length) { listEl.appendChild(el("p", "cm-sub", "还没有签发过授权。")); return; }
       items.forEach(function (a) {
         var row = el("div", "cm-grant");
+        row.setAttribute("data-grant-id", a.id);
         var info = el("div", "cm-grant-info");
         info.appendChild(el("code", null, a.scopes.join(" ")));
         var state = a.revoked_at ? "已撤销" : (new Date(a.expires_at).getTime() <= Date.now() ? "已过期" : "有效");
@@ -443,15 +459,20 @@
     form.appendChild(field("正文", body));
     form.appendChild(field("适用场景", applicability));
     form.appendChild(field("标签", tags));
+    var publicReview = textInput("checkbox", { required: "required" });
+    form.appendChild(field("我已审阅上面的准确正文与适用条件，同意公开发布（public）", publicReview));
+    [title, body, applicability, tags].forEach(function (input) { input.addEventListener("input", function () { publicReview.checked = false; }); });
     form.appendChild(sub.row);
     var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (!publicReview.checked) return;
       if (!frozen) frozen = { title: title.value.trim(), body: body.value.trim(), applicability: applicability.value.trim(), tags: tagsOf(tags.value), sources: [], visibility: "public", idempotency_key: key };
+      [title, body, applicability, tags].forEach(function (input) { input.readOnly = true; });
       sub.run(function () {
         return S.api.publishExperience(frozen);
       }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
-        if (isDefinitive(err)) frozen = null;
+        if (isDefinitive(err)) { frozen = null; publicReview.checked = false; [title, body, applicability, tags].forEach(function (input) { input.readOnly = false; }); }
       });
     });
     panel.appendChild(form);
@@ -461,7 +482,20 @@
   function enhanceThread(panel, record) {
     var detailSlot = panel.querySelector("[data-cm-need-detail]");
     if (detailSlot) renderNeedDetail(detailSlot, record);
-    if (!signedIn()) return;
+    if (!signedIn()) {
+      if (!panel._accountWaiting) {
+        panel._accountWaiting = true;
+        function stopWaiting() { window.removeEventListener("gongzhi-account-change", ready); window.removeEventListener("gongzhi-dialog-close", stopWaiting); panel._accountWaiting = false; }
+        function ready() {
+          if (!panel.isConnected) { stopWaiting(); return; }
+          if (signedIn()) { stopWaiting(); enhanceThread(panel, record); }
+        }
+        window.addEventListener("gongzhi-account-change", ready);
+        window.addEventListener("gongzhi-dialog-close", stopWaiting);
+      }
+      return;
+    }
+    if (panel.querySelector(".cm-reply-form")) return;
     var form = el("form", "cm-form cm-reply-form");
     form.appendChild(el("h3", null, "参与这条公开线程"));
     var category = el("select", "cm-input");
@@ -737,29 +771,10 @@
     return item;
   }
 
-  /* 打开被引用的经验：接口只读当前公开版；引用版本与当前版本不一致时明确标注。 */
+  /* 引用只按固定版本读取，不改取最新版本。 */
   function openExperience(ref) {
-    var panel = community().openDialog("被引用的经验", "引用方注明使用方式：" + ref.usage);
-    var status = el("p", "cm-sub", "正在读取经验…");
-    panel.appendChild(status);
-    S.api.readExperience(ref.experience_id).then(function (exp) {
-      status.remove();
-      if (exp.revision !== ref.revision) {
-        panel.appendChild(el("p", "cm-form-error", "引用的是第 " + ref.revision + " 版；当前公开可读的是第 " + exp.revision + " 版，内容可能已有修订。"));
-      }
-      var card = el("article", "cm-thread-record");
-      var byline = el("div", "cm-byline");
-      byline.appendChild(el("span", "cm-pill experience", "经验"));
-      byline.appendChild(el("span", null, "第 " + exp.revision + " 版"));
-      byline.appendChild(el("time", null, fmtTime(exp.created_at)));
-      card.appendChild(byline);
-      card.appendChild(el("h3", null, exp.title));
-      card.appendChild(el("p", "cm-body", exp.body));
-      if (exp.applicability) card.appendChild(el("p", "cm-need-meta", "适用场景：" + exp.applicability));
-      panel.appendChild(card);
-    }).catch(function (e) {
-      status.textContent = "这条经验暂时无法读取：" + errText(e);
-    });
+    if (window.GongzhiExperience) window.GongzhiExperience.openVersion(ref.experience_id, ref.revision);
+    else community().openDialog("经验读取暂不可用", "固定版本组件未载入，请刷新后重试。");
   }
 
   /* ---------- 渲染调度 ---------- */

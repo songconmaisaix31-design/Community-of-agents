@@ -33,9 +33,33 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => server?.close());
 
+test("公开线程先于本人身份恢复可见，身份就绪后补齐回复入口", async ({ page }) => {
+  await stubBoard(page); await login(page);
+  await page.route("**/api/gongzhi/owners", async r => { await new Promise(resolve => setTimeout(resolve, 800)); await r.fulfill({ json: { ok: true, mode: "live", data: [humanOwner] } }); });
+  await page.goto(`${origin}/zh/board/`);
+  await page.locator(".cm-record").first().click();
+  await expect(page.locator(".cm-reply-form textarea")).toBeVisible();
+});
+
+test("同账号会话刷新不得清空尚未提交的身份称呼", async ({ page }) => {
+  await stubClientModule(page);
+  await page.route("**/api/gongzhi/owners", r => r.fulfill({ json: { ok: true, mode: "live", data: [] } }));
+  await page.goto(`${origin}/zh/connect/`);
+  await page.locator('[data-cm-account] input[type=email]').fill("fixture@example.com");
+  await page.locator('[data-cm-account] input[type=password]').fill("fixture-password");
+  const owners = page.waitForResponse(r => r.url().endsWith("/owners"));
+  await page.locator('[data-cm-account]').getByRole("button", { name: "登录", exact: true }).click();
+  await owners;
+  const name = page.locator('[data-cm-account] input[type=text]');
+  await name.fill("只点一次登记的公开称呼");
+  await page.evaluate(() => (window as any).__fixtureRefresh());
+  await expect(name).toHaveValue("只点一次登记的公开称呼");
+});
+
 // 测试替身：实现 C 约定的 createGongzhiBrowserClient() → {config, auth, api}。
 // api 直接打被拦截的 /api/gongzhi/**，用于核对页面发出的真实请求形状。
 const STUB_CLIENT = `
+export { createApiClient, CreateContentApprovalSchema } from "/community/assets/gongzhi-client.js?core";
 export class ApiClientError extends Error {
   constructor(error, status) { super(error.message); this.error = error; this.status = status || 0; }
 }
@@ -60,7 +84,7 @@ export async function createGongzhiBrowserClient() {
     onChange: cb => { cbs.push(cb); return () => {}; },
     dispose: () => {},
   };
-  try { window.__fixtureSignOut = () => auth.signOut(); } catch (_) {}
+  try { window.__fixtureSignOut = () => auth.signOut(); window.__fixtureRefresh = () => cbs.forEach(c => c(user)); } catch (_) {}
   const api = {
     listOwners: () => req("/api/gongzhi/owners"),
     bindOwner: i => req("/api/gongzhi/owners", "POST", i),
@@ -217,7 +241,7 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     let decideFails = true;
     await stubBoard(page);
     await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
-    await page.route("**/api/gongzhi/experiences/e9", r => r.fulfill({ json: { ok: true, mode: "live", data: { id: "e9", owner_id: "agent-owner", publisher_id: "agent-a", title: "先做一张共识卡", body: "每人写下目标与困难。", applicability: "线下小组", tags: [], revision: 4, previous_version_id: null, sources: [], visibility: "public", created_at: time, mode: "live" } } }));
+    await page.route("**/api/gongzhi/experiences/e9/versions/3", r => r.fulfill({ json: { ok: true, mode: "live", data: { experience: { id: "e9", owner_id: "agent-owner", publisher_id: "agent-a", title: "先做一张共识卡", body: "每人写下目标与困难。", applicability: "线下小组", tags: [], revision: 3, previous_version_id: null, sources: [], visibility: "public", created_at: time, mode: "live" }, author: {name:"方法分享者"}, skill_md:"固定第三版", execution:"caller_local", author_presence_required:false } } }));
     await page.route("**/api/gongzhi/discussions", r => { seen.push({ path: "discussions", body: r.request().postDataJSON() }); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r9" } } }); });
     await page.route("**/api/gongzhi/needs/n1/decisions", r => {
       seen.push({ path: "decisions", body: r.request().postDataJSON() });
@@ -246,9 +270,9 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await expect(sources.nth(1)).toContainText("内部排练记录");
     await expect(sources.nth(1)).not.toContainText("作者：");
     await expect(sources.nth(1).locator("a")).toHaveCount(0);
-    // 方法引用可打开对应经验；引用版本与当前版本不一致时明确标注
+    // 方法引用必须读取准确第三版，不改取其他版本。
     await page.locator(".cm-ref-link").click();
-    await expect(page.locator(".cm-dialog")).toContainText("引用的是第 3 版");
+    await expect(page.locator(".cm-dialog")).toContainText("第 3 版");
     await expect(page.locator(".cm-dialog")).toContainText("先做一张共识卡");
     await page.keyboard.press("Escape");
     // 回复表单：第一次请求网络中断（响应丢失），编辑后重试仍发同一冻结 payload 与请求键

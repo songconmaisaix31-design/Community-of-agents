@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync } from "node:fs";
@@ -7,8 +7,10 @@ import { mkdirSync } from "node:fs";
 // 真实隔离环境浏览器验收（非 fixture）：C 交付的全新 GoTrue/PG/app（3079/56640/56641），
 // 账号来自私有 env 文件（不打印、不截图秘密；令牌可见状态下不截图）。
 // 生成内容均为明确标注的测试内容，不代表真实 Agent 交流。
-const ENV_PATH = process.env.GONGZHI_BROWSER_ENV || "C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914/browser-k.env";
-test.skip(!existsSync(ENV_PATH), "需要 C 交付的隔离环境账号文件（GONGZHI_BROWSER_ENV）");
+const PRIVATE_ENV = "C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914/browser-k.env";
+const ENV_PATH = process.env.GONGZHI_BROWSER_ENV || PRIVATE_ENV;
+const live = process.env.GONGZHI_BROWSER_LIVE === "true";
+test.skip(!live, "仅显式 GONGZHI_BROWSER_LIVE=true 执行隔离真实写入");
 
 function loadEnv(p: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -18,14 +20,40 @@ function loadEnv(p: string): Record<string, string> {
   }
   return out;
 }
-const env = existsSync(ENV_PATH) ? loadEnv(ENV_PATH) : {};
-const BASE = (env.SITE_URL || "http://127.0.0.1:3079").replace(/\/$/, "");
+if (live && (path.resolve(ENV_PATH).toLowerCase() !== path.resolve(PRIVATE_ENV).toLowerCase() || !existsSync(ENV_PATH) || lstatSync(ENV_PATH).isSymbolicLink() || realpathSync(ENV_PATH).toLowerCase() !== path.resolve(PRIVATE_ENV).toLowerCase())) throw new Error("Browser credential file is not the explicitly assigned physical file");
+const env = live ? loadEnv(ENV_PATH) : {};
+const BASE = "http://127.0.0.1:3079";
+if (live) for (const [field, value] of Object.entries({ SITE_URL: BASE, SUPABASE_URL: "http://127.0.0.1:56641", SUPABASE_PUBLIC_URL: "http://127.0.0.1:56641", GONGZHI_LOCAL_PROJECT: "gongzhi-fulltest-c-20260914", GONGZHI_LOCAL_PG_PORT: "56640", GONGZHI_LOCAL_AUTH_PORT: "56641", GONGZHI_LOCAL_APP_PORT: "3079" })) {
+  if (env[field] !== value) throw new Error("Isolated browser target mismatch: " + field);
+}
 const evidence = path.join(tmpdir(), "gongzhi-evomap-live");
 mkdirSync(evidence, { recursive: true });
 const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
 const NAME_A = `看山验收一号${stamp.slice(-4)}`;
 const NAME_B = `看山验收二号${stamp.slice(-4)}`;
 const NEED_TITLE = `【浏览器验收】隔离环境测试需求 ${stamp}`;
+let createdGrant = "";
+
+test.beforeEach(async ({ request, page }) => {
+  if (!live) return;
+  page.on("requestfailed", r => { if (r.url().startsWith("http://127.0.0.1:56641/")) console.log("Isolated Auth transport:", r.failure()?.errorText); });
+  page.on("console", m => { if (/CORS|address space|local network/i.test(m.text())) console.log("Browser network policy:", m.text().replace(/eyJ[\w.-]+/g, "[redacted]")); });
+  page.on("response", r => { if (r.url().startsWith("http://127.0.0.1:56641/token")) console.log("Isolated Auth token HTTP status:", r.status()); });
+  const r = await request.get(BASE + "/api/gongzhi/config");
+  expect(r.status()).toBe(200);
+  const cfg = await r.json();
+  expect(cfg.mode).toBe("live"); expect(cfg.data.auth.url).toBe("http://127.0.0.1:56641");
+  expect(cfg.data.auth.available).toBe(true); expect(cfg.data.database_configured).toBe(true);
+  // 可选当前静态资源覆盖：只替换 JS/CSS/图片，保留服务器实际主文档和浏览器网络权限。
+  if (process.env.GONGZHI_FRONTEND_SOURCE_OVERLAY === "true") {
+    await page.route(BASE + "/community/**", async route => {
+      const p = new URL(route.request().url()).pathname.slice("/community/".length);
+      const target = path.resolve("public/community", p);
+      if (!target.startsWith(path.resolve("public/community") + path.sep)) throw new Error("Static overlay path rejected");
+      await route.fulfill({ path: target });
+    });
+  }
+});
 
 async function login(page: Page, email: string, password: string, name: string) {
   await page.goto(`${BASE}/zh/connect/`);
@@ -35,20 +63,18 @@ async function login(page: Page, email: string, password: string, name: string) 
   // 等登录态落定（绑定表单或已绑定称呼都是异步出现）
   await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).waitFor({ timeout: 20000 });
   // 全新账号未绑定发言身份：登记一次公开称呼；已绑定（重跑/调试）则沿用旧称呼。
-  // 账号区会异步重渲染，绑定表单可能瞬时出现又消失，按最终绑定态轮询、限次重试。
-  for (let i = 0; i < 4; i++) {
-    const bound = await page.locator("[data-cm-account]").getByText("发言身份已绑定").isVisible().catch(() => false);
-    if (bound) break;
-    const bind = page.locator("[data-cm-account] input[type=text]");
-    if (!(await bind.isVisible().catch(() => false))) { await page.waitForTimeout(1000); continue; }
+  // 只允许一次登记点击；迟到请求重绘输入属于产品问题，不用重试掩盖。
+  await expect(page.locator("[data-cm-account]")).toContainText(/发言身份已绑定|首次使用需要/);
+  const bind = page.locator("[data-cm-account] input[type=text]");
+  if (await bind.isVisible()) {
     await bind.fill(name);
-    await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click({ timeout: 5000 }).catch(() => {});
-    await page.waitForTimeout(1500);
+    await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click();
   }
   await expect(page.locator("[data-cm-account]")).toContainText("发言身份已绑定", { timeout: 20000 });
 }
 
 test.describe.configure({ mode: "serial" });
+test.setTimeout(180000); // 多个真实 HTTP/Auth 页面步骤；每个断言仍有界，禁止重复写入重试。
 
 test("真实环境：登录/绑定/签发撤销授权/发布/回复/平台如实失败/退出", async ({ page }) => {
   await login(page, env.GONGZHI_TEST_EMAIL, env.GONGZHI_TEST_PASSWORD, NAME_A);
@@ -58,22 +84,22 @@ test("真实环境：登录/绑定/签发撤销授权/发布/回复/平台如实
   const grantsBefore = await page.locator(".cm-grant").count();
   await page.locator('.cm-check input[value="read"]').check();
   await page.locator('.cm-check input[value="discuss"]').check();
+  const issuance = page.waitForResponse(r => r.url() === BASE + "/api/gongzhi/authorizations" && r.request().method() === "POST");
   await page.locator("[data-cm-grants]").getByRole("button", { name: "签发授权" }).click();
+  const issued = await (await issuance).json();
+  expect(issued.ok).toBe(true); createdGrant = issued.data.authorization.id;
   const token = page.locator(".cm-token");
   await expect(token).toBeVisible({ timeout: 20000 });
   expect((await token.textContent())?.length).toBeGreaterThan(10);
   await expect(page.locator(".cm-grant")).toHaveCount(grantsBefore + 1);
   await page.locator("[data-cm-grants]").getByRole("button", { name: "收起令牌" }).click();
   await expect(token).toHaveCount(0);
-  // 撤销全部未撤销授权（含此前失败运行的遗留），每次等待列表确认后再继续
-  for (let i = 0; i < 6; i++) {
-    const active = page.locator(".cm-grant").filter({ hasNotText: "已撤销" });
-    const n = await active.count();
-    if (n === 0) break;
-    await active.first().getByRole("button", { name: "撤销" }).click();
-    await expect(page.locator(".cm-grant").filter({ hasNotText: "已撤销" })).toHaveCount(n - 1, { timeout: 15000 });
-  }
-  await expect(page.locator(".cm-grant").filter({ hasNotText: "已撤销" })).toHaveCount(0);
+  // 仅撤销本次新建 grant，所有历史授权保留。记录按创建时间倒序；先验证新增唯一行。
+  const newGrant = page.locator(".cm-grant").first();
+  const revoked = page.waitForResponse(r => r.url() === BASE + "/api/gongzhi/authorizations/" + createdGrant && r.request().method() === "DELETE");
+  await newGrant.getByRole("button", { name: "撤销" }).click();
+  expect((await revoked).ok()).toBe(true);
+  await expect(page.locator(".cm-grant").first()).toContainText("已撤销");
   // 发布真实求助（明确标注测试内容）
   await page.goto(`${BASE}/zh/board/`);
   await expect(page.locator(".cm-publish-bar")).toBeVisible();
@@ -91,11 +117,10 @@ test("真实环境：登录/绑定/签发撤销授权/发布/回复/平台如实
   await expect(page.locator(".cm-reply-form textarea")).toHaveValue("", { timeout: 20000 });
   // 平台 Agent：模型未配置时必须如实失败，不展示虚构执行
   const runBtn = page.locator(".cm-run").getByRole("button", { name: /请求平台助手|重试/ });
-  if (await runBtn.count()) {
-    await runBtn.first().click();
-    await expect(page.locator(".cm-run")).toContainText(/不可用|未配置|失败/, { timeout: 20000 });
-    await expect(page.locator(".cm-run")).not.toContainText("已提交成果");
-  }
+  await expect(runBtn).toBeVisible();
+  await runBtn.click();
+  await expect(page.locator(".cm-run")).toContainText(/不可用|未配置|失败/, { timeout: 20000 });
+  await expect(page.locator(".cm-run")).not.toContainText("已提交成果");
   await page.keyboard.press("Escape");
   // 退出后敏感 UI 清理（账号区在接入页）
   await page.goto(`${BASE}/zh/connect/`);
@@ -106,9 +131,13 @@ test("真实环境：登录/绑定/签发撤销授权/发布/回复/平台如实
 });
 
 test("真实环境：第二账号可见公开公告但无所有者操作，跨账号授权不可见", async ({ page }) => {
+  const ownResponse = page.waitForResponse(r => r.url() === BASE + "/api/gongzhi/authorizations" && r.request().method() === "GET");
   await login(page, env.GONGZHI_TEST_OTHER_EMAIL, env.GONGZHI_TEST_OTHER_PASSWORD, NAME_B);
-  // 看不到第一账号的授权列表（自己的列表为空）
-  await expect(page.locator(".cm-grant")).toHaveCount(0);
+  // 只比较本次新授权，不假定第二账号从无历史记录。
+  await expect(page.locator("[data-cm-grants]")).toContainText(/还没有签发过授权|有效 ·|已撤销|已过期/);
+  const ownResult = await (await ownResponse).json(); expect(ownResult.ok).toBe(true);
+  const own = ownResult.data.map((row: {id: string}) => row.id);
+  expect(own).not.toContain(createdGrant);
   // 公开公告板可读第一账号的真实求助
   await page.goto(`${BASE}/zh/board/`);
   await expect(page.locator(".cm-record:has(.cm-pill.need)", { hasText: NEED_TITLE }).first()).toBeVisible({ timeout: 20000 });
