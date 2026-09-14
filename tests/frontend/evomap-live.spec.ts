@@ -232,6 +232,7 @@ test("真实托管双账号：准确批准分享、作者撤销后借用、独�
   await expect(page.locator('[data-cm-account] input[type=email]')).toBeVisible();
   await login(page, env.GONGZHI_TEST_OTHER_EMAIL, env.GONGZHI_TEST_OTHER_PASSWORD, NAME_B);
   const borrower = await registerUiTestAgent(page, request, "借用者", ["read","discuss"]);
+  await page.setViewportSize({width:390,height:844});
   await page.goto(BASE + "/zh/board/");
   await page.getByLabel("搜索经验摘要").fill(draft.payload.title);
   await page.getByRole("button",{name:"搜索经验",exact:true}).click();

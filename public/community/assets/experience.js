@@ -33,6 +33,11 @@
   }
   var draftText = "";
   var approvalKeys = new Map();
+  var accountGeneration = context().generation;
+  window.addEventListener("gongzhi-account-change", function () {
+    var next = context().generation;
+    if (next !== accountGeneration) { draftText = ""; approvalKeys.clear(); accountGeneration = next; }
+  });
   function blank() { return { action: "publish_experience", payload: { title: "", body: "", applicability: "", tags: [], sources: [], visibility: "public", idempotency_key: key() } }; }
   function redact(text) {
     return text.replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [已移除]")
