@@ -179,6 +179,10 @@
 
   /* ---------- 登录与身份面板（接入指南页） ---------- */
   var accountRoot = document.querySelector("[data-cm-account]");
+  // 从官方页使用浏览器“返回”可能恢复整页缓存；只恢复按钮，会话仍由 SDK 校验。
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted && loginBusy) { loginBusy = false; loginError = ""; renderAccount(); }
+  });
   function loginCopy() {
     return "前往知乎官方页面，由你亲自确认授权。共治仅获取登录所需的基础资料（姓名、头像），不会自动导入或上传你的知乎内容。分享资料仍需你逐份审核并确认公开范围。";
   }
@@ -867,6 +871,10 @@
     document.body.appendChild(feedbackNode);
   }
   function renderAll() {
+    document.querySelectorAll("[data-cm-account-link]").forEach(function (link) {
+      link.textContent = S.status === "ready" && S.user ? "账户" : "登录";
+      link.title = S.status === "ready" && S.user && S.user.name ? S.user.name : "使用知乎账号登录共治";
+    });
     renderAuthFeedback();
     renderAccount();
     renderGrants();

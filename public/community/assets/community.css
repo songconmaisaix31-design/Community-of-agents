@@ -137,6 +137,8 @@ textarea.cm-input{resize:vertical;line-height:1.8}
 .cm-account-head strong{font-size:15px;color:hsl(var(--c-text))}
 .cm-account-head .cm-button{margin-left:auto}
 .cm-account-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover}
+.cm-account-link{font-size:13px;white-space:nowrap;color:#0066ff;padding:8px 2px;border-radius:4px}
+.cm-account-link:focus-visible{outline:2px solid #0066ff;outline-offset:3px}
 .cm-login .cm-button{justify-self:start;min-height:44px}
 .cm-auth-feedback{position:fixed;z-index:120;top:90px;left:50%;transform:translateX(-50%);width:min(640px,calc(100% - 32px));display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:16px 20px;border:1px solid #b8d3ff;border-radius:12px;background:#fff;box-shadow:0 8px 30px #15396620;color:#234;line-height:1.7;font-size:14px}
 .cm-auth-feedback p{flex:1 1 100%;margin:0}
