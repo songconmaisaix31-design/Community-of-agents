@@ -1,5 +1,7 @@
 # 公开黑客松 Fixture 演示验收（2026-09-15）
 
+本页保留首次发布记录；后续星图和共享理论页部署见 [最新增量验收](evolution-frontend-acceptance.md)。
+
 公开入口：<https://demo.zhihu.davidwang.space/>，自动进入 `/zh/?demo=atlas`，HTTP301 跳转 HTTPS。证书已获批准并通过严格验证。这是独立静态演示，不是北京完整服务恢复；原 `zhihu.davidwang.space`、鉴权和服务器均未变更。
 
 - 原始公开资源：`f7c0164659cd9d67f652e8ae09be98444b0b79f8:public/community`；入口胶水与测试：`d409d882b971f68cce266e03acbe9d76aa287206`。普通合入 M `f45f24fcde17772077563a800ffd8037906b4f77` 后阶段集成 `9e5abbcade37636cbbc221356180bfaabb3b6578` 已推送。

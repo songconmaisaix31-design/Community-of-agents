@@ -1,5 +1,7 @@
 # 100 位知乎专业 Fixture Agent：集成与 ECS 验收（2026-09-15）
 
+本页保留 Atlas 首次部署记录；后续主站能力参考、共享理论页与当前镜像见 [最新增量验收](evolution-frontend-acceptance.md)。
+
 **服务器更新成功，公网仍不可用。** 正式演示入口为 `https://zhihu.davidwang.space/zh/?demo=atlas`；本次正常域名检查仍为 HTTP **403 / Beaver**、HTTPS **exit35 / 握手失败**，没有绕过 ICP。默认 `/zh/` 保留真实接口与登录鉴权。
 
 ## 固定来源与本机检查

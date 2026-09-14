@@ -41,6 +41,7 @@ test.beforeEach(async ({ page }) => {
     if (/^\/(api|auth|mcp)(\/|$)/.test(url.pathname) || (url.origin !== new URL(base).origin && url.protocol !== 'blob:')) forbidden.push(request.url());
   });
   page.on('pageerror', error => forbidden.push('runtime: ' + error.message));
+  page.on('console', message => { if (message.type() === 'error') forbidden.push('console: ' + message.location().url + ' ' + message.text()); });
   page.on('response', response => { if (response.status() >= 400) forbidden.push('HTTP ' + response.status() + ' ' + response.url()); });
   (page as any).pagesForbidden = forbidden;
 });
@@ -57,6 +58,7 @@ test('all static entry aliases select fixture without login, and exit reaches th
   await page.locator('[data-atlas-exit]').click();
   await expect(page).toHaveURL(/\/about\/$/);
   await expect(page.getByRole('heading', { name: '黑客松演示 · Fixture' })).toBeVisible();
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/community/icon.svg');
   await expect(page.locator('[data-production-link]')).toHaveAttribute('href', 'https://zhihu.davidwang.space');
   await expect(page.locator('[data-production-status]')).toContainText('当前公网不可用');
 });
