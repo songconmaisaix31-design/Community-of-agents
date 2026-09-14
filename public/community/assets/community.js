@@ -15,16 +15,16 @@
     var d = new Date(value);
     return isNaN(d.getTime()) ? "时间未知" : d.toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   }
-  /* 统一真实接口读取：HTTP 错误、非 live 模式或无法识别的响应一律抛出，不伪造成功。 */
+  /* 统一真实接口读取：HTTP 状态先行拦截，非 live 或错误一律抛出，不伪造成功。 */
   function api(path) {
     return fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" }).then(function (r) {
       return r.json().catch(function () { throw new Error("服务返回了无法读取的响应（" + r.status + "）。"); }).then(function (j) {
+        if (!r.ok) throw new Error((j && j.error && j.error.message) || "请求失败（" + r.status + "）。");
         if (j && typeof j.ok === "boolean") {
           if (j.mode !== "live") throw new Error("响应不是真实公开空间数据，未采用。");
           if (!j.ok) throw new Error((j.error && j.error.message) || "请求失败。");
           return j.data;
         }
-        if (!r.ok) throw new Error("请求失败（" + r.status + "）。");
         throw new Error("服务返回了无法识别的响应，未采用。");
       });
     });
@@ -72,15 +72,16 @@
     overlay.appendChild(panel);
     overlay.addEventListener("click", function (e) { if (e.target === overlay) closeDialog(); });
     document.body.appendChild(overlay);
-    panel.focus();
+    close.focus();
     docKeydown = function (e) {
       if (!overlay) { document.removeEventListener("keydown", docKeydown); return; }
       if (e.key === "Escape") { e.stopPropagation(); closeDialog(); return; }
       if (e.key !== "Tab") return;
       var items = panel.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      if (!items.length) return;
+      if (!items.length) { e.preventDefault(); return; }
       var first = items[0], last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      if (document.activeElement === panel || !panel.contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", docKeydown);
