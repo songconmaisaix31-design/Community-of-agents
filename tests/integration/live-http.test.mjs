@@ -185,7 +185,7 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
     assert.deepEqual([edge.source, edge.target, edge.reply_to_id, edge.thread_id], [enrolledB.owner.id, enrolledA.owner.id, delegated.id, delegated.id]);
     assert.ok(graph.edges.some(item => item.evidence_id === supplement.id));
     assert.ok(!graph.edges.some(item => item.evidence_id === humanReply.id));
-    // This is a real Hugo page reading the persisted records above, without MSW.
+    // The current Next-hosted community page reads persisted records without MSW.
     // The local auth stub is only used by the preceding programmatic enrollment.
     const browser = await chromium.launch({ channel: "chrome", headless: true });
     try {
@@ -193,42 +193,35 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
       await context.route("**/*", route => ["localhost", "127.0.0.1"].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
       const page = await context.newPage();
       const boardResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/gongzhi/board");
-      await page.goto(`${base}/network`);
+      await page.goto(`${base}/zh`);
       assert.equal((await boardResponse).fromServiceWorker(), false);
       assert.equal(await page.evaluate(() => navigator.serviceWorker.controller), null);
-      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
-      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
-      const evidenceDirectory = resolve(tmpdir(), "gongzhi-hugo-I-real-pg");
+      await expect(page.locator(".cm-graph-wrap canvas")).toBeVisible();
+      await expect(page.locator(".cm-agent-chips [data-agent-id]")).toHaveCount(graph.nodes.length);
+      await expect(page.locator("[data-cm-graph-note]")).toContainText(`${graph.edges.length} 条公开交流依据`);
+      const evidenceDirectory = resolve(tmpdir(), "gongzhi-community-I-real-pg");
       await mkdir(evidenceDirectory, { recursive: true });
-      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph.png") });
-      const canvas = page.locator(".cosmos-host canvas");
-      const camera = () => canvas.evaluate(element => JSON.stringify(element.__zoom));
-      const beforeZoom = await camera();
-      await page.getByRole("button", { name: "放大点图", exact: true }).click();
-      assert.notEqual(await camera(), beforeZoom);
-      const keptCamera = await camera();
-      const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/gongzhi/agent-graph");
-      await page.getByRole("button", { name: "刷新公开记录", exact: true }).click();
-      await refreshed;
-      assert.equal(await camera(), keptCamera);
+      await page.locator("#agents").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph.png") });
+      // Removed Hugo zoom/refresh controls are retired; actual Cosmos pointer,
+      // evidence and camera behavior is covered by evomap-static browser tests.
       for (const id of [delegated.id, reply.id, supplement.id, published.id, result.id]) {
-        await expect(page.locator(`.bulletin-card[data-record-id="${id}"]`)).toHaveCount(1);
+        await expect(page.locator(`.cm-record[data-record-id="${id}"]`)).toHaveCount(1);
       }
-      await page.locator(`.bulletin-card[data-record-id="${reply.id}"] .record-open`).click();
+      await page.locator(`.cm-record[data-record-id="${reply.id}"]`).click();
       await expect(page.getByRole("dialog")).toContainText(reply.body);
-      await page.getByRole("button", { name: "关闭面板", exact: true }).click();
-      await page.locator(`.agent-list [data-agent-id="${enrolledA.owner.id}"]`).click();
-      await expect(page.locator(`.bulletin-card[data-record-id="${supplement.id}"]`)).toHaveCount(1);
-      await expect(page.locator(`.bulletin-card[data-record-id="${reply.id}"]`)).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await page.locator(`.cm-agent-chips [data-agent-id="${enrolledA.owner.id}"]`).click();
+      await expect(page.locator(`.cm-record[data-record-id="${supplement.id}"]`)).toHaveCount(1);
+      await expect(page.locator(`.cm-record[data-record-id="${reply.id}"]`)).toHaveCount(0);
       await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records.png"), fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({ path: resolve(evidenceDirectory, "actual-public-records-narrow.png"), fullPage: true });
       await page.reload();
-      await expect(page.getByTestId("agent-canvas")).toHaveAttribute("data-state", "ready");
-      await expect(page.locator(".agent-list [data-agent-id]")).toHaveCount(graph.nodes.length);
-      await page.locator(".agent-section").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph-narrow.png") });
-      t.diagnostic(`Actual Hugo/PG graph: ${graph.nodes.length} Agents, ${graph.edges.length} evidenced edges; screenshots ${evidenceDirectory}`);
+      await expect(page.locator(".cm-graph-wrap canvas")).toBeVisible();
+      await expect(page.locator(".cm-agent-chips [data-agent-id]")).toHaveCount(graph.nodes.length);
+      await page.locator("#agents").screenshot({ path: resolve(evidenceDirectory, "actual-agent-graph-narrow.png") });
+      t.diagnostic(`Actual Next/PG scripted graph: ${graph.nodes.length} Agents, ${graph.edges.length} evidenced edges; screenshots ${evidenceDirectory}`);
     } finally { await browser.close(); }
     const limitedGrant = await request("http-human-a", "/authorizations", "POST", { scopes: ["read"], idempotency_key: `${prefix}:limited` });
     const limited = await registerExternalAgent({ ...connection, grantToken: limitedGrant.grant_token }, { capabilities: ["publish_need", "discuss"], idempotency_key: `${prefix}:limited-enroll` });
