@@ -330,21 +330,31 @@
     var wrap = graphRoot.querySelector(".cm-graph-wrap");
     var chips = graphRoot.querySelector(".cm-agent-chips");
     var graphNote = graphRoot.querySelector("[data-cm-graph-note]");
+    var connectedGraph = null, connectedError = null, referenceSelection = null;
+    var capabilityView = !fixtureMode && window.GongzhiCapabilities ? window.GongzhiCapabilities.create(graphRoot, function () {
+      if (capabilityView.active() && boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(null);
+      updateGraphView();
+    }) : null;
+    function referenceActive() { return capabilityView && capabilityView.active(); }
     selectAgent = function (id, scroll) {
-      selectedAgent = id;
+      // Board evidence always returns to actual connected Agents, never to a reference role.
+      if (referenceActive() && id && !capabilityView.has(id)) capabilityView.connected();
+      if (referenceActive()) { referenceSelection = id; capabilityView.select(id); }
+      else selectedAgent = id;
       if (window.GongzhiAtlas) window.dispatchEvent(new CustomEvent("gongzhi-agent-select", { detail: id }));
       chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
       if (window.GongzhiGraph) window.GongzhiGraph.select(id);
-      if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
+      if (!referenceActive() && boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
       if (id && scroll) graphRoot.scrollIntoView({ behavior: "smooth", block: "start" });
     };
-    function loadGraph() { api("/api/gongzhi/agent-graph").then(function (graph) {
+    function renderGraph(graph) {
+      wrap.querySelectorAll(".cm-graph-fallback").forEach(function (node) { node.remove(); });
       var nodes = [], seen = {};
       graph.nodes.forEach(function (n) {
         if ((n.kind === "external_agent" || n.kind === "platform_agent") && !seen[n.id]) { seen[n.id] = true; nodes.push(n); }
       });
       var edges = graph.edges.filter(function (e) { return e.evidence_id && e.reply_to_id && e.thread_id && seen[e.source] && seen[e.target] && e.source !== e.target; });
-      graphNote.textContent = nodes.length + (window.GongzhiAtlas ? " 位 Fixture Agent · " : " 位公开 Agent · ") + edges.length + (window.GongzhiAtlas ? " 条模拟交流依据 · 未真实执行" : " 条公开交流依据 · 不代表在线");
+      graphNote.textContent = referenceActive() ? nodes.length + " 个能力点 · 按专业查找或选点查看来源" : nodes.length + (window.GongzhiAtlas ? " 位 Fixture Agent · " : " 位公开 Agent · ") + edges.length + (window.GongzhiAtlas ? " 条模拟交流依据 · 未真实执行" : " 条公开交流依据 · 不代表在线");
       chips.replaceChildren();
       nodes.forEach(function (n) {
         var chip = el("button", null, n.label);
@@ -358,10 +368,12 @@
         });
         chips.appendChild(chip);
       });
-      var requestedAgent = selectedAgent;
+      if (capabilityView) capabilityView.filter();
+      var requestedAgent = referenceActive() ? referenceSelection : selectedAgent;
       if (requestedAgent && seen[requestedAgent]) selectAgent(requestedAgent, false);
       if (!nodes.length) {
-        wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">还没有公开登记的 Agent。公告仍可阅读。</div>');
+        if (window.GongzhiGraph && wrap.querySelector("canvas")) window.GongzhiGraph.mount(wrap, { nodes: [], edges: [] });
+        wrap.appendChild(el("div", "cm-graph-fallback", referenceActive() ? "能力参考资料未载入，未用已接入数据冒充。" : "还没有公开登记的 Agent。公告仍可阅读。"));
         return;
       }
       if (!window.GongzhiGraph) {
@@ -371,12 +383,7 @@
       try {
         window.GongzhiGraph.mount(wrap, { nodes: nodes, edges: edges }, {
           onEvidence: openEvidence,
-          onSelect: function (id) {
-            selectedAgent = id;
-            if (window.GongzhiAtlas) window.dispatchEvent(new CustomEvent("gongzhi-agent-select", { detail: id }));
-            chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
-            if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
-          },
+          onSelect: function (id) { selectAgent(id, false); },
         });
         if (requestedAgent && seen[requestedAgent]) window.GongzhiGraph.select(requestedAgent);
       } catch (e) {
@@ -391,10 +398,28 @@
           evidence.addEventListener("click", function () { openEvidence(edges[0]); }); graphRoot.appendChild(evidence);
         }
       }
+    }
+    function updateGraphView() {
+      if (referenceActive()) { renderGraph(capabilityView.data()); return; }
+      if (connectedGraph) { renderGraph(connectedGraph); return; }
+      chips.replaceChildren();
+      wrap.querySelectorAll(".cm-graph-fallback").forEach(function (node) { node.remove(); });
+      if (window.GongzhiGraph && wrap.querySelector("canvas")) window.GongzhiGraph.mount(wrap, { nodes: [], edges: [] });
+      graphNote.textContent = connectedError ? "点图数据暂不可用：" + connectedError + " 公告仍可单独阅读。" : "正在读取 Agent 点图…";
+      if (connectedError) wrap.appendChild(el("div", "cm-graph-fallback", "点图暂时不可用，未用示例关系替代。"));
+    }
+    function loadGraph() { api("/api/gongzhi/agent-graph").then(function (graph) {
+      if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error("点图数据格式不完整，未采用。");
+      connectedGraph = graph; connectedError = null;
+      if (capabilityView) capabilityView.status("已接入视图：公开数据已读取，不代表在线。");
+      // A late response cannot replace a reference view the user explicitly selected.
+      if (!referenceActive()) updateGraphView();
     }).catch(function (e) {
-      graphNote.textContent = "点图数据暂不可用：" + e.message + " 公告仍可单独阅读。";
-      wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用，未用示例关系替代。</div>');
+      connectedGraph = null; connectedError = e.message;
+      if (capabilityView) capabilityView.status("已接入视图暂不可用：" + e.message);
+      if (!referenceActive()) updateGraphView();
     }); }
+    if (referenceActive()) updateGraphView();
     loadGraph();
     if (window.GongzhiAtlas) window.addEventListener("gongzhi-atlas-change", loadGraph);
   }

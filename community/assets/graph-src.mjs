@@ -21,6 +21,7 @@ let current = { nodes: [], edges: [] };
 let selected = null;
 let fitted = false;
 let tooltip = null;
+let unavailable = false;
 
 function pointColors() {
   const byId = new Map(current.nodes.map(n => [n.id, n]));
@@ -58,9 +59,15 @@ function applyData(graph) {
   for (const n of graph.nodes) if (!previousIds.has(n.id)) ids.push(n.id);
   const indices = new Map(ids.map((id, i) => [id, i]));
   const seedRadius = Math.min(900, Math.max(180, Math.sqrt(graph.nodes.length) * 90));
-  const positions = new Float32Array(ids.flatMap((id, i) => !byId.has(id) ? [NaN, NaN]
-    : previousIds.has(id) && Number.isFinite(existing[i * 2]) ? [existing[i * 2], existing[i * 2 + 1]]
-    : [centerX + Math.sin(i * 13.7 + 1) * seedRadius, centerY + Math.cos(i * 7.3 + 1) * seedRadius]));
+  const positions = new Float32Array(ids.flatMap((id, i) => {
+    if (!byId.has(id)) return [NaN, NaN];
+    if (previousIds.has(id) && Number.isFinite(existing[i * 2])) return [existing[i * 2], existing[i * 2 + 1]];
+    // Deterministic disk seeds avoid square edges; existing points and camera stay intact.
+    const noise = Math.sin((i + 1) * 12.9898) * 43758.5453;
+    const radius = seedRadius * Math.sqrt(noise - Math.floor(noise));
+    const angle = (i + 1) * 2.399963229728653;
+    return [centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius];
+  }));
   cosmos.setPointPositions(positions, fitted);
   cosmos.setPointSizes(new Float32Array(ids.map(id => !byId.has(id) ? 0 : selected === id ? 7 : 4)));
   cosmos.setPointColors(pointColors());
@@ -78,6 +85,7 @@ function applyData(graph) {
 }
 
 export function mount(hostEl, graph, hooks = {}) {
+  if (unavailable) throw new Error("点图不可用，请使用 Agent 列表。");
   host = hostEl;
   handlers = hooks;
   current = graph;
@@ -104,7 +112,8 @@ export function mount(hostEl, graph, hooks = {}) {
     onLinkMouseOver: () => showTooltip("公开交流 · 点击查看双方原始记录"),
     onLinkMouseOut: () => showTooltip(""),
   });
-  cosmos.ready.then(() => { if (host === hostEl) applyData(graph); }).catch(() => {
+  cosmos.ready.then(() => { if (host === hostEl) applyData(current); }).catch(() => {
+    unavailable = true;
     hostEl.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用。Agent 列表与公告仍可完整操作。</div>');
   });
   return cosmos;

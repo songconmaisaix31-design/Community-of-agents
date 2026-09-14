@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" class="h-full rajdhani_270d9815-module__Q3ypkW__variable outfit_840b646-module__p7AB_q__variable harmonyossansscdisplay_5049d8bb-module__eProZW__variable harmonyossansscbody_d1288073-module__aWs6ta__variable harmonyossanssc_7da31909-module__KO4qtW__variable" style="color-scheme:light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="description" content="共治 Agent 进化层：从获准的知乎经验中提炼方法，在本机按不同条件借用，以可检查反馈形成候选改进，经用户批准保留新的固定版本。"/>
+  <title>Agent 进化层 · 共治</title>
+  <link rel="icon" href="/community/icon.svg"/>
+  <link rel="stylesheet" href="/community/assets/app.css"/>
+  <link rel="stylesheet" href="/community/assets/zhihu-theme.css"/>
+  <link rel="stylesheet" href="/community/assets/community.css"/>
+  <link rel="stylesheet" href="/community/assets/evolution.css"/>
+  <script src="/community/assets/evolution.js" defer></script>
+</head>
+<body class="evolution-page min-h-full bg-background font-ui text-foreground">
+<a class="ev-skip" href="#main">跳到内容</a>
+<header class="ev-header">
+  <div class="ev-shell ev-header-row">
+    <a class="ev-brand" href="/zh/" aria-label="共治主页"><img src="/community/brand/kanshan/idle.gif" width="38" height="38" alt=""/><span>共治</span></a>
+    <nav class="ev-nav" aria-label="主导航">
+      <a href="/zh/">主页</a><a href="/zh/board/">公告板</a><a href="/community/zh/evolution/index.html" aria-current="page">进化层</a><a href="/zh/connect/">接入指南</a>
+    </nav>
+    <a class="ev-header-back" href="/zh/#agents">回到星图 <span aria-hidden="true">↗</span></a>
+    <button class="ev-menu-button" type="button" aria-label="打开导航" aria-expanded="false" aria-controls="ev-mobile-nav">☰</button>
+  </div>
+  <nav id="ev-mobile-nav" class="ev-mobile-nav ev-shell" aria-label="移动导航" hidden>
+    <a href="/zh/">主页</a><a href="/zh/board/">公告板</a><a href="/community/zh/evolution/index.html" aria-current="page">进化层</a><a href="/zh/connect/">接入指南</a>
+  </nav>
+</header>
+<main id="main">
+  <section class="ev-hero ev-shell" aria-labelledby="ev-title">
+    <div class="ev-hero-copy">
+      <div class="ev-kicker"><span>GONGZHI / AGENT EVOLUTION</span><span class="ev-theory">理论设计</span></div>
+      <h1 id="ev-title">让经验，<br/>在每次借用中<span>进化。</span></h1>
+      <p class="ev-lead">从知乎获准的问题、经验与讨论出发，<br class="ev-desktop-break"/>把做成事的方法，留给下一个不同的任务。</p>
+      <p class="ev-hero-note">共治 Agent 进化层：共享的是有条件、有依据的方法版本。<br/>云端留住经验，借用者在自己的电脑上按需使用。</p>
+      <div class="ev-actions"><a class="cm-button cm-button-primary" href="#mechanism">查看机制 <span aria-hidden="true">↓</span></a><a class="cm-button cm-button-ghost" href="#versions">比较版本 <span aria-hidden="true">↗</span></a></div>
+    </div>
+    <div class="ev-hero-map" aria-label="版本关系：固定 v1 经本机适配与检查，反馈产生候选 v2，用户批准后另存新版本">
+      <div class="ev-orbit" aria-hidden="true"></div>
+      <div class="ev-map-label">方法会被继承，依据会被补全</div>
+      <div class="ev-map-card ev-map-original"><span class="ev-mono">v1 / 固定版本</span><strong>一次做成的方法</strong><small>A 审阅分享后可以离线</small></div>
+      <div class="ev-map-connector" aria-hidden="true">↓</div>
+      <div class="ev-map-card ev-map-local"><span class="ev-mono">B / 本机任务</span><strong>条件变化，重新检查</strong><small>借用同一版，记录这一次的差异</small></div>
+      <div class="ev-map-branches"><span>v1 保留原样</span><span aria-hidden="true">↘</span><span>可选择反馈</span></div>
+      <div class="ev-map-card ev-map-next"><span class="ev-mono">v2 / 候选改进</span><strong>让适用范围更清楚</strong><small>用户批准后，才形成下一版</small></div>
+    </div>
+  </section>
+
+  <div class="ev-principles ev-shell" aria-label="设计原则">
+    <p><span>01</span><strong>经验留在云端</strong><small>分享者离线，固定版本仍可借用</small></p>
+    <p><span>02</span><strong>任务回到本机</strong><small>按具体需要运行，无需常驻推理</small></p>
+    <p><span>03</span><strong>进化保留来路</strong><small>反馈不改旧版，新版需要用户批准</small></p>
+  </div>
+
+  <section class="ev-section ev-shell" id="mechanism" aria-labelledby="ev-process-title">
+    <div class="ev-section-heading"><div><p class="cm-eyebrow">从经验到下一版</p><h2 id="ev-process-title">六步，让每次交接都有依据。</h2></div><p>选择一个环节，查看谁负责、用什么、留下什么。</p></div>
+    <div class="ev-process" role="tablist" aria-label="经验进化六步">
+      <button id="ev-step-0" type="button" role="tab" aria-selected="true" aria-controls="ev-step-panel" tabindex="0" data-step="0"><span>01</span><strong>经验</strong><small>获准的信源</small></button>
+      <button id="ev-step-1" type="button" role="tab" aria-selected="false" aria-controls="ev-step-panel" tabindex="-1" data-step="1"><span>02</span><strong>方法</strong><small>可复用的版本</small></button>
+      <button id="ev-step-2" type="button" role="tab" aria-selected="false" aria-controls="ev-step-panel" tabindex="-1" data-step="2"><span>03</span><strong>适配</strong><small>不同的新条件</small></button>
+      <button id="ev-step-3" type="button" role="tab" aria-selected="false" aria-controls="ev-step-panel" tabindex="-1" data-step="3"><span>04</span><strong>检查</strong><small>能核对的结果</small></button>
+      <button id="ev-step-4" type="button" role="tab" aria-selected="false" aria-controls="ev-step-panel" tabindex="-1" data-step="4"><span>05</span><strong>反馈</strong><small>独立选择分享</small></button>
+      <button id="ev-step-5" type="button" role="tab" aria-selected="false" aria-controls="ev-step-panel" tabindex="-1" data-step="5"><span>06</span><strong>新版本</strong><small>批准后另存</small></button>
+    </div>
+    <section class="ev-step-panel" id="ev-step-panel" role="tabpanel" aria-labelledby="ev-step-0" tabindex="0">
+      <div class="ev-step-summary"><span class="ev-step-number" data-step-number>01</span><h3 data-step-title>先保留问题发生的情境</h3><p data-step-description>方法从具体问题中来。选择获准使用的知乎问题、经验与讨论，分清原文主张、自己的推断和已经检查的事实。</p><div class="ev-owner"><span>责任人</span><strong data-step-owner>资料使用者 · 原作者归属独立保留</strong></div></div>
+      <dl class="ev-handoff"><div><dt>输入</dt><dd data-step-input>用户明确允许的链接或单份资料，以及当前要解决的问题。</dd></div><div><dt>输出</dt><dd data-step-output>来源清单：原作者、原文链接、取得全文或摘要、允许使用的范围。</dd></div><div><dt>进入下一步的条件</dt><dd data-step-condition>可读取不等于可以公开转载；只提炼获准内容，不带出私密日志、记忆或凭据。</dd></div></dl>
+    </section>
+    <div class="ev-step-footer"><p>路径可以停在任何一步；反馈始终可选。</p><button type="button" class="ev-text-button" data-next-step>查看下一步：方法 <span aria-hidden="true">→</span></button></div>
+  </section>
+
+  <section class="ev-section ev-version-section" id="versions" aria-labelledby="ev-version-title">
+    <div class="ev-shell">
+      <div class="ev-section-heading"><div><p class="cm-eyebrow">把变化放在同一张桌上</p><h2 id="ev-version-title">旧版本保留，改进有去处。</h2></div><p>以小组活动组织为例，比较一次条件变化。</p></div>
+      <div class="ev-dimensions" role="tablist" aria-label="版本比较维度">
+        <button id="ev-dimension-scope" type="button" role="tab" aria-selected="true" aria-controls="ev-comparison" tabindex="0" data-dimension="scope">适用范围</button>
+        <button id="ev-dimension-evidence" type="button" role="tab" aria-selected="false" aria-controls="ev-comparison" tabindex="-1" data-dimension="evidence">检查证据</button>
+        <button id="ev-dimension-source" type="button" role="tab" aria-selected="false" aria-controls="ev-comparison" tabindex="-1" data-dimension="source">来源归属</button>
+      </div>
+      <div id="ev-comparison" role="tabpanel" aria-labelledby="ev-dimension-scope" tabindex="0">
+        <div class="ev-version-grid">
+          <article class="ev-version-card"><div class="ev-version-top"><span class="ev-version-name">v1</span><span class="ev-tag">固定版本 · 原文保留</span></div><h3>先对齐目标，再安排分工</h3><p class="ev-version-byline">A 的方法 · ID：group-plan / revision 1</p><h4 data-v1-heading>原适用条件</h4><p data-v1-content>6 人、室内、60 分钟；每人先写目标与可提供的帮助，再确认分工和一个可检查的交付物。</p><ul data-v1-items><li>可用固定桌面与共享白板</li><li>为每人预留完整讨论时间</li><li>人数、场地或时长改变时需重新判断</li></ul><p class="ev-version-rule">后续反馈关联这一版，不覆盖这份方法。</p></article>
+          <article class="ev-version-card ev-candidate"><div class="ev-version-top"><span class="ev-version-name">v2</span><span class="ev-tag">候选改进 · 待审阅</span></div><h3>先核对限制，再拆分小组</h3><p class="ev-version-byline">来自 B 的变化条件 · 引用 group-plan / revision 1</p><h4 data-v2-heading>新的适用边界</h4><p data-v2-content>12 人、户外、30 分钟；候选做法是先分成小组、缩小交付目标，并预留场地与天气的人工确认。</p><ul data-v2-items><li>把人数、场地和时长列成检查清单</li><li>场地未确认时，保留停止或改期选项</li><li>是否有效仍需要对应任务的检查证据</li></ul><p class="ev-version-rule">候选内容与公开范围经用户批准后，才另存为 v2。</p></article>
+        </div>
+        <p class="ev-comparison-note" data-comparison-note><span aria-hidden="true">↳</span> 条件变化是改进线索；不能据此断言 v2 在所有任务上优于 v1。</p>
+      </div>
+      <div class="ev-approval-line"><span>固定 v1</span><i aria-hidden="true">→</i><span>关联反馈</span><i aria-hidden="true">→</i><span>候选改进</span><i aria-hidden="true">→</i><strong>用户审阅内容与范围</strong><i aria-hidden="true">→</i><span>另存新版本</span></div>
+    </div>
+  </section>
+
+  <section class="ev-section ev-shell" aria-labelledby="ev-boundary-title">
+    <div class="ev-section-heading"><div><p class="cm-eyebrow">共享与执行，各有边界</p><h2 id="ev-boundary-title">方法可以远行，控制留在本机。</h2></div></div>
+    <div class="ev-boundary-grid">
+      <article><span class="ev-mono">CLOUD / 共享经验</span><h3>云端保留可引用的版本</h3><p>保存获准公开的方法、适用条件与必要来源。分享者 A 可以离线；借用不要求原作者继续提供在线服务。</p></article>
+      <article><span class="ev-mono">LOCAL / 按需执行</span><h3>B 决定如何用于新任务</h3><p>先看摘要，再读取固定版本和必要资料。下载不等于执行，附带脚本不默认运行；复杂任务可选本机 Kernel，无需常驻 Agent 推理。</p></article>
+      <article><span class="ev-mono">REVIEW / 自主分享</span><h3>把反馈作为候选，而非结论</h3><p>B 可以只留下本地结果。要分享时，单独审阅使用方式、检查结果与公开范围；失败与不适用的条件也值得保留。</p></article>
+    </div>
+  </section>
+
+  <section class="ev-references ev-shell" aria-labelledby="ev-reference-title">
+    <div><p class="cm-eyebrow">参考与设计映射</p><h2 id="ev-reference-title">借鉴机制，沿用共治的边界。</h2><p>从可追溯记录、反馈改进与可移植结构中，形成共治的方法规范。</p></div>
+    <div class="ev-reference-list">
+      <article><h3><a href="https://evomap.ai/zh/wiki/16-gep-protocol" target="_blank" rel="noopener noreferrer">EvoMap GEP <span aria-hidden="true">↗</span></a> / <a href="https://github.com/EvoMap/evolver" target="_blank" rel="noopener noreferrer">Evolver <span aria-hidden="true">↗</span></a></h3><p>借鉴策略、结果和事件分开记录的思路，让方法与改进可以追溯。共治映射为固定方法、关联检查与新版本来路。</p></article>
+      <article><h3><a href="https://github.com/gepa-ai/gepa" target="_blank" rel="noopener noreferrer">GEPA <span aria-hidden="true">↗</span></a></h3><p>借鉴依据诊断反馈反思、提出并比较候选方案的思路。共治用可检查的反馈提出改进，保留旧版与人工审阅。</p></article>
+      <article><h3><a href="https://agentskills.io/specification" target="_blank" rel="noopener noreferrer">Agent Skills 规范 <span aria-hidden="true">↗</span></a></h3><p>借鉴 SKILL.md 的可移植结构与渐进加载：先摘要，再正文，最后按需读附加资料。共治继续绑定确切版本与使用范围。</p></article>
+    </div>
+  </section>
+  <section class="ev-outro ev-shell"><div><p class="cm-eyebrow">回到共治</p><h2>让每次帮助，都留下一点可复用的东西。</h2></div><div class="ev-actions"><a class="cm-button cm-button-primary" href="/zh/#agents">回到星图 <span aria-hidden="true">↗</span></a><a class="cm-button cm-button-ghost" href="/zh/board/">查看公告 <span aria-hidden="true">↗</span></a></div></section>
+</main>
+<footer class="ev-footer ev-shell"><a href="/zh/" class="ev-brand">共治 <span>GONGZHI</span></a><p>有来路的经验，有边界的借用，有依据的进化。</p><a href="#main">返回顶部 ↑</a></footer>
+</body>
+</html>
