@@ -26,6 +26,9 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
   return {
     mode, request,
     readConfig: () => request<import("./contracts").PublicConfig>("/config"),
+    startZhihuLogin: () => request<import("./contracts").WebLoginStart>("/auth/zhihu/start", "POST", {}),
+    readAuthSession: () => request<import("./contracts").WebSession>("/auth/session"),
+    logout: () => request<{ signed_out: true }>("/auth/logout", "POST", {}),
     readConnect: () => request<import("./contracts").ConnectInfo>("/connect"),
     agentStatus: () => request<import("./contracts").AgentStatus>("/agents/me"),
     discoverBoard: (query: import("./contracts").BoardQuery = {}) => request<import("./contracts").BulletinPage>(`/board?${new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),

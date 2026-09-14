@@ -7,10 +7,12 @@ import { registerPublisher, rotateApiKey, type PublisherRow } from "../publisher
 import { BindOwnerSchema, type AgentScope, type AgentStatus, type BoundOwner, type Owner } from "./contracts";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 import { getAuthConfiguration } from "./auth-config";
+import { hasExplicitCredential, isMutation, verifiedWebUser } from "./web-session";
 
 export interface Identity { readonly owner: Owner; readonly user_id: string }
 export type OwnerRow = { id: string; user_id: string; publisher_id: string; kind: Owner["kind"]; capabilities: string[]; scopes: AgentScope[]; revoked_at: Date | null; created_at: Date; credential_version: number; name: string; last_seen_at: Date | null; status: string };
 const credentials = new WeakMap<Identity, number>();
+const webRequests = new WeakMap<Identity, Request>();
 export function toOwner(row: OwnerRow): Owner {
   return { id: row.id, publisher_id: row.publisher_id, kind: row.kind, name: row.name, capabilities: row.capabilities, revoked_at: row.revoked_at?.toISOString() ?? null, last_seen_at: row.last_seen_at?.toISOString() ?? null, created_at: row.created_at.toISOString(), mode: "live" };
 }
@@ -21,6 +23,7 @@ function identity(row: OwnerRow): Identity {
   return value;
 }
 export async function verifiedUser(req: Request): Promise<string> {
+  if (!hasExplicitCredential(req)) return verifiedWebUser(req);
   const token = bearer(req);
   if (!token || token.startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请使用人的 Supabase 登录身份。");
   const { serverUrl: url, key, enabled } = getAuthConfiguration();
@@ -36,16 +39,22 @@ export async function verifiedUser(req: Request): Promise<string> {
 }
 export async function resolveIdentity(req: Request): Promise<Identity> {
   const token = bearer(req);
-  if (!token) throw new GongzhiError(401, "unauthenticated", "请先登录或提供已绑定 Agent 密钥。");
+  if (hasExplicitCredential(req) && !token) throw new GongzhiError(401, "unauthenticated", "显式凭据无效。");
+  // Verify anonymous requests before attempting any database operation.
+  const userId = token?.startsWith("crier_sk_") ? null : await verifiedUser(req);
   assertDatabaseConfigured();
-  const rows = token.startsWith("crier_sk_")
+  const rows = token?.startsWith("crier_sk_")
     ? await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where p.api_key_hash=${sha256(token)} and o.kind='external_agent'`
-    : await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${await verifiedUser(req)} and o.kind='human'`;
+    : await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${userId} and o.kind='human'`;
   if (!rows[0]) throw new GongzhiError(403, "unbound_identity", "此凭据尚未绑定共治发言身份。");
-  return identity(rows[0]);
+  const actor = identity(rows[0]);
+  if (!hasExplicitCredential(req)) webRequests.set(actor, req);
+  return actor;
 }
 async function validatedIdentityRow(actor: Identity, lock = false, scope?: AgentScope): Promise<OwnerRow> {
   if (!credentials.has(actor)) throw new GongzhiError(403, "unbound_identity", "身份必须由服务器验证。");
+  const request = webRequests.get(actor);
+  if (request && await verifiedWebUser(request, lock) !== actor.user_id) throw new GongzhiError(401, "unauthenticated", "登录会话已失效。");
   const rows = lock
     ? await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${actor.owner.id} for update of o,p`
     : await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${actor.owner.id}`;
@@ -114,10 +123,14 @@ export async function resolvePlatformIdentity(req: Request): Promise<Identity> {
     await assertIdentity(human, true);
     let [row] = await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${human.user_id} and o.kind='platform_agent'`;
     if (!row) {
+      if (!hasExplicitCredential(req) && !isMutation(req)) throw new GongzhiError(403, "unbound_identity", "此用户尚未创建平台助手身份。");
       const { row: pub } = await registerPublisher({ name: "平台体验助手", accept_terms: true, client: "gongzhi-platform" });
       const [created] = await sql()<OwnerRow[]>`insert into gongzhi_owners(id,user_id,publisher_id,kind,capabilities,scopes) values(${randomUUID()},${human.user_id},${pub.id},'platform_agent',${["read_need","find_experience","submit_result"]},${["read","submit_result"]}) returning *`;
       row = { ...created, name: pub.name, last_seen_at: null, status: "active" };
     }
-    return identity(row);
+    const actor = identity(row);
+    const request = webRequests.get(human);
+    if (request) webRequests.set(actor, request);
+    return actor;
   });
 }

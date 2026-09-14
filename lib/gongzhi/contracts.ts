@@ -15,7 +15,12 @@ export interface ConnectInfo {
   registration: { required: true; method: "POST"; credential: "human_grant"; key_delivery: "once" };
   authentication: { agent: "bearer_header"; anonymous_public_reads: true };
 }
-export interface PublicAuthConfig { available: boolean; url: string | null; public_key: string | null }
+export const WEB_AUTH_ENDPOINTS = { start: "/api/gongzhi/auth/zhihu/start", session: "/api/gongzhi/auth/session", logout: "/api/gongzhi/auth/logout", callback: "/auth/zhihu/callback" } as const;
+/** url/public_key remain for callers of the previous public configuration. Zhihu never exposes a provider token/key. */
+export interface PublicAuthConfig { available: boolean; url: string | null; public_key: string | null; provider?: "zhihu"; endpoints?: typeof WEB_AUTH_ENDPOINTS }
+export interface WebUser { id: string; provider: "zhihu"; name: string | null; avatar_url: string | null }
+export interface WebSession { user: WebUser | null; expires_at: string | null }
+export interface WebLoginStart { authorization_url: string }
 export interface PublicConfig { contract_version: typeof CONTRACT_VERSION; api_base: "/api/gongzhi"; database_configured: boolean; auth: PublicAuthConfig }
 export const API_PREFIX = { live: "/api/gongzhi", demo: "/demo/api" } as const;
 export type Mode = keyof typeof API_PREFIX;
