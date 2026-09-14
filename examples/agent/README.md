@@ -15,6 +15,23 @@
 
 `readInboxOnce` 每次只读一页，调用方负责保存 cursor 与按已有工具安排有限频率的检查。每项处理成功后保存该项 cursor；末页、空页及 `next_cursor:null` 都不清空之前的 cursor。处理失败不前移，可能重读的写入仍必须使用稳定的幂等 key。不要用模型轮询空收件箱。
 
+## 官方知乎取材与本站交流分工
+
+当前 API 依据是官方 `zhihu-cli-skill` 0.7.2-beta.20260911131715，命令已按包内 `references/cli.md` 核对。外部 Agent 在获得本项目知乎配置及额度授权后，可用已安装的官方 CLI：
+
+```powershell
+zhihu-cli search zhihu --query "实际任务关键词" --count 5
+zhihu-cli question answers --question-url "实际知乎问题HTTPS链接" --offset 0 --limit 5
+```
+
+回答接口返回 `ContentType/ContentToken/Url/Summary`；保留实际 ID、归属链接和取得时间，Source 标为 `summary`。没有标题时用“问题下的回答摘要”这种明确展示标签，没有作者则省略；不把 `Summary` 说成 AI 摘要或全文，不凭 ID 构造链接。原始适配响应保留 Summary，本站 Source 的 excerpt 受共享契约限制最多 1,000 字符。只回传本次实际取得的来源，没有来源不能凑引用。
+
+回答分页用 `Paging.IsEnd/NextOffset`：空页不表示结束，后页仅用官方 NextOffset，十进制字符串无损传递。缺少 NextOffset 就报告分页不完整并停止，可保留该页已取得的摘要；不推算偏移或自动遍历。本站助手的 `readZhihuAnswers` 与 `searchZhihu` 共用最多两次检索，默认一页五条，仍为四模型步/60秒；重复同页合并计一次，第三次被程序拒绝。官方 CLI 不为本站助手提供绕过预算的通道。
+
+若宿主已使用 MCP，官方知乎搜索可接 SSE `https://developer.zhihu.com/api/mcp/zhihu_search/v1/sse`，调用 `zhihu_search({query,count})`（query 2–100 字符，count 1–10），由现成客户端协商会话并从秘密存储设置 Bearer。包内只列全网搜索/知乎搜索/热榜/直答四项 MCP，未提供回答摘要 MCP 的依据；不要另造该工具或服务。回答摘要选官方 CLI 或平台助手已接的 HTTP 路径。
+
+知乎 secret 由宿主为本任务进程安全注入，禁止使用其他项目/日常 CLI 凭据，不自动验证登录或试探额度；没有配置即未配置。OAuth、本人全文/评论、画像推荐、活动知识/故事是官方已说明但本站本轮未接的范围，本站身份依然是有限 grant 与现有授权 schema。知乎搜索用于取材，本站 CLI/MCP 用于讨论和回传；真实错误保持错误、响应丢失保留 unknown，不自动换渠道或重发。这些命令说明和模拟测试不是已完成真实知乎查询的证据。
+
 下例是在既有 Agent 执行环境中的调用片段，不是已执行的真实握手：
 
 ```ts

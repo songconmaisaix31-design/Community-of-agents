@@ -1,5 +1,24 @@
 # Connect D: official integration notes
 
+## 当前依据：0.7.2-beta.20260911131715
+
+2026-09-14 只读核对用户新提供的官方 `zhihu-cli-skill-0.7.2-beta.20260911131715` ZIP；未安装或执行包内脚本。读取 `zhihu/SKILL.md`、`manifest.json`、`references/http-api.md`、`creator.md`、`hackathon.md`、`hackathon-oauth.md`、`hackathon-content-api.md`、`hackathon-user-profile-api.md`，并核对 `cli.md` 与 `mcp.md` 的命令/工具说明。manifest 的 skill 版本为 0.7.2，包版本为上述 beta，CLI 最低版本记录为 0.6.0-beta.20260908125143。以下为文档依据，不是实际业务 API 响应。
+
+- 原 `zhihu_search` 的路径、Bearer/秒级时间戳、Query/Count、Code/Message/Data 和来源字段沿用；0.7.2 仍列出 10001/20001/30001/90001。适配继续保留实际搜索摘要和 URL 的溯源参数，不组装缺失链接。
+- 新接 `GET https://developer.zhihu.com/api/v1/content/question_answers`：必填完整 `QuestionUrl`，可选非负 Int64 `Offset`（官方默认 0）、Int64 `Limit`（官方默认 20、范围 1–50）；本站助手固定默认小量 5 条。沿用同一个服务端 Access Secret、固定路径和秒级 `X-Request-Timestamp`。
+- 回答 `Data.Items` 是 `ContentType/ContentToken/Url/Summary`，没有承诺标题和作者；Source 使用实际 token、URL、取得时间和 summary 标识，标题只能作为明确展示标签，作者不补。Summary 是服务摘要或截取文本，不是 AI 摘要或全文；适配保留原 Summary，Source excerpt 最多 1,000 字符。
+- `Data.Paging` 有布尔 `IsEnd`、可选 Int64 `NextOffset/Totals`。只按 IsEnd 判结束；空页/短页不判结束，Totals 可含已过滤条目。NextOffset 缺失时保留本页摘要、报告分页不完整并停止；非法或不递增的已提供游标报错。Node 24 JSON 原始数值 token 无损转十进制字符串，范围限 0–9223372036854775807。
+- 回答接口的 `30001` 覆盖频率、并发和日额度耗尽，映射 rate_limited（run 中为 budget_exceeded）；不把额度拒绝改成空结果，也不自动查额度或重试。未知非零业务码继续失败关闭，不依据 Message 猜测成功。HTTP 401/403/429 分别保留鉴权/限流语义。
+- 两类检索共享每 run 两次预算，四模型步/60 秒不变；每页缓存上限及 5 分钟 TTL 沿用，同问题同页重复合并。后页仅接受当前 run 已返回的该问题 cursor，默认不遍历。来源缓存命中保留原取得时间，必须本 run 实际经工具取得后才能引用。
+
+官方 CLI 的实际命令是 `zhihu-cli search zhihu --query ... --count 5` 和 `zhihu-cli question answers --question-url ... --offset 0 --limit 5`；官方搜索 MCP 是 SSE `/api/mcp/zhihu_search/v1/sse` 的 `zhihu_search`。包内 MCP 文档只列全网搜索、知乎搜索、热榜和直答四项，没有回答摘要 MCP 工具依据。公开选用说明见 [agent-skill.md](agent-skill.md) 和 [外部 README](../../examples/agent/README.md)。
+
+OAuth 登录/授权用户信息、画像或主题推荐、本人全文/评论/统计、知识库、活动故事与知识均仅作为官方能力记录，本站本轮未接入。本人全文/评论限 Access Secret 所属账号；OAuth 和 Access Secret 的身份边界不能混用，活动内容也不代表长期通用接口。未建立新身份体系或官方 Agent 托管关系。
+
+本轮仅用隔离 HTTP 与模型 fixtures，无真实知乎/模型请求或体验数据库写入；不同所有者 Agent 互助与正式部署均未验收。下面保留旧包核对的历史记录，不能用旧版本缺失的能力覆盖上述新依据。
+
+## 历史依据：0.2.1
+
 Read on 2026-09-13 from the user-provided [official archive](https://zhstatic.zhihu.com/skill/zhihu-hackathon-skill_s2_v260815.zip). The archive embeds `zhihu-cli-skill.zip`; its `zhihu/SKILL.md` identifies version 0.2.1. `references/http-api.md` records its own verification date as 2026-07-16. This is documentation evidence, not a live API response.
 
 - Search: GET `https://developer.zhihu.com/api/v1/content/zhihu_search`; query keys `Query`, `Count` (1–10).
