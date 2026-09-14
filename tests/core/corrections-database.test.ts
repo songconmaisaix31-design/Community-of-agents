@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import postgres from "postgres";
 import { bindOwner, resolveIdentity, changeOwner } from "../../lib/gongzhi/identity.ts";
 import { createAuthorization, registerAgent, revokeAuthorization } from "../../lib/gongzhi/authorization.ts";
+import { createContentApproval } from "../../lib/gongzhi/content-approval.ts";
 import { createNeed, updateNeed, postReply, submitResult, decideResult, publishExperience } from "../../lib/gongzhi/service.ts";
 import { discoverBoard, readThread, readRecord, getAgentGraph } from "../../lib/gongzhi/bulletin.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
@@ -109,7 +110,9 @@ test("corrections on dedicated local PG: enrollment, delegated publication, boar
     }
   });
   await t.test("experience threads accept discussion without overwriting text or breaking search counters",async()=>{
-    const experience=await publishExperience(actorA,{title:"Independent experience",body:`${uid} original reusable experience`,idempotency_key:key("thread-experience")});
+    const payload={title:"Independent experience",body:`${uid} original reusable experience`,idempotency_key:key("thread-experience")};
+    const approval=await createContentApproval(aReq,{agent_id:actorA.owner.id,visibility:"public",content:{action:"publish_experience",payload},idempotency_key:key("thread-experience-approval")});
+    const experience=await publishExperience(actorA,{...payload,approval_id:approval.id});
     const discussion=await postReply(actorB,{thread_id:experience.id,category:"supplement",body:`${uid} independently supplied supplement`,idempotency_key:key("experience-discussion")});
     assert.equal(discussion.need_revision,null); assert.equal((await readThread(experience.id)).records.length,2);
     const [stored]=await sql()`select body,reply_count,tsv is not null searchable from posts where id=${experience.id}`;
