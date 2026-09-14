@@ -41,3 +41,13 @@
 随后在本机使用无回显标准输入比对用户先前提供的 Key 与项目配置：**两者完全一致**，没有输出 Key、没有额外网络请求、没有替换配置。因而不再请求用户重发相同 Key；需要在开放平台确认5,000额度是否已绑定到该 Key 的搜索/回答能力，或提供实际具有对应额度的新配置。不能猜测账户状态或以用户口头额度替代接口计数，3次请求统计保持不变。
 
 原生 OpenCode 读取确认现已解除，M 没有代点许可。O 已真实执行开发及同轨返修，最终推送 `c8c639a2e32f8e62d15ba83aa4d686ddc7db7a9a`（含初版 `d45ebf7` 和首轮修复 `3a051fe`），交付 `draft-zhihu-experience` 与 `collect-zhihu-corpus`。已补齐跨接口 URL 去重、中文断尾恢复、Git 路径别名及文件检查、批次独占、续采统计、CLI 两小时批次时限和失败非零退出；其他命令仍限60秒，不直接上传或批准。O 报告针对测试35通过/2跳过，Connect218通过/2跳过，typecheck通过；两项 Windows 文件符号链接用例须 I 独立补验，中途一次 Windows rename EPERM 未在后续复现，记录限制而未新增重试。原 I 已通过实际 Orca `task_18b9866c209d` / `ctx_612265772932` 接管普通合并与独立验收，最终命令、结果和提交以 [集成验收记录](../integration/zhihu-method-acceptance.md) 为准。没有新增知乎请求、批量5,000执行或真实 A/B 分享回执；生产服务本轮不变。
+
+## 首批 Atlas 内容生产（最新增量）
+
+用户提供新 Key 并明确继续用 DeepSeek 生产 Agent Atlas。M 已从用户提供的官方包安装 `zhihu-cli 0.6.0-beta.20260908125143`，按官方 manifest 校验，通过隐藏标准输入执行 `auth set --secret-stdin` 成功，凭据仅在 Windows keychain；不改项目服务端环境、不向 O 提供 Key。原生 quota 返回搜索 Total10/Used1/Remaining9、回答 Total10/Remaining10。随后使用原生 CLI 串行进行 Docker 磁盘日志、PostgreSQL 慢查询、MCP 工具权限三个查询，均 Code0、各10条摘要。新 Key 本轮5次 API 请求（auth验证1、quota1、search3）；含前轮3次累计8次，未来总预算至多4992，实际额度仍以官方返回为准，不追刷5,000。
+
+分工沿用：M 仅配置、资料获取、预算与验收；原 O 用相同 OpenCode/DeepSeek 长期 Agent，从集成 `e4305e540b0eab4f196f2971bb2cd6be6b400657` 出发，读取明确的3个本机资料文件，独占仓库外本批次 `produced/**` 私有产物与 `docs/connect/atlas-production.md` 操作交接文档；原 I 独占集成验证和 `docs/integration/**`。O 交付3组 SKILL.md、严格来源 JSON、现有契约草稿及审阅说明，区分摘要主张、推断、拟议检查，统一标注未执行/未批准。草稿和来源正文不入 Git、不上传公告、不制造 Agent 身份或交流；Git 仅交操作说明与验收。当前开发/部署/Agent工作流作为首批主题假设，真实 A/B 任务与用户分享确认仍另行进行。
+
+用户随后要求“先用fixture代替agent”。暂按产品 Agent 身份与执行流程使用明确演示数据理解（已提供可选澄清），知乎取材和 DeepSeek 私有整理保持独立。原 F 接回 `public/community/**`（排除 C 的 `assets/gongzhi-client.js`）、`tests/frontend/evomap-atlas-fixture*`、`docs/frontend/evomap-adaptation.md`，沿原 EvoMap/共治页面与 cosmos.gl 增加显式 fixture 入口：A 分享后离线、B 取固定版本、不同条件的模拟检查和自主反馈，所有身份/交流/回执及下载内容标明 fixture，不请求真实身份、数据库或模型。默认真实模式不回退；演示反馈只留本机独立状态，跨页保持模式，能够退出/重置。O 私有草稿未经用户审核不混入前端 fixture 数据。I 统一合并、验证浏览器隔离、检查构建并按既有服务器授权发布前端增量；不动数据库、身份或部署域名配置。O 当前原生目录写入许可仍待用户点击，局部阻塞不阻止 F。
+
+用户最新增量：fixture 全部命名为“知乎 XX 专家 Agent”，从网上公开 Skill 参考构造 **100 个不同专业角色**。F 继续原写域与同一长期 Agent，不新增真实账户或常驻模型；前端提供100个唯一节点、搜索、分类、固定版本来源链接与详情，保留其中两人的 A/B 模拟闭环，其他角色不凭空生成交流连线。持续标明角色为演示、非知乎官方认证或真实专家在线；默认真实入口、失败语义与独立演示存储不变。M 已在线核实公开目录 `sickn33/agentic-awesome-skills` 固定提交 `5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f`（原 antigravity 名称重定向），索引含2121项；F 根据实际条目筛选100项，逐条读取并核实 SKILL.md，保留固定 URL 与许可说明，仅自写中文简介、不安装或执行远程指令。原仓库原创代码 MIT、非代码内容 CC BY 4.0，第三方条目许可须分别保留来源，不统称所有 Skill 为 MIT。验收新增精确100个唯一 ID、统一名称、有效来源、搜索/星图/公告联动以及演示零真实 API 写入；此增量不消耗知乎业务额度，不表示100个真实 Agent 已接入。
