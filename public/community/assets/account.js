@@ -22,7 +22,8 @@
     accepted: "已采纳成果", closed: "已关闭",
   };
 
-  var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null };
+  var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null, ownerStatus: "idle" };
+  var ownerLoad = null;
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -64,24 +65,25 @@
     S.auth.onChange(function (user) {
       var before = S.user && (S.user.id || S.user.email);
       var after = user && (user.id || user.email);
+      if (before === after) return; // 同人令牌刷新不重建表单或丢弃未提交输入
       if (before !== after) {
         // 身份切换/退出：清理一次性令牌与敏感状态、关闭属于旧身份的对话框；
         // 同一人的令牌刷新不算切换，草稿保留
         sessionGen++;
         S.human = null;
+        S.ownerStatus = "idle";
+        ownerLoad = null;
         lastIssued = null;
         grantKey = newKey();
         if (community().closeDialog) community().closeDialog();
       }
       S.user = user;
-      renderAll();
-      if (user) ensureHuman();
+      if (user) ensureHuman(); else renderAll();
     });
     return S.auth.initialize().then(function (user) {
       S.status = "ready";
       S.user = user;
-      renderAll();
-      if (user) ensureHuman();
+      if (user) ensureHuman(); else renderAll();
     });
   }).catch(function () {
     S.status = "unavailable";
@@ -91,15 +93,21 @@
   /* 登录后确保“人”的发言身份已绑定；未绑定时给一次自填公开称呼的入口。
      响应可能迟于换号/退出到达，用身份代际守卫，不写入过期身份。 */
   function ensureHuman() {
-    if (!S.user || S.human || !S.api) return;
+    if (!S.user || !S.api) return;
+    if (S.human) { renderAll(); return; }
+    if (ownerLoad) { renderAll(); return; }
     var gen = sessionGen;
-    S.api.listOwners().then(function (owners) {
+    S.ownerStatus = "loading";
+    renderAll();
+    ownerLoad = S.api.listOwners().then(function (owners) {
       if (gen !== sessionGen) return;
       for (var i = 0; i < owners.length; i++) {
         if (owners[i].kind === "human" && !owners[i].revoked_at) { S.human = owners[i]; break; }
       }
+      S.ownerStatus = "ready";
+      ownerLoad = null;
       renderAll();
-    }).catch(function () { if (gen === sessionGen) renderAll(); });
+    }).catch(function () { if (gen === sessionGen) { ownerLoad = null; S.ownerStatus = "error"; renderAll(); } });
   }
   function signedIn() { return S.status === "ready" && S.user && S.human; }
 
@@ -206,7 +214,14 @@
     head.appendChild(out);
     card.appendChild(head);
     card.appendChild(outErr);
-    if (!S.human) {
+    if (!S.human && S.ownerStatus !== "ready") {
+      card.appendChild(el("p", "cm-sub", S.ownerStatus === "error" ? "发言身份读取失败，请重试。" : "正在读取发言身份…"));
+      if (S.ownerStatus === "error") {
+        var retryOwner = el("button", "cm-button cm-button-ghost", "重新读取身份");
+        retryOwner.type = "button"; retryOwner.addEventListener("click", ensureHuman); card.appendChild(retryOwner);
+      }
+    }
+    if (!S.human && S.ownerStatus === "ready") {
       var bind = el("form", "cm-form cm-form-inline");
       var name = textInput("text", { required: "required", maxlength: "80", placeholder: "公开记录中显示的称呼" });
       var bindBtn = el("button", null, "登记我的身份");
@@ -341,6 +356,7 @@
       if (!items.length) { listEl.appendChild(el("p", "cm-sub", "还没有签发过授权。")); return; }
       items.forEach(function (a) {
         var row = el("div", "cm-grant");
+        row.setAttribute("data-grant-id", a.id);
         var info = el("div", "cm-grant-info");
         info.appendChild(el("code", null, a.scopes.join(" ")));
         var state = a.revoked_at ? "已撤销" : (new Date(a.expires_at).getTime() <= Date.now() ? "已过期" : "有效");
@@ -443,15 +459,20 @@
     form.appendChild(field("正文", body));
     form.appendChild(field("适用场景", applicability));
     form.appendChild(field("标签", tags));
+    var publicReview = textInput("checkbox", { required: "required" });
+    form.appendChild(field("我已审阅上面的准确正文与适用条件，同意公开发布（public）", publicReview));
+    [title, body, applicability, tags].forEach(function (input) { input.addEventListener("input", function () { publicReview.checked = false; }); });
     form.appendChild(sub.row);
     var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (!publicReview.checked) return;
       if (!frozen) frozen = { title: title.value.trim(), body: body.value.trim(), applicability: applicability.value.trim(), tags: tagsOf(tags.value), sources: [], visibility: "public", idempotency_key: key };
+      [title, body, applicability, tags].forEach(function (input) { input.readOnly = true; });
       sub.run(function () {
         return S.api.publishExperience(frozen);
       }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
-        if (isDefinitive(err)) frozen = null;
+        if (isDefinitive(err)) { frozen = null; publicReview.checked = false; [title, body, applicability, tags].forEach(function (input) { input.readOnly = false; }); }
       });
     });
     panel.appendChild(form);
@@ -461,7 +482,20 @@
   function enhanceThread(panel, record) {
     var detailSlot = panel.querySelector("[data-cm-need-detail]");
     if (detailSlot) renderNeedDetail(detailSlot, record);
-    if (!signedIn()) return;
+    if (!signedIn()) {
+      if (!panel._accountWaiting) {
+        panel._accountWaiting = true;
+        function stopWaiting() { window.removeEventListener("gongzhi-account-change", ready); window.removeEventListener("gongzhi-dialog-close", stopWaiting); panel._accountWaiting = false; }
+        function ready() {
+          if (!panel.isConnected) { stopWaiting(); return; }
+          if (signedIn()) { stopWaiting(); enhanceThread(panel, record); }
+        }
+        window.addEventListener("gongzhi-account-change", ready);
+        window.addEventListener("gongzhi-dialog-close", stopWaiting);
+      }
+      return;
+    }
+    if (panel.querySelector(".cm-reply-form")) return;
     var form = el("form", "cm-form cm-reply-form");
     form.appendChild(el("h3", null, "参与这条公开线程"));
     var category = el("select", "cm-input");
@@ -642,72 +676,115 @@
     slot.appendChild(box);
   }
 
-  /* 平台 Agent：只对本人需求发起；只展示服务端回执，不模拟过程。 */
+  /* 每个本人需求版本保留原请求键；只轮询本次明确请求，不发现或启动后台任务。 */
+  var runIntents = {};
+  try { runIntents = JSON.parse(sessionStorage.getItem("gongzhi.live.run-intents.v1") || "{}"); } catch (_) {}
+  function saveRunIntents() { try { sessionStorage.setItem("gongzhi.live.run-intents.v1", JSON.stringify(runIntents)); } catch (_) {} }
+  function terminalRun(run) { return run && ["succeeded", "failed", "cancelled", "timed_out"].indexOf(run.status) !== -1; }
   function runBlock(slot, record, need) {
+    var generation = sessionGen, humanId = S.human.id;
+    var memoId = humanId + ":" + need.id + ":" + need.revision;
+    var intent = runIntents[memoId] || { key: newKey(), started: false, run: null };
+    runIntents[memoId] = intent;
     var wrap = el("div", "cm-run");
     wrap.appendChild(el("h3", null, "让平台助手尝试当前版本"));
-    var note = el("p", "cm-sub", "请求发出后等待服务端真实回执（可能约一分钟）。回执只说明服务确认的状态，不做过程动画。");
-    wrap.appendChild(note);
-    var btn = el("button", "cm-button cm-button-ghost", "请求平台助手帮助");
-    btn.type = "button";
-    wrap.appendChild(btn);
-    var out = el("div", "cm-run-out");
-    wrap.appendChild(out);
-    var key = newKey();
-    btn.addEventListener("click", function () {
-      btn.disabled = true;
-      out.innerHTML = "";
-      out.appendChild(el("p", "cm-sub", "已发出请求，等待服务端回执…"));
-      S.api.startRun({ need_id: need.id, need_revision: need.revision, idempotency_key: key }).then(function (run) {
-        btn.disabled = false;
-        renderRun(out, run);
-        // 终态才换键；状态未知必须保留原键与原任务，只能用 readRun 核对，不能一次点击重开模型。
-        if (["succeeded", "failed", "cancelled", "timed_out"].indexOf(run.status) !== -1) key = newKey();
-        if (run.status === "succeeded") {
-          out.appendChild(el("p", "cm-sub", "成果已提交到本需求。关闭并重新打开线程可看到最新内容与版本状态。"));
-          community().refreshBoard();
-        }
+    wrap.appendChild(el("p", "cm-sub", "按请求运行，完成即停止。服务端检查并发、时限、每次和每日费用限额；缺模型或预算时明确不可用。"));
+    var start = el("button", "cm-button cm-button-ghost", "请求平台助手帮助"); start.type = "button";
+    var lookup = el("button", "cm-button cm-button-ghost", "按原请求查询回执"); lookup.type = "button";
+    var out = el("div", "cm-run-out"), message = el("p", "cm-sub"); message.setAttribute("role", "status");
+    wrap.appendChild(start); wrap.appendChild(lookup); wrap.appendChild(out); wrap.appendChild(message);
+    var timer = null, until = 0, controllers = new Set(), alive = true, pending = false;
+    function current() { return alive && wrap.isConnected && generation === sessionGen && S.human && S.human.id === humanId; }
+    function stop() { alive = false; clearTimeout(timer); controllers.forEach(function (c) { c.abort(); }); controllers.clear(); window.removeEventListener("gongzhi-dialog-close", stop); }
+    window.addEventListener("gongzhi-dialog-close", stop);
+    function controls() {
+      start.disabled = intent.started && !terminalRun(intent.run) && !intent.rejected;
+      start.textContent = terminalRun(intent.run) ? "再次请求平台助手帮助" : intent.rejected ? "重试同一请求" : "请求平台助手帮助";
+      lookup.hidden = !intent.started;
+    }
+    async function read(action) {
+      var m = await import("/community/assets/gongzhi-client.js");
+      if (!current()) throw new Error("页面或登录状态已变化，查询已停止。");
+      var controller = new AbortController(); controllers.add(controller);
+      var timeout = setTimeout(function () { controller.abort(); }, 4000);
+      var client = m.createApiClient("live", { accessToken: function () { return S.auth && S.auth.getAccessToken ? S.auth.getAccessToken() : undefined; }, fetch: function (url, init) { return fetch(url, Object.assign({}, init, { signal: controller.signal })); } });
+      try { return await action(client); } finally { clearTimeout(timeout); controllers.delete(controller); }
+    }
+    function accept(run) {
+      if (!current()) return;
+      // 同一次取消后的迟到 POST/查询不得把终态覆盖回 running。
+      if (terminalRun(intent.run) && intent.run.id === run.id && !terminalRun(run)) return;
+      intent.run = run; intent.rejected = false; saveRunIntents(); controls(); renderRun(out, run, read, accept, current);
+      if (terminalRun(run)) { clearTimeout(timer); message.textContent = run.status === "succeeded" ? "服务已提交成果，可在本需求查看。" : "本次运行已终止。"; }
+      if (run.status === "succeeded") community().refreshBoard();
+    }
+    async function query(automatic) {
+      if (!current() || pending || !intent.started) return;
+      pending = true; lookup.disabled = true;
+      try {
+        var run = await read(function (api) { return api.lookupRun({ need_id: need.id, idempotency_key: intent.key }); });
+        if (!current()) return;
+        if (run) accept(run);
+        else message.textContent = "暂未读到本次回执；不代表没有执行。保留原请求键，不能据此重新启动。";
+      } catch (e) { if (current()) message.textContent = "回执暂不可读：" + errText(e) + " 原请求键仍保留。"; }
+      finally {
+        pending = false; lookup.disabled = false;
+        if (automatic && current() && Date.now() < until && !terminalRun(intent.run) && !intent.rejected) timer = setTimeout(function () { query(true); }, 1500);
+      }
+    }
+    lookup.addEventListener("click", function () { query(false); });
+    start.addEventListener("click", function () {
+      if (!current()) return;
+      if (terminalRun(intent.run)) { intent = { key: newKey(), started: false, run: null }; runIntents[memoId] = intent; }
+      if (intent.started && !intent.rejected) return;
+      intent.started = true; intent.rejected = false; saveRunIntents(); controls(); out.innerHTML = "";
+      message.textContent = "已发出本次请求，正在查询真实回执；取得任务 ID 后可取消。关闭面板只停止本页查询，不代表服务端已取消。";
+      var originalIntent = intent;
+      until = Date.now() + 65000; clearTimeout(timer); timer = setTimeout(function () { query(true); }, 500);
+      S.api.startRun({ need_id: need.id, need_revision: need.revision, idempotency_key: intent.key }).then(function (run) {
+        if (originalIntent !== intent) return;
+        if (!terminalRun(intent.run) || terminalRun(run)) { intent.run = run; saveRunIntents(); }
+        if (current()) accept(run);
       }).catch(function (e) {
-        btn.disabled = false;
-        out.innerHTML = "";
-        out.appendChild(el("p", "cm-form-error", "平台助手暂不可用：" + errText(e) + " 本次请求键保留，可再次尝试；服务未配置时会明确返回不可用，不会展示虚构状态。"));
+        if (originalIntent !== intent) return;
+        // 明确前置拒绝可人工同键重试；传输失败/unknown 只读回执，不重开模型。
+        if (e.error && ["unavailable", "budget_exceeded", "forbidden", "invalid_request"].indexOf(e.error.code) !== -1 && !intent.run) intent.rejected = true;
+        saveRunIntents();
+        if (current()) { controls(); message.classList.add("cm-form-error"); message.textContent = "平台助手暂不可用：" + errText(e) + " 本次请求键保留，请按原请求查询核对。"; }
       });
     });
+    controls();
+    if (intent.run) setTimeout(function () { if (current()) accept(intent.run); }, 0);
+    else if (intent.started) message.textContent = "本页保留了原请求，请查询回执。状态未知时不会重新启动模型。";
     return wrap;
   }
-  function renderRun(out, run) {
+  function renderRun(out, run, read, accept, current) {
     out.innerHTML = "";
     var card = el("div", "cm-run-card");
     card.appendChild(el("strong", null, "回执：" + (RUN_STATUS[run.status] || run.status)));
     var usage = run.usage || {};
-    card.appendChild(el("p", "cm-need-meta",
-      "任务 " + run.id.slice(0, 8) + "… · 模型步骤 " + usage.model_steps + " · 知乎查询 " + usage.zhihu_queries +
-      (run.result_id ? " · 已提交成果" : "") + " · " + fmtTime(run.updated_at)));
+    card.appendChild(el("p", "cm-need-meta", "任务 " + run.id + " · 模型步骤 " + (usage.model_steps ?? "未知") + " · 知乎查询 " + (usage.zhihu_queries ?? "未知") + " · " + fmtTime(run.updated_at)));
+    card.appendChild(el("p", "cm-need-meta", "截止时间：" + fmtTime(run.deadline_at)));
+    if (run.budget) {
+      var budget = run.budget, limits = budget.limits;
+      card.appendChild(el("p", "cm-need-meta", "本次上限：" + limits.max_steps + " 步 · 每步输出 " + limits.max_output_tokens + " tokens · " + Math.ceil(limits.deadline_ms / 1000) + " 秒"));
+      card.appendChild(el("p", "cm-need-meta", "预留 USD " + (budget.reserved_microusd / 1000000).toFixed(6) + " · " + (budget.usage_complete && budget.settled_microusd !== null ? "已结算 USD " + (budget.settled_microusd / 1000000).toFixed(6) : "用量尚不完整，保留预留额度") + "。取消不等于免除已发生费用。"));
+    } else card.appendChild(el("p", "cm-sub", "此回执未提供预算快照，费用未知。"));
     if (run.error && run.error.message) card.appendChild(el("p", "cm-form-error", run.error.message));
-    if (run.status === "unknown") card.appendChild(el("p", "cm-sub", "服务端不能确认这次执行的结果。请用“查询最新状态”核对，不要直接重新请求；同一请求键不会重复启动模型。"));
-    if (run.status === "queued" || run.status === "running" || run.status === "unknown") {
-      if (run.status !== "unknown") {
-        var cancel = el("button", "cm-button cm-button-ghost", "取消这个任务");
-        cancel.type = "button";
-        cancel.addEventListener("click", function () {
-          cancel.disabled = true;
-          S.api.cancelRun(run.id).then(function (next) { renderRun(out, next); }).catch(function (e) {
-            cancel.disabled = false;
-            cancel.textContent = errText(e);
-          });
-        });
-        card.appendChild(cancel);
-      }
-      var check = el("button", "cm-button cm-button-ghost", "查询最新状态");
-      check.type = "button";
-      check.addEventListener("click", function () {
-        check.disabled = true;
-        S.api.readRun(run.id).then(function (next) { renderRun(out, next); }).catch(function (e) {
-          check.disabled = false;
-          check.textContent = errText(e);
-        });
-      });
-      card.appendChild(check);
+    if (run.status === "unknown") card.appendChild(el("p", "cm-sub", "服务端不能确认这次执行的结果。请查询最新状态，不要直接重新请求。"));
+    if (!terminalRun(run)) {
+      var cancel = el("button", "cm-button cm-button-ghost", "取消这个任务"); cancel.type = "button";
+      cancel.addEventListener("click", async function () {
+        if (!current()) return; cancel.disabled = true;
+        try { var next = await read(function (api) { return api.cancelRun(run.id); }); if (current()) accept(next); }
+        catch (e) { if (current()) { cancel.disabled = false; card.appendChild(el("p", "cm-form-error", "取消结果未确认：" + errText(e) + " 请查询真实回执。")); } }
+      }); card.appendChild(cancel);
+      var check = el("button", "cm-button cm-button-ghost", "查询最新状态"); check.type = "button";
+      check.addEventListener("click", async function () {
+        if (!current()) return; check.disabled = true;
+        try { var next = await read(function (api) { return api.readRun(run.id); }); if (current()) accept(next); }
+        catch (e) { if (current()) { check.disabled = false; card.appendChild(el("p", "cm-form-error", errText(e))); } }
+      }); card.appendChild(check);
     }
     out.appendChild(card);
   }
@@ -737,29 +814,10 @@
     return item;
   }
 
-  /* 打开被引用的经验：接口只读当前公开版；引用版本与当前版本不一致时明确标注。 */
+  /* 引用只按固定版本读取，不改取最新版本。 */
   function openExperience(ref) {
-    var panel = community().openDialog("被引用的经验", "引用方注明使用方式：" + ref.usage);
-    var status = el("p", "cm-sub", "正在读取经验…");
-    panel.appendChild(status);
-    S.api.readExperience(ref.experience_id).then(function (exp) {
-      status.remove();
-      if (exp.revision !== ref.revision) {
-        panel.appendChild(el("p", "cm-form-error", "引用的是第 " + ref.revision + " 版；当前公开可读的是第 " + exp.revision + " 版，内容可能已有修订。"));
-      }
-      var card = el("article", "cm-thread-record");
-      var byline = el("div", "cm-byline");
-      byline.appendChild(el("span", "cm-pill experience", "经验"));
-      byline.appendChild(el("span", null, "第 " + exp.revision + " 版"));
-      byline.appendChild(el("time", null, fmtTime(exp.created_at)));
-      card.appendChild(byline);
-      card.appendChild(el("h3", null, exp.title));
-      card.appendChild(el("p", "cm-body", exp.body));
-      if (exp.applicability) card.appendChild(el("p", "cm-need-meta", "适用场景：" + exp.applicability));
-      panel.appendChild(card);
-    }).catch(function (e) {
-      status.textContent = "这条经验暂时无法读取：" + errText(e);
-    });
+    if (window.GongzhiExperience) window.GongzhiExperience.openVersion(ref.experience_id, ref.revision);
+    else community().openDialog("经验读取暂不可用", "固定版本组件未载入，请刷新后重试。");
   }
 
   /* ---------- 渲染调度 ---------- */
@@ -767,7 +825,10 @@
     renderAccount();
     renderGrants();
     renderPublish();
+    window.dispatchEvent(new Event("gongzhi-account-change"));
   }
-  window.GongzhiAccount = { enhanceThread: enhanceThread };
+  window.GongzhiAccount = { enhanceThread: enhanceThread, context: function () {
+    return { api: S.api, human: S.human, ready: Boolean(signedIn()), generation: sessionGen };
+  } };
   renderAll();
 })();
