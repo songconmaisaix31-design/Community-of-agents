@@ -1,0 +1,70 @@
+# Local development only. Supply the Git-external file with --env-file.
+name: gongzhi-live-20260914
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg17-bookworm
+    restart: unless-stopped
+    ports: ["127.0.0.1:${PG_PORT:-56520}:5432"]
+    networks: [default, host-access]
+    environment:
+      POSTGRES_DB: gongzhi
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?private env required}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?private env required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?private env required}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-gongzhi.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gongzhi"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  auth:
+    image: supabase/gotrue:v2.196.0@sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://127.0.0.1:${AUTH_PORT:-56521}/auth/v1
+      GOTRUE_SITE_URL: http://127.0.0.1:3039
+      GOTRUE_URI_ALLOW_LIST: http://127.0.0.1:3039/**,http://localhost:3039/**
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD:?private env required}@db:5432/gongzhi?search_path=auth
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?private env required}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_ISSUER: http://127.0.0.1:${AUTH_PORT:-56521}/auth/v1
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_SMTP_HOST: 127.0.0.1
+      GOTRUE_SMTP_PORT: 1
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true"
+      GOTRUE_LOG_LEVEL: warn
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  gateway:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      auth: { condition: service_healthy }
+    ports: ["127.0.0.1:${AUTH_PORT:-56521}:80"]
+    networks: [default, host-access]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+volumes:
+  pg-data:
+networks:
+  default:
+    internal: true
+  host-access:
