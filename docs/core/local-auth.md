@@ -20,6 +20,8 @@ The config directory is outside Git with inheritance disabled and access granted
 
 Self-signup and phone/anonymous providers are disabled. Test users are created through official `auth.admin.createUser({email_confirm:true})`; no real email is sent, SMTP is unusable and Auth has no outbound network. Provisioning preserves existing users. The Auth role owns only its `auth` schema; `crier_app` is non-superuser/non-BYPASSRLS, and product migrations grant its existing server policies. Do not edit Auth-managed schema. Initialization runs only on a fresh volume, and product migration is always an explicit separate command. Builds and startup do not run product migrations.
 
+The local proxy explicitly allows browser origins `http://127.0.0.1:3039`, `http://localhost:3039` and the Core image-test equivalents on 3041. It answers Supabase SDK preflight headers and reflects only those origins; unrelated origins receive no allow-origin header. A successful Node login alone does not test this browser requirement.
+
 Core testing uses separate databases so the `gongzhi` experience database remains available for integration:
 
 ```powershell

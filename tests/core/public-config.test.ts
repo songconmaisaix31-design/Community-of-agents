@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { getPublicConfig } from "../../lib/gongzhi/public-config.ts";
 import { getAuthConfiguration } from "../../lib/gongzhi/auth-config.ts";
 import { GET } from "../../app/api/gongzhi/config/route.ts";
+import { GET as health } from "../../app/api/gongzhi/health/route.ts";
 import { createBrowserAuth } from "../../lib/gongzhi/browser-auth.ts";
 import { ApiClientError, createApiClient } from "../../lib/gongzhi/api-client.ts";
 
@@ -37,6 +38,7 @@ test("runtime config is an explicit public allowlist and never returns secret-ro
     assert.equal(getAuthConfiguration().serverUrl, getPublicConfig().auth.url);
     assert.equal(getAuthConfiguration().key, getPublicConfig().auth.public_key);
     assert.equal(getPublicConfig().auth.available, true);
+    assert.equal((await health().json()).data.auth_configured, true);
     process.env.SUPABASE_URL = "invalid-server-url";
     assert.equal(getPublicConfig().auth.available, false);
     delete process.env.SUPABASE_URL;
