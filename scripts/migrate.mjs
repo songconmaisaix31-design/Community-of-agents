@@ -1,22 +1,21 @@
 /**
  * Apply migrations/*.sql once using public.schema_migrations and an advisory lock.
  * Explicit developer command only: npm run migrate. Build/dev never invoke this.
- * Production execution is disabled; use this project's explicitly authorized DB.
+ * Production is denied unless the reviewed target is explicitly confirmed by the operator.
  */
 import postgres from "postgres";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { migrationPolicy } from "./migration-policy.mjs";
 
 /**
  * Reject production flags and require explicit opt-in before reading a connection string.
  */
-if (process.argv.includes("--if-production") || process.env.VERCEL_ENV === "production") {
-  console.error("migrate: production execution is disabled"); process.exit(1);
-}
-if (process.env.GONGZHI_DATABASE_ENABLED != "true" || !process.env.MIGRATION_DATABASE_URL) {
-  console.error("migrate: explicitly set GONGZHI_DATABASE_ENABLED=true and MIGRATION_DATABASE_URL"); process.exit(1);
-}
+let policy;
+try { policy = migrationPolicy(process.argv.slice(2), process.env); }
+catch (error) { console.error(error.message); process.exit(1); }
 const url = process.env.MIGRATION_DATABASE_URL;
+const ssl = policy.production ? { ca: await readFile(policy.caFile, "utf8"), rejectUnauthorized: true } : undefined;
 
 // Refuse Supavisor's transaction-mode port before connecting rather than after. The general check is
 // assertLockIsOurs() below, once the lock is taken, but 6543 is the URL shape .env.example documents
@@ -117,6 +116,7 @@ async function releaseLock(db) {
  * assertLockIsOurs() is the check that the intent actually holds.
  */
 const sql = postgres(url, {
+  ssl,
   prepare: false, max: 1, idle_timeout: null, max_lifetime: null,
   // Print a notice as its one line rather than as the twelve-line object postgres.js hands over.
   // Re-applying an idempotent migration is almost entirely "already exists, skipping", so a run
