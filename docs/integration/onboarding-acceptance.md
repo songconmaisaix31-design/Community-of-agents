@@ -45,3 +45,5 @@ I 执行 `GONGZHI_COLLABORATION_BASE_URL=http://127.0.0.1:3069 GONGZHI_COLLABORA
 ECS 新 app CID `c2586734f5703643a80fe704ae76c290e43d3652615b6f11976e5d2e65951555`，其余仍为历史 db `530d5e56…`、Auth `0bddf3ab…`、proxy `21e08c1e…`；四服务健康，仅原proxy80/443和回环8080发布，DB/Auth/app无host端口。原 `38c0ff20580cdab5561001697b84b6a76b9d2472` runtime/image `c79c9f8a8c0e27322412c75c971d7b534a96f2191f5655b26654b6a9016a3002` 保留供回滚，原 `/etc/gongzhi/production` 凭据/证书和数据卷未改。后续部署/回滚仍须明确**两个 Compose 文件**并只更新 app；旧 `/opt/gongzhi/dc` 单文件 helper 不代表本次 HTTPS 部署命令。
 
 09:22:42 UTC 总控正常域名外部复验依旧 HTTP403/Beaver/Non-compliance ICP Filing 与 HTTPS Exit35；ECS 自身308/200仅是服务器来源结果。公网仍受[备案拦截](domain-https-acceptance.md)，无绕过。未调用模型、知乎或 SMTP；本轮云证据仅为应用更新与真实空系统只读验收，不能称云登录、平台助手执行或公网全面可用。
+
+后续用户另行授权此 Windows 电脑持久免密 SSH，已配置独立 `ssh gongzhi-ecs`，见 [SSH 操作与验收](ssh-access.md)。该新公钥不同于上文已撤销的临时上传密钥；四容器、runtime06e6c081、域名配置和网页鉴权均保持。网站入口仍为 `https://zhihu.davidwang.space/zh`，10:06:59 UTC 外部备案拦截仍存在。
