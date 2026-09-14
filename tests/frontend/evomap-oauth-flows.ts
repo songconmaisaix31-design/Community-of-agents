@@ -110,10 +110,16 @@ test("托管协议：第二账号可见公开公告但无所有者操作，跨�
   await login(page, "B", NAME_B);
   // 只比较本次新授权，不假定第二账号从无历史记录。
   await expect(page.locator("[data-cm-grants]")).toContainText(/还没有签发过授权|有效 ·|已撤销|已过期/);
-  // OAuth 往返与首次绑定不占用响应观察期限；此只读请求共享当前浏览器 Cookie。
-  const ownResponse = await page.context().request.get(BASE + "/api/gongzhi/authorizations", { timeout: 15000 });
-  expect(ownResponse.status()).toBe(200);
-  const ownResult = await ownResponse.json();
+  // 登录落定后在页面内同源查询，由浏览器按实际会话发送 Cookie。
+  const ownResponse = await page.evaluate(async () => {
+    const response = await fetch("/api/gongzhi/authorizations", {
+      credentials: "same-origin",
+      signal: AbortSignal.timeout(15000),
+    });
+    return { status: response.status, body: await response.json() };
+  });
+  expect(ownResponse.status).toBe(200);
+  const ownResult = ownResponse.body;
   expect(ownResult.ok).toBe(true); expect(ownResult.mode).toBe("live"); expect(Array.isArray(ownResult.data)).toBe(true);
   const own: string[] = ownResult.data.map((row: {id: string}) => row.id);
   expect(createdGrant).not.toBe("");
