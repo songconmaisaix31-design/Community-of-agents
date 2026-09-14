@@ -37,7 +37,7 @@ export async function readWebSession(req: Request, lock = false): Promise<WebSes
     ? await sql()<SessionRow[]>`select s.user_id,u.name,u.avatar_url,s.expires_at from gongzhi_web_sessions s join gongzhi_web_users u on u.id=s.user_id where s.session_hash=${hash} and s.revoked_at is null and s.expires_at>clock_timestamp() for update of s`
     : await sql()<SessionRow[]>`select s.user_id,u.name,u.avatar_url,s.expires_at from gongzhi_web_sessions s join gongzhi_web_users u on u.id=s.user_id where s.session_hash=${hash} and s.revoked_at is null and s.expires_at>clock_timestamp()`;
   const row = rows[0];
-  return row ? { user: { id: row.user_id, provider: "zhihu", name: row.name, avatar_url: row.avatar_url }, expires_at: row.expires_at.toISOString() } : { user: null, expires_at: null };
+  return row && row.expires_at.getTime() > Date.now() ? { user: { id: row.user_id, provider: "zhihu", name: row.name, avatar_url: row.avatar_url }, expires_at: row.expires_at.toISOString() } : { user: null, expires_at: null };
 }
 export async function verifiedWebUser(req: Request, lock = false): Promise<string> {
   const session = await readWebSession(req, lock);

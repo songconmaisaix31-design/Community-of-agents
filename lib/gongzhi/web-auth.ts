@@ -20,9 +20,15 @@ async function emptyJson(req: Request) {
   if (req.headers.get("content-type")?.split(";")[0].trim() !== "application/json" || !req.body) throw invalid();
   const reader = req.body.getReader(), chunks: Uint8Array[] = [];
   let size = 0, complete = false;
+  let rejectRead!: (error: Error) => void;
+  const stopped = new Promise<never>((_, reject) => { rejectRead = reject; });
+  const stop = () => rejectRead(invalid());
+  const timer = setTimeout(stop, 2000);
+  req.signal.addEventListener("abort", stop, { once: true });
   try {
+    if (req.signal.aborted) throw invalid();
     for (;;) {
-      const part = await reader.read();
+      const part = await Promise.race([reader.read(), stopped]);
       if (part.done) { complete = true; break; }
       size += part.value.byteLength;
       if (size > 1024) throw invalid();
@@ -31,7 +37,7 @@ async function emptyJson(req: Request) {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length) throw invalid();
   } catch { throw invalid(); }
-  finally { if (!complete) void reader.cancel().catch(() => {}); reader.releaseLock(); }
+  finally { clearTimeout(timer); req.signal.removeEventListener("abort", stop); if (!complete) void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 function callbackResult(code: string) {
   // Fixed existing product route. Never reflect code/state/provider errors in the URL.
@@ -75,7 +81,7 @@ export async function handleWebAuth(req: Request, action: "start" | "session" | 
         where state_hash=${sha256(state)} and browser_hash=${sha256(browser)} and redirect_uri=${config.redirectUri}
         and consumed_at is null and cancelled_at is null and expires_at>clock_timestamp() returning state_hash`;
       if (!consumed) throw invalid();
-      if (url.searchParams.has("error")) return callbackResult("cancelled");
+      if (url.searchParams.has("error")) return callbackResult(url.searchParams.get("error") === "access_denied" ? "cancelled" : "upstream_failed");
       const code = url.searchParams.get("authorization_code");
       if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code) || url.searchParams.has("code")) throw invalid();
       const adapter = createZhihuOAuth({ ...config, fetch: upstreamFetch });

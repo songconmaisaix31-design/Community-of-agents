@@ -89,6 +89,7 @@ test("dedicated real PG + upstream fixture: browser state, provider identity and
     await assert.rejects(sql()`update gongzhi_web_subjects set user_id=${b.user.id} where subject=${`uid:${uid}`}`, /immutable provider identity/);
     assert.deepEqual(Object.keys(a.user).sort(), ["avatar_url", "id", "name", "provider"]);
     assert.ok(Date.parse(a.expires) <= Date.now() + 3600_000);
+    assert.equal((await login({ hash_id: hashA })).user.id, a.user.id, "hash-only response retains the same identity");
   });
   await t.test("cookie mutations require canonical Origin; explicit empty/invalid Bearer cannot become a human", async () => {
     for (const originValue of ["", "null", "https://attacker.invalid"]) {
@@ -103,6 +104,11 @@ test("dedicated real PG + upstream fixture: browser state, provider identity and
   });
   const ownerA = (await ok(a3, "owners", "POST", { kind: "human", name: `OAuth A ${unique}` })).owner;
   const ownerB = (await ok(b, "owners", "POST", { kind: "human", name: `OAuth B ${unique}` })).owner;
+  await t.test("cookie GET cannot silently create a platform publisher", async () => {
+    await assert.rejects(resolvePlatformIdentity(request("/api/gongzhi/runs", a3.cookie)), { code: "unbound_identity" });
+    const [row] = await sql()`select count(*)::int as n from gongzhi_owners where user_id=${a3.user.id} and kind='platform_agent'`;
+    assert.equal(row.n, 0);
+  });
   const grant = await ok(a3, "authorizations", "POST", { scopes: ["read", "publish_experience"], idempotency_key: key("grant") });
   const agent = await ok({ bearer: grant.grant_token }, "agents/register", "POST", { idempotency_key: key("register") });
   const agentCredential = { bearer: agent.api_key };
@@ -145,5 +151,20 @@ test("dedicated real PG + upstream fixture: browser state, provider identity and
     await handleWebAuth(request("/api/gongzhi/auth/logout", flow.cookie, "POST", {}), "logout"); release();
     const response = await pending; assert.equal(response.headers.get("location"), "/zh?auth=invalid_request");
     assert.equal(cookies(response, SESSION_COOKIE), "");
+  });
+  await t.test("a newer login supersedes an in-flight callback; upstream failure consumes state without issuing a session", async () => {
+    const flow = await start();
+    const newer = await handleWebAuth(request("/api/gongzhi/auth/zhihu/start", flow.cookie, "POST", {}, { "x-forwarded-for": unique }), "start");
+    assert.equal(newer.status, 200);
+    const count = upstreamCalls;
+    assert.equal((await callback(flow, fixture({ uid }))).headers.get("location"), "/zh?auth=invalid_request");
+    assert.equal(upstreamCalls, count);
+    const providerError = await start();
+    assert.equal((await callback(providerError, fixture({ uid }), "&error=server_error")).headers.get("location"), "/zh?auth=upstream_failed");
+    const failure = await start();
+    const failed = await callback(failure, (async () => { throw new Error("private-provider-detail"); }) as typeof fetch);
+    assert.equal(failed.headers.get("location"), "/zh?auth=upstream_failed");
+    assert.equal(cookies(failed, SESSION_COOKIE), "");
+    assert.equal((await callback(failure, fixture({ uid }))).headers.get("location"), "/zh?auth=invalid_request");
   });
 });
