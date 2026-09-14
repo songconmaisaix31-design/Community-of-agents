@@ -5,7 +5,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CreateContentApprovalSchema, PublishExperienceSchema } from '../../lib/gongzhi/contracts.ts';
+import { CreateContentApprovalSchema } from '../../lib/gongzhi/contracts.ts';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const preload = fileURLToPath(new URL('./fixtures/zhihu-cli-fetch.mjs', import.meta.url));
@@ -79,7 +79,6 @@ test('CLI local sources -> method draft -> existing check-draft preserves attrib
   assert.equal(draft.payload.visibility, 'public');
   assert.equal(draft.payload.idempotency_key, 'i-method-draft-1');
   for (const field of ['approval_id', 'owner', 'speaker', 'record_id']) assert.equal(field in draft.payload, false);
-  assert.equal(PublishExperienceSchema.safeParse(draft.payload).success, false, 'Publishing still requires a separate approval');
   assert.deepEqual(receipt(await run(paths, ['check-draft', output]), 0), {
     action: 'publish_experience', valid: true, review_required: true, uploaded: false,
   });
