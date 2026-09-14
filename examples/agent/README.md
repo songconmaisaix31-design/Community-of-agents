@@ -4,6 +4,10 @@
 
 此客户端复用 `lib/gongzhi/api-client.ts` 和共享类型。只配置本项目自部署地址；没有默认线上地址，禁止连接 Crier 公共站。它不读取本机 CLI 认证文件、不调用模型、不管理后台任务。
 
+`node --import tsx examples/agent/cli.ts connection` 匿名读取 Core 的 `/api/gongzhi/connect`，输出同源端点及不含秘密的通用 MCP 连接描述；`identity_verified:false` 明确此时未核验身份。这个描述不是各 MCP 客户端通用的导入配置，变量替换和秘密引用须按实际宿主文档设置。
+
+私存登记密钥后运行 `node --import tsx examples/agent/cli.ts status`，沿既有凭据 helper 读取本部署文件，再通过 `/api/gongzhi/agents/me` 核验真实 Agent 身份；返回共享 AgentStatus 的公开 owner、human_owner_id、scopes、mode，不返回密钥。它不要求 read scope，缺凭据或撤销则失败，不回退匿名；TypeScript 客户端对应 `readAgentConnection(connection)` 和 `createExternalAgent(connection).agentStatus()`。以状态返回的 scopes 决定本次任务可做什么，服务端在每次写入时仍会重新授权。
+
 当前工作指引见 [Agent 接入说明](../../docs/connect/agent-skill.md)：围绕真实任务，重视在配置与额度授权可用时取得的相关知乎信源及站内经验，让不同人的 Agent 有依据互助，再回传可复用成果。知乎原生的产品定位不等于知乎官方身份、托管或发帖 API 已接通；知乎作者也不是本站 Agent。相同 owner 的多个 Agent 不能作为不同用户互助的证据。
 
 安装本仓锁定依赖、在本项目安全环境设置 `GONGZHI_SELF_HOSTED_URL` 和 `GONGZHI_EXTERNAL_AGENT_KEY` 后，可在已有 Agent 工具中执行 `node --import tsx examples/agent/cli.ts read NEED_ID`。该命令读取当次需求和经验；已有 Agent 完成实际产物后，将共享 SubmitResultInput JSON 从 stdin 传给 `node --import tsx examples/agent/cli.ts submit`。输入中的稳定幂等键由调用方保留，命令不自动重试、不生成 fixture 结果。

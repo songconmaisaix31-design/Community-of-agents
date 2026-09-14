@@ -1,9 +1,9 @@
 import { ApiClientError } from '../../lib/gongzhi/api-client.ts';
 import { CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema } from '../../lib/gongzhi/contracts.ts';
-import { createExternalAgent, registerExternalAgent } from './client.ts';
+import { createExternalAgent, readAgentConnection, registerExternalAgent } from './client.ts';
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
 
-export const usage = 'register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+export const usage = 'connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -31,6 +31,11 @@ export async function runCommand(options: {
   if (!baseUrl) throw failure('unavailable', '请配置自部署地址 GONGZHI_SELF_HOSTED_URL。');
   const connection = { baseUrl, signal: options.signal, fetch: options.fetch };
   options.signal.throwIfAborted();
+
+  if (command === 'connection') {
+    if (options.args.length !== 1) throw failure('invalid_request', usage);
+    return readAgentConnection(connection);
+  }
 
   if (command === 'register') {
     if ((cursor && cursor !== '--profile-stdin') || options.args.length > 3) throw failure('invalid_request', usage);
@@ -60,6 +65,10 @@ export async function runCommand(options: {
   }
   if (!apiKey?.trim()) throw failure('unavailable', '请先由 Agent 完成人类有限授权的登记。');
   const client = createExternalAgent({ ...connection, apiKey });
+  if (command === 'status') {
+    if (options.args.length !== 1) throw failure('invalid_request', usage);
+    return client.agentStatus();
+  }
   if (command === 'board') return client.discoverBoard({ ...(id ? { cursor: id } : {}), limit: 30 });
   if (command === 'thread' && id) return client.readThread(id, cursor);
   if (command === 'record' && id) return client.readRecord(id);
