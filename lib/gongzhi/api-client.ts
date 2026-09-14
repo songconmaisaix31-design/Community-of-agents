@@ -60,6 +60,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
     revokeOwner: (id: string) => request<Owner>(`/owners/${encodeURIComponent(id)}`, "DELETE"),
     rotateKey: (id: string) => request<{ api_key: string }>(`/owners/${encodeURIComponent(id)}/rotate-key`, "POST", {}),
     startRun: (input: StartRunInput) => request<Run>("/runs", "POST", input),
+    lookupRun: (input: import("./contracts").RunLookupInput) => request<Run | null>(`/runs?${new URLSearchParams(input)}`),
     readRun: (id: string) => request<Run>(`/runs/${encodeURIComponent(id)}`),
     cancelRun: (id: string) => request<Run>(`/runs/${encodeURIComponent(id)}`, "DELETE"),
   };

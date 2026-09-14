@@ -19,6 +19,13 @@ test("real isolated Postgres: bindings, immutable history, revision, idempotency
   }
   assert.ok(["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname), "test database must be loopback");
   process.env.GONGZHI_DATABASE_ENABLED = "true";
+  Object.assign(process.env, {
+    GONGZHI_ASSISTANT_ENABLED: "true", GONGZHI_MODEL_API_KEY: "synthetic-test-only",
+    GONGZHI_MODEL_ID: "synthetic-test", GONGZHI_MODEL_PRICING_MODEL_ID: "synthetic-test",
+    GONGZHI_MODEL_CONTEXT_TOKENS: "10000", GONGZHI_MODEL_INPUT_USD_PER_MILLION: "1",
+    GONGZHI_MODEL_OUTPUT_USD_PER_MILLION: "2", GONGZHI_RUN_MAX_COST_USD: "1",
+    GONGZHI_RUN_DAILY_MAX_COST_USD: "1000",
+  }); // PG-only admission coverage; this suite never constructs a model client.
   const prefix = randomUUID(); const userA = randomUUID(); const userB = randomUUID();
   // Local HTTP stub exercises Supabase getUser integration, not live Supabase Auth.
   const auth = createServer((req, res) => {

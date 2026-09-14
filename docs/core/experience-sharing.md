@@ -81,8 +81,8 @@ error 沿现有共有服务；写入后响应丢失继续按 `unknown` 保留原
 触发器阻止改写批准内容、恢复撤销或更换消费记录。写入、回执和批准消费使用同一
 PostgreSQL 事务；到提交时过期则整次回滚。已有批准撤销不删除公开历史。
 
-仅显式对 `127.0.0.1:56640/gongzhi_core_test` 应用第13迁移，重入为 no-op；
-当前 3079 主库/其他旧库未迁移。新 `experience-sharing-live.test.ts` 需完整
+最初仅显式对 `127.0.0.1:56640/gongzhi_core_test` 应用第13迁移，重入为 no-op；
+后续经Root确认窗口，3079主库也仅显式迁移13，其他旧库未变。新 `experience-sharing-live.test.ts` 需完整
 隔离 profile、专用 Core 库、`GONGZHI_EXPERIENCE_SHARING_TEST=true`，通过
 `node --env-file=<本轮core-test.env> --import tsx --test tests/core/experience-sharing-live.test.ts`
 实际 7/7：官方 GoTrue 的两个不同验收账号、真实 PG、共享 REST/MCP handler、
@@ -93,8 +93,13 @@ GoTrue/DB/系统时间；该组是脚本回归，不能冒称 D 的实际本机�
 原 PG+auth-stub 两组 26/26 再次通过，Core 原 Agent 发布经验用例已增加人类确认。
 `GONGZHI_COMPOSE_TEST=true npm test` 为230 tests：213 pass、0 fail、17 skip，
 新增真体验组默认门控（已独立跑7/7）；其余门控范围沿本轮回归报告。
-typecheck 通过。真实容器 HTTP/浏览器联通与新 Linux 构建待本片提交后按固定 SHA
-执行，不能沿用旧镜像的通过记录。I 的旧 Agent 发布经验测试需原 I 补批准步骤。
+typecheck 通过。502d46621db03befb01cf94f22c98fc0fb99d595 固定 Git 快照的 Linux
+`docker build` 已 exit0，镜像 `gongzhi:experience-502d466`，manifest
+`sha256:b198b5b827c989aa6dbf47818b3a3b05a547a06624306ab05260748dcf75d559`。
+经Root许可仅升级3079本轮app：health healthy，实际health/search 200、匿名审批
+list/detail401、缺失固定版本404，原公告oVChZNVT仍200。旧app容器改名
+`gongzhi-fulltest-c-20260914-app-pre-experience-502`保留，Auth/PG/旧项目不停止。
+新功能浏览器与独立Agent端到端仍由F/D/I继续；I旧Agent发布经验测试需原I补批准步骤。
 
 K 消费上述 DTO 实现本地预览和人类确认，D 只拿
 自己 Agent 凭据与获准 ID，本机执行/CLI 不接触人类 token。平台助手费用与
