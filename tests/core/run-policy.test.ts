@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getRunPolicy, settleRunBudget } from "../../lib/gongzhi/run-policy.ts";
 import type { RunBudget } from "../../lib/gongzhi/contracts.ts";
+import { RunLookupSchema } from "../../lib/gongzhi/contracts.ts";
+import { createApiClient } from "../../lib/gongzhi/api-client.ts";
 
 // Explicit synthetic price/model configuration; no provider clients or calls.
 const configured = {
@@ -41,4 +43,22 @@ test("unknown usage retains cost; complete bounded usage settles conservatively"
   assert.deepEqual(settleRunBudget(settled, usage, true), settled);
   assert.equal(settleRunBudget(b, { ...usage, input_tokens: 20001 }, true)?.usage_complete, false);
   assert.equal(settleRunBudget(null, usage, true), null);
+  for (const key of ["model_steps", "zhihu_queries", "input_tokens", "output_tokens"]) {
+    for (const value of [-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, null, undefined]) {
+      const invalid = settleRunBudget(settled, { ...usage, [key]: value } as typeof usage, true)!;
+      assert.equal(invalid.usage_complete, false); assert.equal(invalid.settled_microusd, null);
+      assert.equal(invalid.reserved_microusd, b.reserved_microusd);
+    }
+  }
+});
+test("original-key lookup is read-only, encoded, and returns a pending null without retry", async () => {
+  assert.equal(RunLookupSchema.safeParse({ need_id: "a", idempotency_key: "b", owner_id: "forged" }).success, false);
+  let calls = 0;
+  const api = createApiClient("live", { fetch: (async (url, init) => {
+    calls++; assert.equal(String(url), "/api/gongzhi/runs?need_id=a%2F1&idempotency_key=k%2B2");
+    assert.equal(init?.method, "GET"); assert.equal(init?.body, undefined);
+    return Response.json({ ok: true, mode: "live", data: null });
+  }) as typeof fetch });
+  assert.equal(await api.lookupRun({ need_id: "a/1", idempotency_key: "k+2" }), null);
+  assert.equal(calls, 1);
 });

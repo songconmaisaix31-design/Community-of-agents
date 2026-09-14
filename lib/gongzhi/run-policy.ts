@@ -60,7 +60,10 @@ export function getRunPolicy(env: Record<string, string | undefined> = process.e
 /** Internal conservative USD accounting, never a claim about the provider invoice. */
 export function settleRunBudget(budget: RunBudget | null | undefined, usage: Run["usage"], complete = false): RunBudget | null {
   if (!budget) return null;
-  if (!complete || usage.input_tokens === null || usage.output_tokens === null) return budget;
+  const unknown = { ...budget, usage_complete: false, settled_microusd: null };
+  if (complete !== true || [usage.model_steps, usage.zhihu_queries, usage.input_tokens, usage.output_tokens].some(value => !Number.isSafeInteger(value) || value === null || value < 0)) return unknown;
+  // Explicit checks preserve TypeScript's nullable-token narrowing.
+  if (usage.input_tokens === null || usage.output_tokens === null) return unknown;
   const limits = budget.limits;
   if (usage.model_steps > limits.max_steps || usage.zhihu_queries > limits.max_zhihu_queries || usage.input_tokens > limits.model_context_tokens * usage.model_steps || usage.output_tokens > limits.max_output_tokens * usage.model_steps) {
     // Usage outside the reserved envelope is unknown, never silently free.

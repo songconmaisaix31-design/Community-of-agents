@@ -146,6 +146,8 @@ export type BindOwnerInput = z.infer<typeof BindOwnerSchema>;
 export interface BoundOwner { owner: Owner; api_key?: string }
 export const StartRunSchema = z.object({ need_id: id, need_revision: revision, idempotency_key: key }).strict();
 export type StartRunInput = z.infer<typeof StartRunSchema>;
+export const RunLookupSchema = StartRunSchema.pick({ need_id: true, idempotency_key: true });
+export type RunLookupInput = z.infer<typeof RunLookupSchema>;
 
 // Public corrections contract. Identity/provenance fields are always server-derived.
 export const AgentScopeSchema = z.enum(["read", "publish_need", "publish_experience", "submit_result", "discuss"]);
