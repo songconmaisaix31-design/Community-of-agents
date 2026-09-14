@@ -60,6 +60,7 @@ export async function createGongzhiBrowserClient() {
     onChange: cb => { cbs.push(cb); return () => {}; },
     dispose: () => {},
   };
+  try { window.__fixtureSignOut = () => auth.signOut(); } catch (_) {}
   const api = {
     listOwners: () => req("/api/gongzhi/owners"),
     bindOwner: i => req("/api/gongzhi/owners", "POST", i),
@@ -419,6 +420,25 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     await page.waitForTimeout(2000);
     await expect(page.locator("[data-cm-account]")).not.toContainText("丙");
     await page.screenshot({ path: path.join(evidence, "account-switch.png"), fullPage: true });
+  });
+
+  test("回复异步解析期间换号：发送前校验会话，postReply 零调用，对话框关闭", async ({ page }) => {
+    let posts = 0;
+    await stubBoard(page);
+    // 根读取延迟 1.5 秒：留出换号窗口
+    await page.unroute("**/api/gongzhi/records/*");
+    await page.route("**/api/gongzhi/records/*", r => new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: needRecord } })), 1500)));
+    await page.route("**/api/gongzhi/discussions", r => { posts++; return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r11" } } }); });
+    await login(page);
+    await page.goto(`${origin}/zh/board/`);
+    await page.locator(".cm-record").first().click();
+    await page.locator(".cm-reply-form textarea").fill("这条回复不该发出去。");
+    await page.locator(".cm-reply-form").getByRole("button", { name: "公开发表" }).click();
+    // 根读取仍在途中：换号（退出登录），对话框应随身份变化关闭
+    await page.evaluate(() => (window as unknown as { __fixtureSignOut(): Promise<void> }).__fixtureSignOut());
+    await expect(page.locator(".cm-dialog")).toHaveCount(0);
+    await page.waitForTimeout(2200);
+    expect(posts).toBe(0);
   });
 
   test("服务返回 unknown(retryable:false)：冻结保留、提示对账，编辑不进入重试", async ({ page }) => {

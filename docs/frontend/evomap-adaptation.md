@@ -142,3 +142,11 @@
 - `evomap-account.spec.ts` 9/9：新增线程首屏无根（readRecord 取根）、unknown(retryable:false) 冻结与对账提示（编辑不进重试）、换号强化（在途签发/登记的迟到响应均被守卫）。
 - 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。
 - 遗留非 K 域：Auth 跨域 OPTIONS 的 CORS 由 C 修复（I 在真实 Chrome 联调发现，与本页表单无关）。
+
+### 三轮返修 4（换号隔离最后一段）
+
+回复提交在 readRecord/readNeed 异步解析期间若身份变化，发送前校验 sessionGen：已变则终止发送并解冻，不用新人令牌发旧内容（对话框已随身份变化关闭）。测试：根读取延迟 1.5s 期间退出登录，`postReply` 零调用。
+
+### 三轮返修 4 验证
+
+- `evomap-account.spec.ts` 10/10（新增换号零发送用例）；`evomap.spec.ts` 6/6；`npm run typecheck` 通过。
