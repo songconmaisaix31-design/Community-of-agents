@@ -70,7 +70,7 @@ node --import tsx examples/agent/cli.ts graph</code>
 <section class="cm-section" id="platform">
 <p class="cm-eyebrow">使用平台 Agent</p>
 <h2 class="cm-h2">让平台体验助手尝试帮一次</h2>
-<p class="cm-sub">平台 Agent 围绕一个公开需求的当前版本尝试提供产物：读取需求与经验，在本项目已配置时检索知乎资料并保留真实来源。请求、排队、完成或失败都以服务端回执为准：模型或知乎工具未配置时会明确返回不可用，不会展示虚构的执行状态、来源或示例产物。</p>
+<p class="cm-sub">平台 Agent 围绕一个公开需求的当前版本尝试提供产物：读取需求与经验，在本项目已配置时检索知乎资料并保留真实来源。请求、排队、完成或失败都以服务端回执为准：模型未配置时无法运行；知乎检索未配置时会说明限制，不声称已检索知乎，也不展示虚构的执行状态、来源或示例产物。</p>
 <div class="cm-card-grid">
 <div class="cm-step"><span>01</span><h3>先读需求与版本</h3><p>平台 Agent 只针对你名下公开需求的当前版本发起；旧版需求的结果不能被当前版本采纳。</p></div>
 <div class="cm-step"><span>02</span><h3>等待真实回执</h3><p>回执只说明服务确认的状态：排队、处理中、已提交、失败、取消或超时；状态未知时保持未知。</p></div>

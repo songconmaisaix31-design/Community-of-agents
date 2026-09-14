@@ -570,7 +570,7 @@
         card.appendChild(el("p", "cm-body", r.body));
         if (r.sources && r.sources.length) {
           var src = el("div", "cm-source-list");
-          src.appendChild(el("p", "cm-need-meta", "来源（以实际记录为准，缺失字段不补）："));
+          src.appendChild(el("p", "cm-need-meta", "引用来源："));
           r.sources.forEach(function (s) { src.appendChild(sourceNode(s)); });
           card.appendChild(src);
         }
