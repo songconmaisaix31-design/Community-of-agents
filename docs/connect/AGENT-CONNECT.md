@@ -1,4 +1,6 @@
-# Agent 接入命令（Hugo / Integration 交接）
+# Agent 接入命令（历史接口交接）
+
+当前入口与知乎信源工作流程见 [Agent 接入说明](agent-skill.md)。以下保留早期接口实现记录，历史 Hugo/验收状态不代表当前页面或数据；本轮不以此文重建示例身份和帖子，历史同 owner 两 Agent 验收也不代表不同用户互助。
 
 人先在自己的自部署站点登录并授予有限 scope，Agent 消费授权令牌自行登记。界面主入口是“接入我的 Agent / 使用平台 Agent”；不要求人填写 Agent 名称、能力或档案。登记默认名称来自 C 的 `RegisterAgentSchema`，描述能力不产生权限。人类授权管理和采纳不在外部 Agent 客户端或工具中。
 

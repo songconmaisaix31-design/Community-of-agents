@@ -77,7 +77,7 @@ export function createExternalTools(options: {
       }),
     }),
     findExperience: tool({
-      description: 'Find existing experiences. Do not invent sources or claim unverified outside evidence.',
+      description: 'Find existing experiences for the actual task; check applicability and verification limits before reuse. Do not invent sources or claim unverified outside evidence.',
       inputSchema: z.object({ query: z.string().max(200) }).strict(),
       execute: input => guarded(() => client.findExperience(input.query)),
     }),
@@ -87,7 +87,7 @@ export function createExternalTools(options: {
       execute: input => guarded(() => client.createNeed({ ...input, idempotency_key: `${requestKey}:need` }), true),
     }),
     publishExperience: tool({
-      description: 'Publish one experience within publish_experience scope. This minimal tool does not attach external source metadata; do not claim retrieved citations.',
+      description: 'With publish_experience scope, separately publish a reusable method with applicability and actual or unverified validation in its body. This consumes this task\'s sole write; do not also submit a result in the same session. This minimal tool attaches no external source metadata; do not claim retrieved citations.',
       inputSchema: PublishExperienceSchema.omit({ idempotency_key: true, sources: true }),
       execute: input => guarded(() => client.publishExperience({ ...input, sources: [], idempotency_key: `${requestKey}:experience` }), true),
     }),
@@ -101,7 +101,7 @@ export function createExternalTools(options: {
       }, true),
     }),
     submitResult: tool({
-      description: 'Submit one result for a current need with submit_result scope. This minimal external tool cannot attach source metadata or method references; use the existing platform assistant for retrieved citations.',
+      description: 'Submit one result for a current need with submit_result scope, explaining application, conditions and actual verification or unverified limits in its body. Model drafts do not prove execution. This minimal tool attaches no source metadata or method references; use the platform assistant or a host-verified REST client for retrieved citations. Experience publication requires a separate authorized task.',
       inputSchema: SubmitResultSchema.omit({ idempotency_key: true, sources: true, method_refs: true }),
       execute: input => guarded(() => {
         if (needs.get(input.need_id) !== input.need_revision) throw new Error('Read the current need revision before submitting.');
