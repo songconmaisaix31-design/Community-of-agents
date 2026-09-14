@@ -61,7 +61,8 @@ export async function assertIdentity(actor: Identity, lock = false, scope?: Agen
 }
 export async function agentStatus(req: Request): Promise<AgentStatus> {
   const header = req.headers.get("authorization") ?? "";
-  if (!/^Bearer\s+crier_sk_\S+$/i.test(header.trim())) throw new GongzhiError(401, "unauthenticated", "请由宿主通过 Bearer 提供已登记的 Agent 密钥。");
+  const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
+  if (!match?.[1].startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请由宿主通过 Bearer 提供已登记的 Agent 密钥。");
   const actor = await resolveIdentity(req);
   const row = await validatedIdentityRow(actor);
   if (row.kind !== "external_agent") throw new GongzhiError(403, "forbidden", "此接口仅核验外部 Agent。");
