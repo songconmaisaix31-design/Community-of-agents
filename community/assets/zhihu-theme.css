@@ -1,0 +1,307 @@
+/* ==========================================================================
+   Community of Agents — 知乎风格主题覆写
+   机制：站点设计令牌为 --c-* / --cb-* CSS 变量（HSL 通道 / hex），
+   本文件在 light 与 dark 两种 data-theme 下都强制覆写为知乎浅色配色，
+   即使前端 JS 把主题切回 dark 也保持浅色外观。
+   ========================================================================== */
+
+/* ---------- 1. 设计令牌：知乎配色 ---------- */
+
+:root[data-theme="light"],
+:root[data-theme="dark"] {
+  /* 页面底色：知乎灰 #f6f6f6 */
+  --c-bg: 220 14% 96%;
+  --c-bg-subtle: 220 14% 96%;
+  --c-bg-elevated: 0 0% 100%;
+  --c-bg-card: 0 0% 100%;
+  --c-bg-card-raised: 0 0% 100%;
+  --c-bg-command: 220 14% 96%;
+
+  /* 边框：#ebebeb 系 */
+  --c-border: 0 0% 92%;
+  --c-border-strong: 0 0% 86%;
+  --c-border-hover: 0 0% 75%;
+
+  /* 文字：#1a1a1a / #404040 / #8590a6 系 */
+  --c-text: 0 0% 10%;
+  --c-text-dim: 0 0% 25%;
+  --c-text-muted: 213 14% 57%;
+  --c-text-quiet: 213 14% 62%;
+  --c-code-text: 0 0% 15%;
+  --c-text-on-accent: 0 0% 100%;
+
+  /* 品牌色：知乎蓝 #0066ff 取代青色/薄荷绿 accent；琥珀色保留语义 */
+  --c-brand-mint: 216 100% 50%;
+  --c-brand-primary-cyan: 216 100% 50%;
+  --c-brand-amber: 46.8 100% 50.3%;
+
+  /* 遮罩与语义 surface */
+  --c-overlay: 0 0% 10% / .5;
+  --c-surface: var(--c-bg-elevated);
+  --c-surface-2: var(--c-bg-subtle);
+
+  /* --cb-* 组件令牌（hex 形式） */
+  --cb-bg: #ffffff;
+  --cb-bg-subtle: #f6f6f6;
+  --cb-border: #ebebeb;
+  --cb-text: #1a1a1a;
+  --cb-text-dim: #646464;
+  --cb-text-muted: #8590a6;
+  --cb-primary: #0066ff;
+  --cb-primary-fg: #ffffff;
+  --cb-primary-hover: #0b5eda;
+  --cb-focus-ring: rgba(0, 102, 255, .35);
+  --cb-shadow: 0 1px 3px rgba(26, 26, 26, .06);
+}
+
+/* ---------- 2. 全局基底 ---------- */
+
+html {
+  color-scheme: light !important;
+}
+
+html,
+body {
+  background-color: hsl(220 14% 96%) !important;
+  color: #1a1a1a;
+}
+
+body {
+  font-family: var(--font-harmonyos, -apple-system), -apple-system,
+    BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(0, 102, 255, .15) !important;
+  color: #1a1a1a;
+}
+
+/* ---------- 3. 吸顶头部：白底 + 1px hairline ---------- */
+
+header,
+[class*="site-header"],
+[class*="topbar"],
+[class*="navbar"] {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #ebebeb !important;
+  box-shadow: 0 1px 3px rgba(26, 26, 26, .04) !important;
+  backdrop-filter: none !important;
+}
+
+/* ---------- 4. 链接：知乎链接蓝 ---------- */
+
+a {
+  color: #175199;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #0066ff;
+}
+
+/* 头部导航与 accent 按钮内的链接保持原令牌色 */
+header a,
+[class*="site-header"] a,
+[class*="navbar"] a {
+  color: inherit;
+}
+
+header a:hover,
+[class*="site-header"] a:hover,
+[class*="navbar"] a:hover {
+  color: #0066ff;
+}
+
+/* 头部主 CTA（注册等深色反转按钮）改为知乎蓝胶囊 */
+header [class~="bg-foreground"],
+nav [class~="bg-foreground"],
+[class*="site-header"] [class~="bg-foreground"],
+[class*="navbar"] [class~="bg-foreground"] {
+  background-color: #0066ff !important;
+  color: #ffffff !important;
+  border-radius: 9999px !important;
+}
+
+header [class~="bg-foreground"]:hover,
+nav [class~="bg-foreground"]:hover,
+[class*="site-header"] [class~="bg-foreground"]:hover,
+[class*="navbar"] [class~="bg-foreground"]:hover {
+  background-color: #0b5eda !important;
+}
+
+/* ---------- 5. 卡片：白底 + hairline 边框 + 微弱阴影 ---------- */
+
+[class*="card"],
+[class*="surface"] {
+  background-color: #ffffff !important;
+  border-color: #ebebeb !important;
+  box-shadow: 0 1px 3px rgba(26, 26, 26, .06) !important;
+}
+
+[class*="card"] {
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+}
+
+/* ---------- 6. 主按钮：知乎蓝 + 白字 + 胶囊圆角 ---------- */
+
+/* 注意：必须用 [class~="..."] 精确匹配 class 词元，
+   子串匹配会误伤 selection:bg-primary/20 这类 Tailwind 变体类名 */
+button[class~="bg-primary"],
+a[class~="bg-primary"],
+[class~="bg-primary"],
+[class~="bg-brand"],
+button[class~="btn-primary"],
+a[class~="btn-primary"] {
+  background-color: #0066ff !important;
+  color: #ffffff !important;
+  border-color: #0066ff !important;
+}
+
+button[class~="bg-primary"]:hover,
+a[class~="bg-primary"]:hover,
+[class~="bg-primary"]:hover,
+[class~="bg-brand"]:hover,
+button[class~="btn-primary"]:hover,
+a[class~="btn-primary"]:hover {
+  background-color: #0b5eda !important;
+  border-color: #0b5eda !important;
+}
+
+button[class~="bg-primary"],
+a[class~="bg-primary"],
+button[class~="btn-primary"],
+a[class~="btn-primary"] {
+  border-radius: 9999px !important;
+}
+
+/* ---------- 7. 弱化深色专属装饰（粒子画布 / 光晕 / 轨道环） ----------
+   只淡化纯装饰层；particle-void / particle-stage 是包裹文字的容器，不能碰 */
+.hero-particle-stage-canvas,
+.hero-particle-stage-rings,
+.hero-particle-canvas-mount,
+canvas[class*="particle"],
+[class*="fine-rings"],
+[class*="aurora"] {
+  opacity: .12 !important;
+  filter: grayscale(1) !important;
+  pointer-events: none !important;
+}
+
+/* 渐变文字高亮改为知乎蓝，避免浅色下青色发飘 */
+[class*="gradient"],
+[class*="text-gradient"] {
+  filter: none;
+}
+
+/* ---------- 8. 刘看山（知乎吉祥物 IP） ---------- */
+
+/* 全局悬浮刘看山：避开右下角既有 FAB（右约 24px 处两个圆钮） */
+.kanshan-fab {
+  position: fixed;
+  right: 96px;
+  bottom: 18px;
+  z-index: 70;
+  width: 84px;
+  height: 84px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .2s ease;
+}
+
+.kanshan-fab:hover {
+  transform: translateY(-4px);
+}
+
+.kanshan-fab img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(26, 26, 26, .18));
+  pointer-events: none;
+}
+
+/* 头部 logo：刘看山 + 共治 */
+.kanshan-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kanshan-logo-img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.kanshan-logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: .5px;
+}
+
+/* 首页 hero mascot */
+.kanshan-hero-mascot {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+/* 首页三主入口（方案要求：接入我的 Agent / 发布需求 / 分享经验） */
+.kanshan-ctas {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.kanshan-cta {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 24px;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid #0066ff;
+  transition: background .15s ease, color .15s ease;
+}
+
+.kanshan-cta-primary {
+  background: #0066ff;
+  color: #ffffff !important;
+}
+
+.kanshan-cta-primary:hover {
+  background: #0b5eda;
+  color: #ffffff !important;
+}
+
+.kanshan-cta-ghost {
+  background: #ffffff;
+  color: #0066ff !important;
+}
+
+.kanshan-cta-ghost:hover {
+  background: #eaf2ff;
+  color: #0066ff !important;
+}
+
+@media (max-width: 640px) {
+  .kanshan-fab {
+    right: 80px;
+    width: 64px;
+    height: 64px;
+  }
+
+  .kanshan-hero-mascot {
+    width: 88px;
+    height: 88px;
+  }
+}
