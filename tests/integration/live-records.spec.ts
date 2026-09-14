@@ -1,10 +1,12 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import type { AgentGraph, BulletinThread, NeedDetail } from "../../lib/gongzhi/contracts";
+import type { Graph } from "@cosmos.gl/graph";
 
 // These IDs must come from separately witnessed real Agent execution. This
 // read-only check establishes page/REST agreement, not Agent autonomy itself.
 const needId = process.env.GONGZHI_ACCEPTANCE_NEED_ID;
 const agentIds = process.env.GONGZHI_ACCEPTANCE_AGENT_IDS?.split(",") ?? [];
+type ObservedWindow = Window & { __liveGraph?: Graph };
 async function read<T>(request: APIRequestContext, path: string): Promise<T> {
   const response = await request.get("/api/gongzhi/" + path);
   expect(response.status()).toBe(200);
@@ -68,6 +70,62 @@ test("actual public records remain operable without WebGL", async ({ page }) => 
   await expect(page.locator(".cm-graph-fallback")).toBeVisible();
   await page.locator(`[data-record-id="${needId}"]`).click();
   await expect(page.getByRole("dialog").locator(".cm-thread-record").first()).toBeVisible();
+});
+
+test("actual canvas evidence click and Agent selection preserve the zoomed camera", async ({ page, request }, info) => {
+  const data = await read<AgentGraph>(request, "agent-graph");
+  const thread = await read<BulletinThread>(request, "threads/" + encodeURIComponent(needId!));
+  expect(data.nodes).toHaveLength(2);
+  await page.addInitScript(() => {
+    let exported: Record<string, unknown>;
+    Object.defineProperty(window, "GongzhiGraph", {
+      configurable: true, get: () => exported,
+      set: value => {
+        exported = { ...value, mount: (...args: unknown[]) => {
+          const graph = value.mount(...args);
+          (window as ObservedWindow).__liveGraph = graph;
+          return graph;
+        } };
+      },
+    });
+  });
+  await page.goto("/zh");
+  const canvas = page.locator(".cm-graph-wrap canvas");
+  await expect(canvas).toBeVisible();
+  await page.waitForFunction(() => (window as ObservedWindow).__liveGraph?.isReady);
+  expect(await page.evaluate(() => (window as ObservedWindow).__liveGraph!.getPointPositions().length)).toBe(4);
+  await canvas.scrollIntoViewIfNeeded();
+  const box = (await canvas.boundingBox())!;
+  const camera = () => page.evaluate(() => {
+    const graph = (window as ObservedWindow).__liveGraph!;
+    return { zoom: graph.getZoomLevel(), origin: graph.spaceToScreenPosition([0, 0]), unit: graph.spaceToScreenPosition([1, 1]) };
+  });
+  const initial = await camera();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -150);
+  await expect.poll(async () => (await camera()).zoom).not.toBe(initial.zoom);
+  let previous = "";
+  await expect.poll(async () => { const next = JSON.stringify(await camera()); const stable = next === previous; previous = next; return stable; }, { intervals: [100, 150, 200] }).toBe(true);
+  const before = await camera();
+  const handle = await canvas.elementHandle();
+  const midpoint = await page.evaluate(() => {
+    const graph = (window as ObservedWindow).__liveGraph!, p = graph.getPointPositions();
+    return graph.spaceToScreenPosition([(p[0] + p[2]) / 2, (p[1] + p[3]) / 2]);
+  });
+  await page.mouse.click(box.x + midpoint[0], box.y + midpoint[1]);
+  await expect(page.getByRole("dialog")).toContainText("公开交流依据");
+  const bodies = page.getByRole("dialog").locator(".cm-thread-record .cm-body");
+  await expect(bodies).toHaveCount(2);
+  const shown = await bodies.allTextContents();
+  const ids = thread.records.filter(r => shown.includes(r.body)).map(r => r.id);
+  expect(data.edges.some(e => ids.includes(e.evidence_id) && ids.includes(e.reply_to_id))).toBe(true);
+  await page.screenshot({ path: info.outputPath("actual-edge-evidence.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+  const chip = page.locator(`[data-agent-id="${agentIds[0]}"]`);
+  await chip.click();
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  expect(await camera()).toEqual(before);
+  expect(await page.evaluate(el => el === document.querySelector(".cm-graph-wrap canvas"), handle)).toBe(true);
 });
 
 test("persisted result adoption belongs to the human owner and current revision", async ({ request }) => {
