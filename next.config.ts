@@ -6,6 +6,7 @@ const config: NextConfig = {
     return {
       beforeFiles: [
         { source: "/demo/api/:path*", destination: "/api/gongzhi/demo-rejected" },
+        { source: "/zh", destination: "/community/zh/index.html" },
       ],
       afterFiles: [], fallback: [],
     };
