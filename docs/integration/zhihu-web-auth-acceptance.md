@@ -14,8 +14,12 @@ I 新增 `oauth-browser.config.ts` / runner 复用 F 四项流程：实际托管
 
 按总控明确授权，在 3079 本项目主库显式应用 **仅 0015**，重复执行 all 15/no-op；users/posts/owners/grants 前后均 **8/26/14/18**。只替换 app 为 `gongzhi:oauth-runtime-f9a0b33`，新 CID `fd68bef9c2feb1ff068041780aa2ecd71619f63a781ec564985092632fd12d17` healthy；旧容器 `gongzhi-fulltest-c-20260914-app-pre-oauth-f9a0b33` 保留，DB/Auth/网络/卷/私有配置不变。
 
+五文件 `node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts evomap-experience.spec.ts evomap-connect.spec.ts evomap.spec.ts evomap-oauth.spec.ts` **54/54**：明确 HTTP fixture。同配置 `GONGZHI_BROWSER_LIVE=true ... evomap-live.spec.ts` 对真实 Next 3079 **4/4**，无拦截、无凭据、无写入：未配置/无邮箱入口、匿名 session/401/start503、无效回调与假 success 标记、本地草稿零上传。I 已查看1440/390截图，文字可读且无横溢出；`%TEMP%/gongzhi-oauth-unconfigured-F-1789403391052/`。
+
+原 A/B 经验链仅只读复验：`GONGZHI_EXPERIENCE_READBACK_URL=http://127.0.0.1:3079 GONGZHI_EXPERIENCE_READBACK_ID=gtvzeqZs GONGZHI_EXPERIENCE_READBACK_FEEDBACK=oZZ29tnv node --import tsx --test tests/integration/experience-offline-readback.test.mjs` **1/1**，REST/MCP/board/thread保持一致；没有重发、改写或当作本轮新 Agent 执行。
+
 日志根：`%TEMP%/gongzhi-oauth-i-f9a0b33/`；首次失败与每次复跑分文件保留。旧邮箱/GoTrue、未显式启用的其他环境检查为跳过/历史证据，不用于证明知乎登录。
 
 ## 尚未完成
 
-本页阶段记录：F 测试窄修后四项复验、54 项前端 fixture、实际 Next 未配置四项和 ECS 更新仍在进行。现有 ECS 只读预检四服务 healthy，仍为旧源码43af/镜像361ba99；不声称本轮已上线。用户未提供 OAuth App ID/App Key/已登记回调，既有 Access Secret 不可替代；官方授权须本人确认，真实模型、SMTP和公网回调未验证。正式入口 `https://zhihu.davidwang.space/zh` 的既有 ICP HTTP403/HTTPS 握手失败另列限制，不以本机或 fixture 替代。
+本页阶段记录：F 测试窄修后四项复验和 ECS 更新仍在进行。现有 ECS 只读预检四服务 healthy，仍为旧源码43af/镜像361ba99；不声称本轮已上线。用户未提供 OAuth App ID/App Key/已登记回调，既有 Access Secret 不可替代；官方授权须本人确认，真实模型、SMTP和公网回调未验证。正式入口 `https://zhihu.davidwang.space/zh` 的既有 ICP HTTP403/HTTPS 握手失败另列限制，不以本机或 fixture 替代。

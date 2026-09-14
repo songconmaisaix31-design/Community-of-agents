@@ -98,4 +98,10 @@ test('production proxy blocks Auth admin and demo escape without synthetic succe
   const session = await get('/api/gongzhi/auth/session');
   assert.equal(session.status, 200);
   assert.equal((await session.json()).data.user, null);
+  const callback = await fetch(new URL('/auth/zhihu/callback?state=invalid-readonly-probe', base), {
+    redirect: 'follow', signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(callback.status, 200, 'the whole callback redirect must reach the actual page');
+  assert.equal(new URL(callback.url).pathname, '/zh');
+  assert.notEqual(new URL(callback.url).searchParams.get('auth'), 'success');
 });
