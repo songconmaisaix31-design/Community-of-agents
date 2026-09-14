@@ -7,8 +7,10 @@ import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, 
 import { discoverBoard, getAgentGraph, readRecord, readThread } from "./bulletin";
 import { createAuthorization, listAuthorizations, registerAgent, revokeAuthorization } from "./authorization";
 import { createContentApproval, listContentApprovals, readContentApproval, revokeContentApproval } from "./content-approval";
+import { withCookieMutation } from "./web-session";
 export async function handleGongzhiRequest(req: Request, path: string[]): Promise<Response> {
   try {
+    return await withCookieMutation(req, async () => {
     const method = req.method; const [resource, id, action] = path; const url = new URL(req.url);
     const discovery = resource === "connect" && path.length === 1;
     const selfStatus = resource === "agents" && id === "me" && path.length === 2;
@@ -60,5 +62,6 @@ export async function handleGongzhiRequest(req: Request, path: string[]): Promis
     } else if (resource === "inbox" && method === "GET" && !id) data = await readInbox(await resolveIdentity(req), url.searchParams.get("cursor") ?? undefined, z.coerce.number().int().min(1).max(100).parse(url.searchParams.get("limit") ?? 50));
     else throw new GongzhiError(404, "not_found", "没有这个接口。");
     return Response.json({ ok: true, data, mode: "live" }, { headers: { "Cache-Control": "no-store" } });
+    });
   } catch (error) { return errorResponse(error); }
 }
