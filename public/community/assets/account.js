@@ -25,6 +25,7 @@
   var S = { status: "loading", config: null, auth: null, api: null, user: null, human: null, ownerStatus: "idle" };
   var ownerLoad = null;
   var loginBusy = false, loginError = "", feedbackClosed = false;
+  var logoutNotice = "", checkingLogout = false;
   // 回调标记只用于提示；登录身份始终来自共享客户端验证的同源会话。
   var returnUrl = new URL(window.location.href);
   var authReturn = returnUrl.searchParams.get("auth");
@@ -193,6 +194,23 @@
   function renderAccount() {
     if (!accountRoot) return;
     accountRoot.innerHTML = "";
+    if (logoutNotice) {
+      var notice = el("div", "cm-note"); notice.setAttribute("role", "alert");
+      notice.appendChild(el("p", "cm-form-error", logoutNotice));
+      var recheck = el("button", "cm-button cm-button-ghost", checkingLogout ? "正在确认…" : "重新确认登录状态");
+      recheck.type = "button"; recheck.disabled = checkingLogout;
+      recheck.addEventListener("click", function () {
+        checkingLogout = true; renderAccount();
+        S.auth.initialize().then(function (user) {
+          checkingLogout = false;
+          logoutNotice = user ? "服务器会话仍有效，请再次点击退出登录。" : "";
+          renderAccount();
+        }).catch(function () {
+          checkingLogout = false; logoutNotice = "仍无法确认服务器的退出状态，请稍后重新确认。"; renderAccount();
+        });
+      });
+      notice.appendChild(recheck); accountRoot.appendChild(notice);
+    }
     if (S.status === "loading") { accountRoot.appendChild(el("p", "cm-sub", "正在确认登录服务…")); return; }
     if (S.status === "unavailable" || S.status === "error") {
       var note = el("div", "cm-note");
@@ -208,7 +226,7 @@
       form.appendChild(el("p", "cm-sub", loginCopy()));
       var btn = el("button", "cm-button cm-button-primary", loginBusy ? "正在前往知乎…" : "使用知乎登录");
       btn.type = "button";
-      btn.disabled = loginBusy || typeof S.auth.startSignIn !== "function";
+      btn.disabled = loginBusy || Boolean(logoutNotice) || typeof S.auth.startSignIn !== "function";
       btn.addEventListener("click", function () {
         if (loginBusy) return;
         loginBusy = true; loginError = ""; renderAccount();
@@ -235,20 +253,17 @@
     head.appendChild(el("span", "cm-sub-inline", S.human ? "已登录 · 发言身份已绑定" : "已登录 · 发言身份登记中"));
     var out = el("button", "cm-button cm-button-ghost", "退出登录");
     out.type = "button";
-    var outErr = el("p", "cm-form-error");
-    outErr.hidden = true;
     out.addEventListener("click", function () {
       out.disabled = true;
-      outErr.hidden = true;
-      S.auth.signOut().catch(function (e) {
-        out.disabled = false;
-        outErr.textContent = "退出失败：" + errText(e) + " 登录状态可能仍有效，请重试。";
-        outErr.hidden = false;
+      feedbackClosed = true; logoutNotice = "";
+      S.auth.signOut().catch(function () {
+        // SDK 先撤下本页可写身份，再抛出失败；错误必须跨账户重绘保留。
+        logoutNotice = "退出失败，结果尚未确认。服务器会话仍可能有效，请先重新确认登录状态。";
+        renderAccount();
       });
     });
     head.appendChild(out);
     card.appendChild(head);
-    card.appendChild(outErr);
     if (S.human) card.appendChild(el("p", "cm-sub", "公开发言身份：" + S.human.name));
     if (!S.human && S.ownerStatus !== "ready") {
       card.appendChild(el("p", "cm-sub", S.ownerStatus === "error" ? "发言身份读取失败，请重试。" : "正在读取发言身份…"));

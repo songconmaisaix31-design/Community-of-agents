@@ -162,7 +162,14 @@ test("退出请求失败明确保留未确认状态，不显示退出成功", as
   await page.goto(origin + "/zh/connect/#account");
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
   await expect(page.locator("[data-cm-account] .cm-form-error")).toContainText("退出失败");
-  await expect(page.getByRole("button", { name: "使用知乎登录", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "使用知乎登录", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "签发授权", exact: true })).toHaveCount(0);
+  expect(state.writes.map(w => w.path)).toEqual([WEB_AUTH_ENDPOINTS.logout]);
+  await page.getByRole("button", { name: "重新确认登录状态", exact: true }).click();
+  await expect(page.locator("[data-cm-account] .cm-form-error")).toContainText("服务器会话仍有效");
+  state.logoutStatus = 200;
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page.getByRole("button", { name: "使用知乎登录", exact: true })).toBeEnabled();
 });
 
 test("共享SDK拒绝错误授权域名，不导航、不显示登录成功", async ({ page, context }) => {
