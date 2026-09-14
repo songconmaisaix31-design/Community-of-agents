@@ -2,6 +2,8 @@
 
 ## Codex F 接管：经验分享首片
 
+当前本地验收：`node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-account.spec.ts evomap-experience.spec.ts evomap-connect.spec.ts evomap.spec.ts` 为 41/41；随后补人类直接分享最终确认用例，经验组为 7/7（其余代码未变）。`npm run build:backend` 已通过完整 Next 生产构建，未重写 Core 生成客户端，未执行迁移。旧 `test-results/` 保留。新增真实双账号经验测试尚待 I 的3079窗口：A准确批准分享并撤销授权，B仍可下载固定版本、独立批准反馈；程序注册/上传明确只是 UI/HTTP 协议测试，不冒充实际 Agent 思考或业务执行。所有 live 测试显式门控，核对指定私有账号文件的实际路径与完整3079/56640/56641隔离配置；失败前后不截取凭据，测试结束关闭页面，避免自动错误上下文保留登录值和一次性授权。
+
 第三片普通合入 Core `6bf6e3028d6e3ac3fd047a5b3c7f209c811fdd2b` 与 D `a833303e229131b970e4a75d50a25cc980408705`：按请求运行助手在同步 POST 尚未返回时，只按本人原 need_id / idempotency_key 有界读取 `lookupRun`，取得真实 ID 后可调用取消。自动查询最多 65 秒、单次读取最多 4 秒，关闭面板停止本地定时与在途读取；不会启动后台模型。断连无 ID、null、unknown 保留原键到同标签页 sessionStorage（仅运行参数/回执，无凭据），禁止据 null 重开。预算和费用只展示真实 `Run.budget` 快照；未知用量保留预留，旧回执费用未知。`evomap-account.spec.ts` 15/15，含首次挂起 POST 的真实取消按钮、迟到 running 不覆盖取消、断连原键查询、关闭停止自动查询。此为 HTTP fixture，未调用真实付费模型；实际部署与缺配置失败仍待 I 托管后检查。
 
 第二片：批准预览增加简单编辑代次和身份代次守卫，异步列表/发送/回执都核对同一准确快照；规范化内容与下载草稿完全一致。正文、适用条件、版本、来源署名直接可读，完整 JSON/固定键放展开区；响应丢失冻结内容并保留批准操作键，查询与撤销也不跨会话显示回执。经验反馈公告可回到准确原版本、按实际 speaker 定位 Agent；旧成果引用改为固定版本，保留原图与镜头。人类直接分享增加最终 public 确认。
