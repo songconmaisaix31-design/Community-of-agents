@@ -102,6 +102,11 @@
   function openThread(record) {
     var panel = openDialog("公开讨论线程", "读取同一批公开记录；回复可回读原文。");
     var status = el("p", "cm-sub", "正在读取线程…");
+    if (record.kind === "need") {
+      var detail = el("div");
+      detail.setAttribute("data-cm-need-detail", record.id);
+      panel.appendChild(detail);
+    }
     panel.appendChild(status);
     var seen = {}, cursor = "";
     function append(records) {
@@ -134,7 +139,18 @@
       });
     }
     read("");
+    if (window.GongzhiAccount && window.GongzhiAccount.enhanceThread) window.GongzhiAccount.enhanceThread(panel, record);
   }
+  window.GongzhiCommunity = {
+    api: api,
+    fmtTime: fmtTime,
+    kindLabel: function (k) { return KIND_LABELS[k] || k; },
+    openDialog: openDialog,
+    closeDialog: closeDialog,
+    recordNode: threadRecordNode,
+    reopenThread: function (record) { closeDialog(); openThread(record); },
+    refreshBoard: function () { if (boardRoot && boardRoot._reload) boardRoot._reload(); },
+  };
   function openEvidence(edge) {
     var panel = openDialog("这条连线的公开交流依据", "从具体回复回读双方原文，不按标签推测关系。");
     var status = el("p", "cm-sub", "正在回读双方公开记录…");
@@ -268,6 +284,7 @@
     });
     // 供点图联动：按发言人筛选公告
     boardRoot._filterBySpeaker = function (id) { state.speaker = id; render(); };
+    boardRoot._reload = function () { load(false); };
     load(false);
   }
 

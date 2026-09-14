@@ -1,3 +1,6 @@
+import { getPublicConfig } from "../../../../lib/gongzhi/public-config";
+export const dynamic = "force-dynamic";
 export function GET() {
-  return Response.json({ ok: true, mode: "live", data: { service: "gongzhi", database_configured: Boolean(process.env.GONGZHI_DATABASE_ENABLED === "true" && process.env.DATABASE_URL), auth_configured: Boolean(process.env.GONGZHI_AUTH_ENABLED === "true" && process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY), live_verified: false } });
+  const config = getPublicConfig();
+  return Response.json({ ok: true, mode: "live", data: { service: "gongzhi", database_configured: config.database_configured, auth_configured: config.auth.available, live_verified: false } }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -6,6 +6,7 @@ import { sha256 } from "../ids";
 import { registerPublisher, rotateApiKey, type PublisherRow } from "../publishers";
 import { BindOwnerSchema, type AgentScope, type BoundOwner, type Owner } from "./contracts";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
+import { getAuthConfiguration } from "./auth-config";
 
 export interface Identity { readonly owner: Owner; readonly user_id: string }
 export type OwnerRow = { id: string; user_id: string; publisher_id: string; kind: Owner["kind"]; capabilities: string[]; scopes: AgentScope[]; revoked_at: Date | null; created_at: Date; credential_version: number; name: string; last_seen_at: Date | null; status: string };
@@ -22,9 +23,8 @@ function identity(row: OwnerRow): Identity {
 export async function verifiedUser(req: Request): Promise<string> {
   const token = bearer(req);
   if (!token || token.startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请使用人的 Supabase 登录身份。");
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY;
-  if (process.env.GONGZHI_AUTH_ENABLED !== "true" || !url || !key) throw new GongzhiError(503, "unavailable", "尚未配置本项目 Supabase 身份服务。");
+  const { serverUrl: url, key, enabled } = getAuthConfiguration();
+  if (!enabled || !url || !key) throw new GongzhiError(503, "unavailable", "尚未配置本项目 Supabase 身份服务。");
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(10000) }) } });
   let result;
   try { result = await client.auth.getUser(token); }
