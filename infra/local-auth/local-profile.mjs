@@ -23,6 +23,17 @@ export function parseProfile(args) {
 export function profileFromEnv(env) {
   return isolatedProfile({ project: env.GONGZHI_LOCAL_PROJECT, pgPort: env.GONGZHI_LOCAL_PG_PORT, authPort: env.GONGZHI_LOCAL_AUTH_PORT, appPort: env.GONGZHI_LOCAL_APP_PORT });
 }
+export function testProfileFromEnv(env) {
+  if (env.GONGZHI_ISOLATED_TEST === "true") return profileFromEnv(env);
+  if (env.GONGZHI_ISOLATED_TEST || Object.keys(env).some(key => key.startsWith("GONGZHI_LOCAL_") && env[key])) throw new Error("Explicit isolated test profile required");
+  return defaultProfile;
+}
+export function assertLocalDatabase(value, port, name, role = "crier_app") {
+  let url;
+  try { url = new URL(value ?? ""); } catch { throw new Error("Dedicated local test database target mismatch"); }
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || url.hostname !== "127.0.0.1" || url.port !== String(port) || url.pathname !== `/${name}` || url.username !== role || url.search || url.hash) throw new Error("Dedicated local test database target mismatch");
+  return url;
+}
 export function assertLocalAuth(value, port) {
   const url = new URL(value ?? "");
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.port !== String(port) || url.pathname !== "/" || url.search || url.hash || url.username || url.password) throw new Error("Local Auth target mismatch");

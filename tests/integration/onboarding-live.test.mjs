@@ -8,18 +8,16 @@ import { createClient } from '@supabase/supabase-js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createExternalAgent } from '../../examples/agent/client.ts';
+import { onboardingTarget, verifyOnboardingDirectory } from './onboarding-target.mjs';
 
 // Explicitly isolated real GoTrue/PG acceptance. Scripted records are not
 // autonomous Agent collaboration. Credentials remain in the private host store.
 test('isolated onboarding: real CLI, REST and official MCP SDK share identity and records', {
   skip: process.env.GONGZHI_ONBOARDING_ACCEPTANCE !== 'true', timeout: 120_000,
 }, async t => {
-  const origin = process.env.SITE_URL;
-  assert.equal(origin, 'http://127.0.0.1:3069');
-  assert.equal(process.env.SUPABASE_URL, 'http://127.0.0.1:56541');
-  assert.equal(process.env.GONGZHI_LOCAL_PROJECT, 'gongzhi-onboarding-i-20260914');
-  const privateDir = process.env.GONGZHI_ONBOARDING_CREDENTIAL_DIR;
-  assert.ok(privateDir);
+  const target = onboardingTarget(process.env);
+  await verifyOnboardingDirectory(target);
+  const { origin, privateDir } = target;
   const run = randomUUID(), key = name => `i-onboarding:${run}:${name}`;
   const credentialPath = resolve(privateDir, `script-agent-${run}.json`);
   const sessions = [];

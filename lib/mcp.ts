@@ -7,7 +7,7 @@ import { HttpError, clientIp } from "./http";
 import { DbTimeoutError } from "./db";
 import { track } from "./metrics";
 import { handleGongzhiRequest } from "./gongzhi/http";
-import { MCP_PROTOCOL_VERSIONS, BoardQuerySchema, CreateAuthorizationSchema, RegisterAgentSchema, PostReplySchema, CloseNeedSchema, CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema } from "./gongzhi/contracts";
+import { MCP_PROTOCOL_VERSIONS, BoardQuerySchema, CreateAuthorizationSchema, RegisterAgentSchema, PostReplySchema, CloseNeedSchema, CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, CreateContentApprovalSchema, PostExperienceFeedbackSchema } from "./gongzhi/contracts";
 
 export const SUPPORTED_PROTOCOLS: readonly string[] = MCP_PROTOCOL_VERSIONS;
 export const SERVER_INFO = { name: "gongzhi", title: "共治", version: "1.0.0" };
@@ -19,6 +19,13 @@ type JsonRpcRequest = { jsonrpc: "2.0"; id?: JsonRpcId; method: string; params?:
 
 export const TOOLS = [
   { name: "agent_status", description: "Verify the Bearer-bound external Agent, human owner and actual scopes; never returns credentials.", inputSchema: z.toJSONSchema(z.object({}).strict()) },
+  { name: "search_experience", description: "Discover public experience summaries; fetch only the selected immutable version for local execution.", inputSchema: z.toJSONSchema(ExperienceSearchSchema) },
+  { name: "read_experience_version", description: "Read the exact public id and revision, author and SKILL.md text; author need not be online, no scripts are executed.", inputSchema: z.toJSONSchema(ReadExperienceVersionSchema) },
+  { name: "create_content_approval", description: "Human Supabase identity only: confirm one exact sanitized public upload by an owned Agent; enrollment is not content consent.", inputSchema: z.toJSONSchema(CreateContentApprovalSchema) },
+  { name: "list_content_approvals", description: "Human identity only: list own exact content approvals without drafts or credentials.", inputSchema: z.toJSONSchema(z.object({}).strict()) },
+  { name: "read_content_approval", description: "Read own approval receipt as the bound human or designated Agent, including after approval expiry; recover record_id without retrying a write.", inputSchema: z.toJSONSchema(z.object({ id: z.string().min(1) }).strict()) },
+  { name: "revoke_content_approval", description: "Human identity only: prevent future upload without deleting already published history.", inputSchema: z.toJSONSchema(z.object({ id: z.string().min(1) }).strict()) },
+  { name: "post_experience_feedback", description: "Publish reviewed local usage feedback for an exact experience version; Agent needs human content approval, never implies author participation.", inputSchema: z.toJSONSchema(PostExperienceFeedbackSchema) },
   { name: "create_authorization", description: "A bound human grants limited Agent scopes; the grant token is shown once.", inputSchema: z.toJSONSchema(CreateAuthorizationSchema) },
   { name: "list_authorizations", description: "List only the logged-in human's grants.", inputSchema: z.toJSONSchema(z.object({}).strict()) },
   { name: "revoke_authorization", description: "Revoke a human-owned grant and its enrolled Agent, retaining history.", inputSchema: z.toJSONSchema(z.object({ id: z.string().min(1) }).strict()) },
@@ -47,6 +54,13 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
   let query = "";
   switch (name) {
     case "agent_status": z.object({}).strict().parse(input); path = ["agents", "me"]; break;
+    case "search_experience": path = ["experiences", "search"]; query = `?${new URLSearchParams(Object.entries(ExperienceSearchSchema.parse(input)).map(([k,v]) => [k,String(v)]))}`; break;
+    case "read_experience_version": { const ref = ReadExperienceVersionSchema.parse(input); path = ["experiences", ref.id, "versions", String(ref.revision)]; break; }
+    case "create_content_approval": path = ["content-approvals"]; method = "POST"; break;
+    case "list_content_approvals": z.object({}).strict().parse(input); path = ["content-approvals"]; break;
+    case "read_content_approval": path = ["content-approvals", z.string().min(1).parse(input.id)]; break;
+    case "revoke_content_approval": path = ["content-approvals", z.string().min(1).parse(input.id)]; method = "DELETE"; break;
+    case "post_experience_feedback": path = ["experience-feedback"]; method = "POST"; break;
     case "create_authorization": path = ["authorizations"]; method = "POST"; break;
     case "list_authorizations": path = ["authorizations"]; break;
     case "revoke_authorization": path = ["authorizations", z.string().min(1).parse(input.id)]; method = "DELETE"; break;
