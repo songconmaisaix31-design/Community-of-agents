@@ -100,3 +100,45 @@
 
 - C 的 `gongzhi-client.js` 尚未合入本分支；本轮用约定接口的测试替身验证，接到真实文件后需回归（导出形状若有出入，适配点集中在 account.js 顶部初始化一处）。
 - 真实 Auth/数据库/平台模型执行未验证（无配置）；fixture 不证明真实链路通过。
+
+### 三轮返修（合入 C 客户端 7ded401 后）
+
+已普通 merge C 首片 `7ded401`（真实 `public/community/assets/gongzhi-client.js` 与 `/api/gongzhi/config`），account.js 初始化一处即兼容，无导出出入。按主控早审修复 5 项真实链路缺陷并各配 UI 负例：
+
+1. 线程回复带 `reply_to_id`（线程根记录，留下可回读交流依据），求助线程先 `readNeed` 取当前版本再带 `expected_revision`，不再用过期快照。
+2. 采纳/关闭的请求键按"同一次意图"固定在渲染闭包内，失败重试不换键（此前每次点击换键）。
+3. run 回执只在终态（succeeded/failed/cancelled/timed_out）换请求键；`unknown` 保留原键与原任务，提供"查询最新状态"入口并明确"不要直接重新请求"。
+4. 退出失败可见（不再静默吞错）；登录/登记等非幂等请求的错误提示不再套用请求键文案。
+5. 方法引用可打开对应经验（版本不一致明确标注"引用的是第 N 版"）；来源渲染作者与安全 http(s) 原文链接（noopener）。
+
+另修：真实客户端返回 `auth.available:false` 时未触发重渲染，登录区卡在"正在确认"（真实文件接线冒烟测试抓出，替身测试未覆盖）。
+
+### 三轮返修验证
+
+- `evomap-account.spec.ts` 6/6：新增真实 `gongzhi-client.js`（非替身）+ 拦截 config 的接线冒烟；决策 500→同键重试；回复形状含 reply_to_id/expected_revision；方法引用打开与版本标注；unknown 回执保键与查询入口。
+- 既有 `evomap.spec.ts` 6/6 回归、`npm run typecheck` 通过。
+
+### 三轮返修 2（主控 follow-up）
+
+- 回复解析线程根：公告卡可能是求助线程内的回复/成果，先 `readThread` 判根类型，根为求助再 `readNeed(thread_id)` 取当前版本带 `expected_revision`；`reply_to_id` 始终保留被点击记录，留下可回读交流依据。
+- 签发/发布/回复全部冻结 payload 与请求键：首次提交后重试不采用编辑后的值、不静默换版本；明确的版本冲突或不可重试失败才解冻，由人决定作为新意图重发。版本解析本身失败不算已发出意图，允许重建。
+- 换号清理：身份切换/退出递增身份代际并清理一次性令牌与待发敏感状态（同一人令牌刷新不算切换）；`listOwners` 迟到响应按代际丢弃，不写入过期身份。
+- 平台回执沿用 D 说明：HTTP ok 不等于成功，UI 只按 `data.status` 展示（succeeded 才显示"已提交成果"），failed/cancelled/timed_out/unknown 原样保留。
+
+### 三轮返修 2 验证
+
+- `evomap-account.spec.ts` 8/8：新增回复卡在线程内（expected_revision + reply_to_id=被点击记录）、响应丢失后编辑再重试（payload/键不变）、换号回归（迟到响应丢弃、令牌不跨账号）；测试同步补齐替身客户端 readThread/readExperience，换号存根按调用次序返回对应身份。
+- 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。
+
+### 三轮返修 3（主控 follow-up 2/3/4 + I 交接）
+
+- unknown 不再按 retryable:false 解冻：只有明确终态拒绝（invalid_request / idempotency_conflict / revision_conflict / immutable）解冻；unknown 保留原 payload 与键，错误提示引导对账（不修改直接重发或核对公开记录）。
+- 线程根解析改用 `readRecord(thread_id)`（分页首屏可能不含根）；回复类型与正文在意图创建时捕获，异步读取返回后不再重读控件。
+- 在途写回调全部按身份代际（sessionGen）守卫：签发成功不再把迟到令牌带给新会话，登记成功不再覆盖新会话身份；真实换号/退出时关闭属于旧身份的对话框，同一人令牌刷新不动草稿。
+- 接入页 #cli 链接 I 托管的 `/agent-skill.md`（单一来源，不复制接入文档）。
+
+### 三轮返修 3 验证
+
+- `evomap-account.spec.ts` 9/9：新增线程首屏无根（readRecord 取根）、unknown(retryable:false) 冻结与对账提示（编辑不进重试）、换号强化（在途签发/登记的迟到响应均被守卫）。
+- 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。
+- 遗留非 K 域：Auth 跨域 OPTIONS 的 CORS 由 C 修复（I 在真实 Chrome 联调发现，与本页表单无关）。
