@@ -9,7 +9,7 @@ const legacy = Object.freeze({
 const fulltest = Object.freeze({
   origin: 'http://127.0.0.1:3079', authUrl: 'http://127.0.0.1:56641',
   project: 'gongzhi-fulltest-c-20260914',
-  privateDir: 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914',
+  privateDir: 'C:/Users/DW/AppData/Local/gongzhi/fulltest-c-20260914/integration-credentials',
 });
 const normalize = value => win32.normalize(value).replace(/[\\/]+$/, '').toLowerCase();
 
