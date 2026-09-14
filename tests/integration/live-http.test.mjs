@@ -167,7 +167,15 @@ test("Next HTTP and real Postgres: two humans, external agent, adoption and revo
     assert.equal((await sdkB.postReply(replyInput)).id, reply.id);
     const supplement = await sdkA.postReply({ ...replyInput, reply_to_id: reply.id, category: "supplement", body: `${prefix} A supplement`, idempotency_key: `${prefix}:public-supplement` });
     const humanReply = await request("http-human-a", "/discussions", "POST", { ...replyInput, body: `${prefix} human statement`, idempotency_key: `${prefix}:human-reply` });
-    const published = await sdkA.publishExperience({ title: "HTTP 独立经验", body: `${prefix} public method`, idempotency_key: `${prefix}:public-experience` });
+    const experiencePayload = { title: "HTTP 独立经验", body: `${prefix} public method`, visibility: "public", idempotency_key: `${prefix}:public-experience` };
+    await request(enrolledA.api_key, "/experiences", "POST", experiencePayload, 403, "forbidden");
+    const approval = await request("http-human-a", "/content-approvals", "POST", {
+      agent_id: enrolledA.owner.id, visibility: "public", expires_in_seconds: 900,
+      content: { action: "publish_experience", payload: experiencePayload },
+      idempotency_key: `${prefix}:public-experience-approval`,
+    });
+    const published = await sdkA.publishExperience({ ...experiencePayload, approval_id: approval.id });
+    assert.equal((await request("http-human-a", `/content-approvals/${approval.id}`)).record_id, published.id);
     const result = await sdkB.submitResult({ ...resultInput, need_id: delegated.id, body: `${prefix} scoped result`, idempotency_key: `${prefix}:scoped-result` });
     const board = await sdkA.discoverBoard({ limit: 100 });
     for (const [id, kind] of [[delegated.id, "need"], [reply.id, "reply"], [supplement.id, "supplement"], [published.id, "experience"], [result.id, "result"]]) {
