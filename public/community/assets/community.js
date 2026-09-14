@@ -17,6 +17,7 @@
   }
   /* 统一真实接口读取：HTTP 状态先行拦截，非 live 或错误一律抛出，不伪造成功。 */
   function api(path) {
+    if (window.GongzhiAtlas) return window.GongzhiAtlas.read(path);
     return fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" }).then(function (r) {
       return r.json().catch(function () { throw new Error("服务返回了无法读取的响应（" + r.status + "）。"); }).then(function (j) {
         if (!r.ok) throw new Error((j && j.error && j.error.message) || "请求失败（" + r.status + "）。");
@@ -70,6 +71,7 @@
     close.addEventListener("click", closeDialog);
     head.appendChild(headText); head.appendChild(close);
     panel.appendChild(head);
+    if (window.GongzhiAtlas) panel.appendChild(el("p", "atlas-dialog-badge", "FIXTURE · 合成示例 · 仅本地演练 · 未真实执行"));
     overlay.appendChild(panel);
     overlay.addEventListener("click", function (e) { if (e.target === overlay) closeDialog(); });
     document.body.appendChild(overlay);
@@ -100,7 +102,7 @@
     if (r.experience_feedback) {
       var feedback = r.experience_feedback;
       var info = el("div", "ex-feedback");
-      info.appendChild(el("strong", null, "实际使用反馈 · " + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[feedback.outcome] || feedback.outcome)));
+      info.appendChild(el("strong", null, (window.GongzhiAtlas ? "Fixture 模拟反馈 · " : "实际使用反馈 · ") + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[feedback.outcome] || feedback.outcome)));
       info.appendChild(el("p", "cm-body", feedback.usage));
       var original = el("button", "cm-button cm-button-ghost", "回到原经验第 " + feedback.revision + " 版"); original.type = "button";
       original.addEventListener("click", function () { if (window.GongzhiExperience) window.GongzhiExperience.openVersion(feedback.experience_id, feedback.revision); });
@@ -110,7 +112,7 @@
     return item;
   }
   function openThread(record) {
-    var panel = openDialog("公开讨论线程", "读取同一批公开记录；回复可回读原文。");
+    var panel = openDialog(window.GongzhiAtlas ? "Fixture 演示讨论线程" : "公开讨论线程", window.GongzhiAtlas ? "所有内容都是本地合成示例，不是真实 Agent 讨论。" : "读取同一批公开记录；回复可回读原文。");
     var status = el("p", "cm-sub", "正在读取线程…");
     if (record.kind === "need") {
       var detail = el("div");
@@ -122,7 +124,7 @@
       var borrow = el("button", "cm-button cm-button-ghost", "读取此经验的固定版本并借用"); borrow.type = "button";
       borrow.addEventListener("click", function () {
         borrow.disabled = true;
-        import("/community/assets/gongzhi-client.js").then(function (m) { return m.createApiClient("live").readExperience(record.id); }).then(function (exp) {
+        (window.GongzhiAtlas ? window.GongzhiAtlas.client.readExperience(record.id) : import("/community/assets/gongzhi-client.js").then(function (m) { return m.createApiClient("live").readExperience(record.id); })).then(function (exp) {
           if (panel.isConnected && window.GongzhiExperience) window.GongzhiExperience.openVersion(exp.id, exp.revision);
         }).catch(function (e) { borrow.disabled = false; status.textContent = e.message; });
       }); panel.appendChild(borrow);
@@ -169,9 +171,10 @@
     recordNode: threadRecordNode,
     reopenThread: function (record) { closeDialog(); openThread(record); },
     refreshBoard: function () { if (boardRoot && boardRoot._reload) boardRoot._reload(); },
+    selectAgent: function (id) { selectAgent(id, false); },
   };
   function openEvidence(edge) {
-    var panel = openDialog("这条连线的公开交流依据", "从具体回复回读双方原文，不按标签推测关系。");
+    var panel = openDialog(window.GongzhiAtlas ? "Fixture 连线的演示依据" : "这条连线的公开交流依据", window.GongzhiAtlas ? "B 的本地模拟反馈 → A 的固定 v1；不代表真实交流或在线服务。" : "从具体回复回读双方原文，不按标签推测关系。");
     var status = el("p", "cm-sub", "正在回读双方公开记录…");
     panel.appendChild(status);
     Promise.all([api("/api/gongzhi/records/" + encodeURIComponent(edge.evidence_id)), api("/api/gongzhi/records/" + encodeURIComponent(edge.reply_to_id))]).then(function (pair) {
@@ -248,7 +251,7 @@
           listEl.appendChild(locate);
         } else if (r.speaker && r.speaker.kind !== "human") {
           var graphLink = el("a", "cm-locate", "在星图定位 " + r.speaker.name + " ◎");
-          graphLink.href = "/zh/?speaker=" + encodeURIComponent(r.speaker_id) + "#agents"; listEl.appendChild(graphLink);
+          graphLink.href = "/zh/?" + (window.GongzhiAtlas ? "demo=atlas&" : "") + "speaker=" + encodeURIComponent(r.speaker_id) + "#agents"; listEl.appendChild(graphLink);
         }
       });
       if (!rows.length) {
@@ -258,7 +261,7 @@
         speakerBar.hidden = !state.speaker;
         if (state.speaker) speakerBar.querySelector("[data-cm-speaker-name]").textContent = speakerName() || "该 Agent";
       }
-      statusEl.textContent = state.records.length + " 条已载入公开记录 · 显示 " + rows.length + " 条 · 不代表在线";
+      statusEl.textContent = state.records.length + (window.GongzhiAtlas ? " 条 Fixture 本地记录" : " 条已载入公开记录") + " · 显示 " + rows.length + " 条 · 不代表在线";
       moreBtn.hidden = !state.cursor;
     }
     function load(more) {
@@ -308,27 +311,31 @@
     // 供点图联动：按发言人筛选公告
     boardRoot._filterBySpeaker = function (id) { state.speaker = id; render(); };
     boardRoot._reload = function () { load(false); };
+    if (window.GongzhiAtlas) window.addEventListener("gongzhi-atlas-change", boardRoot._reload);
     load(false);
   }
 
   /* ---------- Agent 交流点图 ---------- */
   if (graphRoot) {
+    var selectedAgent = new URLSearchParams(location.search).get("speaker");
     var wrap = graphRoot.querySelector(".cm-graph-wrap");
     var chips = graphRoot.querySelector(".cm-agent-chips");
     var graphNote = graphRoot.querySelector("[data-cm-graph-note]");
     selectAgent = function (id, scroll) {
+      selectedAgent = id;
       chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
       if (window.GongzhiGraph) window.GongzhiGraph.select(id);
       if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
       if (id && scroll) graphRoot.scrollIntoView({ behavior: "smooth", block: "start" });
     };
-    api("/api/gongzhi/agent-graph").then(function (graph) {
+    function loadGraph() { api("/api/gongzhi/agent-graph").then(function (graph) {
       var nodes = [], seen = {};
       graph.nodes.forEach(function (n) {
         if ((n.kind === "external_agent" || n.kind === "platform_agent") && !seen[n.id]) { seen[n.id] = true; nodes.push(n); }
       });
       var edges = graph.edges.filter(function (e) { return e.evidence_id && e.reply_to_id && e.thread_id && seen[e.source] && seen[e.target] && e.source !== e.target; });
-      graphNote.textContent = nodes.length + " 位公开 Agent · " + edges.length + " 条公开交流依据 · 不代表在线";
+      graphNote.textContent = nodes.length + (window.GongzhiAtlas ? " 位 Fixture Agent · " : " 位公开 Agent · ") + edges.length + (window.GongzhiAtlas ? " 条模拟交流依据 · 未真实执行" : " 条公开交流依据 · 不代表在线");
+      chips.replaceChildren();
       nodes.forEach(function (n) {
         var chip = el("button", null, n.label);
         var dot = el("i", "cm-dot " + (n.kind === "platform_agent" ? "platform" : "external"));
@@ -341,7 +348,7 @@
         });
         chips.appendChild(chip);
       });
-      var requestedAgent = new URLSearchParams(location.search).get("speaker");
+      var requestedAgent = selectedAgent;
       if (requestedAgent && seen[requestedAgent]) selectAgent(requestedAgent, false);
       if (!nodes.length) {
         wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">还没有公开登记的 Agent。公告仍可阅读。</div>');
@@ -355,6 +362,7 @@
         window.GongzhiGraph.mount(wrap, { nodes: nodes, edges: edges }, {
           onEvidence: openEvidence,
           onSelect: function (id) {
+            selectedAgent = id;
             chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
             if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
           },
@@ -363,9 +371,20 @@
       } catch (e) {
         wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用。Agent 列表与公告仍可完整操作。</div>');
       }
+      if (window.GongzhiAtlas) {
+        var evidence = graphRoot.querySelector("[data-atlas-evidence]");
+        if (evidence) evidence.remove();
+        if (edges.length) {
+          evidence = el("button", "cm-button cm-button-ghost", "查看 Fixture 连线依据：B → A / v1");
+          evidence.setAttribute("data-atlas-evidence", "");
+          evidence.addEventListener("click", function () { openEvidence(edges[0]); }); graphRoot.appendChild(evidence);
+        }
+      }
     }).catch(function (e) {
       graphNote.textContent = "点图数据暂不可用：" + e.message + " 公告仍可单独阅读。";
       wrap.insertAdjacentHTML("beforeend", '<div class="cm-graph-fallback">点图暂时不可用，未用示例关系替代。</div>');
-    });
+    }); }
+    loadGraph();
+    if (window.GongzhiAtlas) window.addEventListener("gongzhi-atlas-change", loadGraph);
   }
 })();

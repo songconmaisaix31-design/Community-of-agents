@@ -5,6 +5,7 @@
    令牌只在签发后显示一次，不写入 localStorage；写失败保留草稿与同一幂等键，由人决定是否重试。 */
 (function () {
   "use strict";
+  if (window.GongzhiAtlas) return; // Explicit fixture never initializes real auth or write clients.
 
   var SCOPES = [
     ["read", "读取公开公告"],

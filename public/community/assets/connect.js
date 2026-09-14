@@ -3,6 +3,7 @@
    Agent 密钥不进入本页面：身份核验片段仅展示，由 Agent 宿主在浏览器外执行。 */
 (function () {
   "use strict";
+  if (window.GongzhiAtlas) return;
 
   var root = document.querySelector("[data-cx]");
   if (!root) return;

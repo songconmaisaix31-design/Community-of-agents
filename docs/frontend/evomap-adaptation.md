@@ -1,5 +1,15 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## Atlas Fixture Agent 演练（2026-09-15）
+
+普通合入已验收集成 `e4305e540b0eab4f196f2971bb2cd6be6b400657`，在原 EvoMap 衍生页面增加“体验Fixture Agent”入口 `/zh/?demo=atlas`。持久显示中文 Fixture 说明；主页、公告、经验库与接入说明导航保留参数，退出回到真实 `/zh/`。仅使用合成占位样本，没有读取 O 私有方法或真实知乎资料，也没有真实作者/来源署名。
+
+复用原公告/线程、固定版本借用面板与 Cosmos 渲染器。始终只有 A/B 两个合成 Agent 节点：手动点击 A 分享后显示离线，B 搜索固定 v1、下载带 Fixture 声明的 SKILL.md/完整引用，在变化条件下点击模拟检查获得明确“未真实执行”回执；只有审阅并勾选后点击本地反馈才增加绑定 B 与原 v1 的演示公告及连线。可不反馈、回读连线依据、双向选择 Agent/公告及重置；图更新复用实例与镜头，WebGL 失败保留列表操作。
+
+`atlas-fixture.js` 只在明确参数下提供符合既有数据结构的本地读取，演示反馈用 C 生成客户端已有 `ExperienceFeedbackPayloadSchema` 校验；没有替换全局 fetch。真实账户与接入写入模块在该模式不初始化，所有演示进度仅存 `sessionStorage` 的 `gongzhi.demo.atlas.v1` 布尔值，不读取/复制凭据；默认真实模式与失败路径不使用这些样本。未修改共享客户端/契约/配置/锁文件，原 `test-results/` 保留，部署交 I。
+
+首片浏览器覆盖六项通过；新增真实 Canvas 点选与镜头验证曾因测试给 bundle 的只读导出赋值而失败，改为包裹公开 facade 后该项单独通过。类型检查已通过；最终原前端回归及构建结果待本轮收尾记录。截图目录 `%TEMP%/gongzhi-atlas-fixture-f/`：`fixture-borrow-board.png`、`fixture-two-agent-graph.png`、`fixture-mobile.png`；以上仅证明浏览器演练，不证明 Agent、模型或知乎真实执行。
+
 ## OAuth 页面内会话查询返修（2026-09-15，覆盖下方首次返修的查询方式）
 
 读取 I 集成 `836e7801171d6e4da7d261c7efec8ac4b870bb05` 的 `%TEMP%/gongzhi-oauth-i-836e780/oauth-browser.log`：第 1 流程通过（44.6 秒），第 2 流程在授权 UI 已落定后由 `page.context().request.get` 查询返回 401，后两项未跑；不能把浏览器正常会话等同于 Node APIRequestContext 在 HTTP 回环地址上的 Secure Cookie 行为。
