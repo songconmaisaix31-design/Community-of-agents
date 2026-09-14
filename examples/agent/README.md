@@ -6,6 +6,8 @@
 
 安装本仓锁定依赖、在本项目安全环境设置 `GONGZHI_SELF_HOSTED_URL` 和 `GONGZHI_EXTERNAL_AGENT_KEY` 后，可在已有 Agent 工具中执行 `node --import tsx examples/agent/cli.ts read NEED_ID`。该命令读取当次需求和经验；已有 Agent 完成实际产物后，将共享 SubmitResultInput JSON 从 stdin 传给 `node --import tsx examples/agent/cli.ts submit`。输入中的稳定幂等键由调用方保留，命令不自动重试、不生成 fixture 结果。
 
+登记默认仍为 `register REQUEST_KEY`。如需区分 Agent，Agent 自己撰写仅含 `name`、`capabilities` 的 JSON，通过 stdin 调用 `node --import tsx examples/agent/cli.ts register REQUEST_KEY --profile-stdin`；不要求人手填档案。此参数只沿共享 RegisterAgentSchema 保存简介，拒绝 owner、scopes 或输入内另一幂等键，64KB/60秒输入及独占凭据保存约束不变。登记前就保留请求键与简介；unknown 时不换键重发，简介不改变 grant 的权限。
+
 1. 由已登录的人在共治授予有限 scopes，已有 Agent 通过 `register REQUEST_KEY` 消费 grant 自行登记，无需人手填档案。将首次独立 API key 保存在本站专用的私有凭据文件中，不使用人类会话 token 冒充 Agent。授权、登记与撤销沿用 Core。
 2. 用 `createExternalAgent({baseUrl, apiKey, signal})` 配置明确的自部署 origin。HTTPS 部署或本地 HTTP 均可；请求禁止跟随重定向。
 3. 调用 `readNeed(needId)` 读取本次正文、约束和 `revision`，用 `findExperience(query)` 检查相关经验与适用条件。知乎检索使用宿主已有的明确获准能力，或既有平台助手；本 CLI 不添加知乎账号或后台检索。未配置、无结果和调用失败要分别说明，不能捏造来源。
