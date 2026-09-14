@@ -6,12 +6,12 @@ import { verifiedUser } from "../../lib/gongzhi/identity.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
 import { handleMcpPost } from "../../lib/mcp.ts";
 import { sql } from "../../lib/db.ts";
+import { testProfileFromEnv, assertLocalAuth, assertLocalDatabase } from "../../infra/local-auth/local-profile.mjs";
 
 test("real GoTrue + dedicated PG: human login, scoped enrollment and shared REST/MCP enforcement", { skip: process.env.GONGZHI_REAL_AUTH_TEST !== "true" }, async t => {
-  const authUrl = new URL(process.env.SUPABASE_URL!);
-  const dbUrl = new URL(process.env.DATABASE_URL!);
-  assert.equal(authUrl.hostname, "127.0.0.1"); assert.equal(authUrl.port, "56521");
-  assert.equal(dbUrl.hostname, "127.0.0.1"); assert.equal(dbUrl.port, "56520"); assert.equal(dbUrl.pathname, "/gongzhi_core_test");
+  const profile = testProfileFromEnv(process.env);
+  const authUrl = assertLocalAuth(process.env.SUPABASE_URL, profile.authPort);
+  assertLocalDatabase(process.env.DATABASE_URL, profile.pgPort, "gongzhi_core_test");
   const uid = randomUUID(), key = (name: string) => `real-auth:${uid}:${name}`;
   const req = (token: string) => new Request("http://localhost", { headers: { Authorization: `Bearer ${token}` } });
   const login = async (suffix: string) => {

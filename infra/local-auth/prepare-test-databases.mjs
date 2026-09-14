@@ -1,8 +1,16 @@
 import postgres from "postgres";
 import { writeFile, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
-const adminUrl = new URL(process.env.MIGRATION_DATABASE_URL ?? "");
-if (adminUrl.hostname !== "127.0.0.1" || adminUrl.port !== "56520" || adminUrl.pathname !== "/gongzhi") throw new Error("Only the dedicated new local PG is allowed");
+import { defaultProfile, profileFromEnv, assertLocalAuth, assertLocalDatabase } from "./local-profile.mjs";
+if (process.argv.length > 4 || (process.argv[3] && process.argv[3] !== "--isolated")) throw new Error("Unknown test database target");
+const isolated = process.argv[3] === "--isolated";
+const profile = isolated ? profileFromEnv(process.env) : defaultProfile;
+const adminUrl = assertLocalDatabase(process.env.MIGRATION_DATABASE_URL, profile.pgPort, "gongzhi", "postgres");
+assertLocalDatabase(process.env.DATABASE_URL, profile.pgPort, "gongzhi");
+assertLocalAuth(process.env.SUPABASE_URL, profile.authPort);
+assertLocalAuth(process.env.SUPABASE_PUBLIC_URL, profile.authPort);
+if (isolated) assertLocalAuth(process.env.SITE_URL, profile.appPort);
+const local = isolated ? { GONGZHI_ISOLATED_TEST: "true", GONGZHI_LOCAL_PROJECT: profile.project, GONGZHI_LOCAL_PG_PORT: profile.pgPort, GONGZHI_LOCAL_AUTH_PORT: profile.authPort, GONGZHI_LOCAL_APP_PORT: profile.appPort } : {};
 const directory = await realpath(process.argv[2]);
 const db = postgres(adminUrl.toString(), { max: 1, onnotice: () => {} });
 try {
@@ -19,7 +27,7 @@ try {
   const scratch = new URL(adminUrl); scratch.pathname = "/gongzhi_migration_check";
   const values = Object.fromEntries(["SUPABASE_URL", "SUPABASE_PUBLIC_URL", "SUPABASE_ANON_KEY", "CRIER_HASH_SECRET", "SITE_URL", "GONGZHI_TEST_EMAIL", "GONGZHI_TEST_PASSWORD", "GONGZHI_TEST_OTHER_EMAIL", "GONGZHI_TEST_OTHER_PASSWORD", "GONGZHI_TEST_UNBOUND_EMAIL", "GONGZHI_TEST_UNBOUND_PASSWORD"].map(key => [key, process.env[key]]));
   if (Object.values(values).some(value => !value)) throw new Error("Load admin.env and accounts.env; values suppressed");
-  for (const [name, data] of Object.entries({ "core-test.env": { ...values, GONGZHI_DATABASE_ENABLED: "true", GONGZHI_AUTH_ENABLED: "true", GONGZHI_REAL_AUTH_TEST: "true", DATABASE_URL: coreApp.toString(), MIGRATION_DATABASE_URL: coreAdmin.toString() }, "scratch.env": { SCRATCH_DATABASE_URL: scratch.toString() } })) {
+  for (const [name, data] of Object.entries({ "core-test.env": { ...values, ...local, GONGZHI_DATABASE_ENABLED: "true", GONGZHI_AUTH_ENABLED: "true", GONGZHI_REAL_AUTH_TEST: "true", DATABASE_URL: coreApp.toString(), MIGRATION_DATABASE_URL: coreAdmin.toString() }, "scratch.env": { SCRATCH_DATABASE_URL: scratch.toString() } })) {
     try { await writeFile(resolve(directory, name), Object.entries(data).map(([k,v])=>`${k}=${v}`).join("\n")+"\n", { flag: "wx", mode: 0o600 }); }
     catch (error) { if (error.code !== "EEXIST") throw error; }
   }
