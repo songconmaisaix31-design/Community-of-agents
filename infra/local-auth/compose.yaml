@@ -1,5 +1,5 @@
 # Local development only. Supply the Git-external file with --env-file.
-name: gongzhi-live-20260914
+name: ${COMPOSE_PROJECT_NAME:-gongzhi-live-20260914}
 services:
   db:
     image: pgvector/pgvector:0.8.6-pg17-bookworm
@@ -29,8 +29,8 @@ services:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: http://127.0.0.1:${AUTH_PORT:-56521}/auth/v1
-      GOTRUE_SITE_URL: http://127.0.0.1:3039
-      GOTRUE_URI_ALLOW_LIST: http://127.0.0.1:3039/**,http://localhost:3039/**
+      GOTRUE_SITE_URL: http://127.0.0.1:${APP_PORT:-3039}
+      GOTRUE_URI_ALLOW_LIST: http://127.0.0.1:${APP_PORT:-3039}/**,http://localhost:${APP_PORT:-3039}/**
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD:?private env required}@db:5432/gongzhi?search_path=auth
       GOTRUE_DB_NAMESPACE: auth
@@ -61,7 +61,7 @@ services:
     ports: ["127.0.0.1:${AUTH_PORT:-56521}:80"]
     networks: [default, host-access]
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${GONGZHI_NGINX_CONFIG:-./nginx.conf}:/etc/nginx/conf.d/default.conf:ro
 volumes:
   pg-data:
 networks:

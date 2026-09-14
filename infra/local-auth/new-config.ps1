@@ -1,4 +1,10 @@
-param([Parameter(Mandatory=$true)][string]$ConfigDirectory)
+param(
+  [Parameter(Mandatory=$true)][string]$ConfigDirectory,
+  [string]$Project,
+  [int]$PgPort,
+  [int]$AuthPort,
+  [int]$AppPort
+)
 $ErrorActionPreference = 'Stop'
 $resolvedConfig = [IO.Path]::GetFullPath($ConfigDirectory)
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -12,5 +18,9 @@ $acl.SetOwner($identity)
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
 $acl.AddAccessRule($rule)
 Set-Acl -LiteralPath $resolvedConfig -AclObject $acl
-node (Join-Path $PSScriptRoot 'write-config.mjs') $resolvedConfig
+$profileArgs = @()
+if ($Project -or $PgPort -or $AuthPort -or $AppPort) {
+  $profileArgs = @('--project', $Project, '--pg-port', "$PgPort", '--auth-port', "$AuthPort", '--app-port', "$AppPort")
+}
+node (Join-Path $PSScriptRoot 'write-config.mjs') $resolvedConfig @profileArgs
 if ($LASTEXITCODE -ne 0) { throw 'Configuration generation failed; preserve directory for review' }

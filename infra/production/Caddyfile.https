@@ -1,0 +1,9 @@
+{
+  admin off
+}
+http://:8080 {
+  import /etc/caddy/routes.caddy
+}
+zhihu.davidwang.space {
+  import /etc/caddy/routes.caddy
+}
