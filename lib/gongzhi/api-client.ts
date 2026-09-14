@@ -24,6 +24,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
   }
   return {
     mode, request,
+    readConfig: () => request<import("./contracts").PublicConfig>("/config"),
     discoverBoard: (query: import("./contracts").BoardQuery = {}) => request<import("./contracts").BulletinPage>(`/board?${new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
     readThread: (id: string, cursor = "", limit = 100) => request<import("./contracts").BulletinThread>(`/threads/${encodeURIComponent(id)}?cursor=${encodeURIComponent(cursor)}&limit=${limit}`),
     readRecord: (id: string) => request<import("./contracts").BulletinRecord>(`/records/${encodeURIComponent(id)}`),
