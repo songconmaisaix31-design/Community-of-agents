@@ -1,5 +1,6 @@
 import { ApiClientError, createApiClient } from '../../lib/gongzhi/api-client.ts';
 import { CONTRACT_VERSION, AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type AgentStatus, type ConnectInfo, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
+import { ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, SourceSchema, type ExperienceSearchQuery, type ExperienceVersion, type PostExperienceFeedbackInput } from '../../lib/gongzhi/contracts.ts';
 
 const nonempty = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 const liveRecord = (value: Pick<Need, 'id' | 'mode' | 'owner_id'>) => nonempty(value.id) && value.mode === 'live' && nonempty(value.owner_id);
@@ -99,6 +100,25 @@ export function createExternalAgent(options: Connection & { apiKey: string }) {
   // Intentionally do not return generic requests, grant management or adoption controls.
   return {
     agentStatus: async () => verifiedStatus(await api.agentStatus()),
+    searchExperience: async (query: ExperienceSearchQuery = {}) => {
+      const page = await api.searchExperience(ExperienceSearchSchema.parse(query));
+      if (page?.mode !== 'live' || !Array.isArray(page.items) || page.items.some(item =>
+        !nonempty(item.id) || !Number.isSafeInteger(item.revision) || item.revision < 1 || !nonempty(item.title) ||
+        typeof item.summary !== 'string' || !nonempty(item.author?.id) || item.mode !== 'live')) throw invalidRead();
+      return page;
+    },
+    readExperienceVersion: async (id: string, revision: number): Promise<ExperienceVersion> => {
+      const requested = ReadExperienceVersionSchema.parse({ id, revision });
+      const version = await api.readExperienceVersion(requested.id, requested.revision);
+      const experience = version?.experience;
+      if (experience?.id !== requested.id || experience.revision !== requested.revision || experience.mode !== 'live' ||
+        experience.visibility !== 'public' || !nonempty(experience.title) || !nonempty(experience.body) ||
+        !nonempty(experience.owner_id) || !nonempty(version.author?.id) || !nonempty(version.author?.name) ||
+        !SourceSchema.array().max(6).safeParse(experience.sources).success || typeof version.skill_md !== 'string' ||
+        version.execution !== 'caller_local' || version.author_presence_required !== false) throw invalidRead();
+      // An offline/revoked author's public immutable version remains reference material.
+      return version;
+    },
     discoverBoard: (query: BoardQuery = {}) => api.discoverBoard(BoardQuerySchema.parse(query)),
     readThread: api.readThread,
     readRecord: api.readRecord,
@@ -121,7 +141,19 @@ export function createExternalAgent(options: Connection & { apiKey: string }) {
     },
     publishExperience: (input: PublishExperienceInput) => {
       const parsed = PublishExperienceSchema.parse(input);
-      return confirmedWrite(options.signal, () => api.publishExperience(parsed), liveRecord);
+      if (!nonempty(parsed.approval_id)) throw new ApiClientError({ code: 'forbidden', message: '经验上传需要人类对准确内容及公开范围的批准。', retryable: false });
+      return confirmedWrite(options.signal, () => api.publishExperience(parsed), result =>
+        liveRecord(result) && Number.isSafeInteger(result.revision) && result.revision > 0 &&
+        result.title === parsed.title && result.body === parsed.body && result.applicability === parsed.applicability &&
+        result.visibility === 'public' && (result.previous_version_id ?? null) === (parsed.previous_version_id ?? null));
+    },
+    postExperienceFeedback: (input: PostExperienceFeedbackInput) => {
+      const parsed = PostExperienceFeedbackSchema.parse(input);
+      if (!nonempty(parsed.approval_id)) throw new ApiClientError({ code: 'forbidden', message: '经验反馈需要人类对准确正文的批准。', retryable: false });
+      return confirmedWrite(options.signal, () => api.postExperienceFeedback(parsed), result =>
+        liveRecord(result) && nonempty(result.speaker_id) &&
+        result.experience_feedback?.experience_id === parsed.experience_id && result.experience_feedback.revision === parsed.revision &&
+        result.experience_feedback.usage === parsed.usage && result.experience_feedback.outcome === parsed.outcome && result.body === parsed.body);
     },
     readInbox: api.readInbox,
   };
