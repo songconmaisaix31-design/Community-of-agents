@@ -21,3 +21,16 @@
 **知乎证据由 D 交付，I 未重复外调**：[实际只读报告](../connect/zhihu-live-readonly-2026-09-14.md)记录共 4 次官方活动 GET，两列表 HTTP 200（知识 10 / 故事 20 项）；所选字符串 ID 的详情及获准复查均 HTTP 400，复查业务码 40404「作品不存在」，详情未取得。受保护的搜索/回答摘要因缺本项目 Access Secret 尚未实测；活动列表成功不替代这些能力。用户本人网页登录由 Root 处理，本轮不介入；模型调用、不同 owner 的实际协作、数据库清理和公网部署均未执行。
 
 原始日志在 Git 外 `%TEMP%/gongzhi-closeout-I-a24e04f.{typecheck.log,test.log,build.log,docker-build.log,compose-check.json}`；没有新增截图或复制知乎正文。
+
+## 后续鉴权实测（2026-09-14 05:32–05:33 UTC）
+
+Root 在源码 `5538efc90bbf60c691f7d467912a919318969316` 复用既有 `createZhihuSearch` 完成以下真实调用；I 仅审阅 Git 外聚合日志 `gongzhi-zhihu-authenticated-20260914.json`、`gongzhi-zhihu-answers-live-20260914.json`，未读取私有配置或重复请求。
+
+| 能力与参数 | 实际结果 |
+| --- | --- |
+| 搜索一次，Count=3 | HTTP 200、Code=0，3 条非空文章摘要，cached=false |
+| 回答摘要一次，offset=0、limit=3 | HTTP 200、Code=0，3 条非空回答摘要，cached=false；IsEnd=false、NextOffset 为字符串 `"3"` |
+
+首次搜索没有问题链接，Root 随后从公开 web 索引取得问题 URL 再读取回答；没有重试或自动翻页。搜索返回的跟踪链接、账户标识和正文未复制到本文。Root 另交接初始额度查询：两能力各 total=10、used=0、remaining=10；两份日志记录业务调用后的两次额度查询，最终两能力各 used=1、remaining=9，连同初始查询共 3 次 quota GET。
+
+这更新了上文“当时缺少凭据、尚未实测”的状态，不改变先前活动详情 HTTP 400 / 40404 的历史结果。Root 报告仅将本轮指定凭据保存至既有 Git 外项目配置，保持当前用户独占 ACL 和其他键不变；服务未重启，3039 仍运行 ec12c9e 镜像，模型 key/id 缺失且助手禁用。本次未运行模型、助手 run、业务写入、数据库操作或 Agent 交流；接口鉴权成功不等于平台端到端或上线成功。本次 I 仅追加文档并审阅 diff/敏感信息，未重复测试或构建。
