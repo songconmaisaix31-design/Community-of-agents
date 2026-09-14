@@ -21,3 +21,12 @@
 第14迁移目前仅显式用于专用 Core 测试库，3079主库只有13迁移、运行502d466经验镜像；I更新助手镜像时须手动迁移14，不得由build/start隐式执行。公网、模型费用、知乎/SMTP外部调用以及跨轨UI/实际Agent本机执行验收不在以上通过记录内。
 
 本片收口命令：`GONGZHI_COMPOSE_TEST=true npm test` 实际236 tests / 218 pass / 0 fail / 18 skip；新增 Run 真环境父项默认跳过，已显式6/6，其他门控沿 `full-regression-2026-09-14.md` 的适用性说明，不沿用旧组件结果冒称新端到端通过。`GONGZHI_TEST_DATABASE_ENV=<本轮core-test.env> node --import tsx --test tests/core/database.test.ts tests/core/corrections-database.test.ts` 实际26/26（真PG、Auth HTTP stub），`npm run build:client` 与最终 `npm run typecheck` 均exit0。首次新增只读连接配置用字符串on导致TS类型错误，已按驱动声明改为boolean true，真PG6/6复验通过；费用函数异常值测试与lookup编码测试均包含于全套Node。
+
+固定源码 `6bf6e3028d6e3ac3fd047a5b3c7f209c811fdd2b` 的 Git archive 在仓库外构建，
+`docker build --pull=false --tag gongzhi:run-cap-6bf6e30 <snapshot>/source` exit0，实际运行
+`npm run build`、Next编译/类型/8页生成/standalone复制全部通过，没有运行迁移。
+manifest `sha256:0f9659e4836fe438e2e7e5d47a8e8c0b196c135fe98b68b9097971807b870a54`；
+该镜像只验证Core组件构建，未合并D执行器和GET路由，未替换3079或公开部署。
+显式对Core测试库再次 `node scripts/migrate.mjs` 为all14已记录、nothing to apply。
+原 `.next` 保留，未下载浏览器/新增依赖/旋转他人凭据。D/F已收到同一共享源码SHA；
+后续原I合并、显式迁移和端到端验证，Core保留原Agent承担领域返修。
