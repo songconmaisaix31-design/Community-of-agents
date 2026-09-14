@@ -3,6 +3,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Explicit one-shot maintenance image; never an application startup dependency.
+FROM dependencies AS migration
+ENV NODE_ENV=production
+COPY migrations ./migrations
+COPY scripts/migrate.mjs scripts/migration-policy.mjs ./scripts/
+USER node
+CMD ["node", "scripts/migrate.mjs"]
+
 FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
