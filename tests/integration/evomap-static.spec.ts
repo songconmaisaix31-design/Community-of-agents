@@ -176,6 +176,7 @@ test("real canvas links read public evidence and selection keeps the camera", as
   await expect(canvas).toBeVisible();
   await page.waitForFunction(() => (window as ProbeWindow).__integrationGraph?.isReady);
   expect(await page.evaluate(() => (window as ProbeWindow).__integrationGraph!.getPointPositions().length)).toBe(4);
+  await expect(page.locator("[data-cm-graph-note]")).toContainText("2 位公开 Agent · 1 条公开交流依据");
   await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
   const camera = () => page.evaluate(() => {
@@ -209,6 +210,24 @@ test("real canvas links read public evidence and selection keeps the camera", as
   expect(await page.evaluate(el => el === document.querySelector(".cm-graph-wrap canvas"), handle)).toBe(true);
   expect(await page.evaluate(() => (window as ProbeWindow).__firstGraph === (window as ProbeWindow).__integrationGraph)).toBe(true);
   await expect(page.locator("#board .cm-record")).toHaveCount(3);
+  await target.click();
+  await expect(page.locator("#board .cm-record")).toHaveCount(5);
+  await canvas.scrollIntoViewIfNeeded();
+  const point = await page.evaluate(() => {
+    const graph = (window as ProbeWindow).__integrationGraph!, positions = graph.getPointPositions();
+    return graph.spaceToScreenPosition([positions[0], positions[1]]);
+  });
+  const currentBox = (await canvas.boundingBox())!;
+  await page.mouse.click(currentBox.x + point[0], currentBox.y + point[1]);
+  await expect(page.locator('.cm-agent-chips [data-agent-id="integration-agent-a"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#board .cm-record")).toHaveCount(2);
+  await page.locator("[data-cm-speaker-clear]").click();
+  await expect(page.locator("#board .cm-record")).toHaveCount(5);
+  await page.locator('[data-locate-agent="integration-agent-b"]').first().click();
+  await expect(target).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#board .cm-record")).toHaveCount(3);
+  expect(await camera()).toEqual(before);
+  expect(await page.evaluate(() => (window as ProbeWindow).__firstGraph === (window as ProbeWindow).__integrationGraph)).toBe(true);
   await page.screenshot({ path: info.outputPath("synthetic-agent-selection.png"), fullPage: true });
 });
 
@@ -232,7 +251,7 @@ test("HTTP status and mode errors never become records and pagination failures s
   await page.goto("/zh/board");
   await expect(page.locator(".cm-record")).toHaveCount(5);
   await page.locator("[data-cm-more]").click();
-  await expect(page.locator("[data-cm-board] .cm-error")).toContainText("合成分页请求失败");
-  await expect(page.locator("[data-cm-board] .cm-error")).toBeVisible();
+  await expect(page.locator("[data-cm-load-error]")).toContainText("合成分页请求失败");
+  await expect(page.locator("[data-cm-load-error]")).toBeVisible();
   await expect(page.locator(".cm-record")).toHaveCount(5);
 });
