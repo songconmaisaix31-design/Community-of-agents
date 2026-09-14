@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MockLanguageModelV4 } from 'ai/test';
+import { generateText } from 'ai';
 import { executeAssistant } from '../../lib/gongzhi/agent/execute.ts';
 import { getAssistantConfig } from '../../lib/gongzhi/agent/config.ts';
 import { ZhihuError, createZhihuSearch } from '../../lib/gongzhi/zhihu/search.ts';
@@ -13,6 +14,8 @@ const need = { id: input.need_id, revision: 1, mode: 'live', status: 'open', tit
 const identity = { owner: { id: 'synthetic-assistant', kind: 'platform_agent' }, user_id: 'synthetic-user' };
 const toolCall = (name, payload = {}) => ({ type: 'tool-call', toolCallId: `call-${name}`, toolName: name, input: JSON.stringify(payload) });
 const draftCall = (source_ids = []) => toolCall('submitResult', { title: 'Synthetic output', body: 'An output generated for the synthetic need.', source_ids, method_refs: [] });
+const fixtureLimits = { model_id: 'mock-model-id', model_context_tokens: 10000, max_output_tokens: 2000, max_steps: 4, max_zhihu_queries: 2, deadline_ms: 60000, input_price_microusd_per_million: 1000000, output_price_microusd_per_million: 1000000 };
+const modelConfig = { GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model', GONGZHI_MODEL_PRICING_MODEL_ID: 'synthetic-model', GONGZHI_MODEL_CONTEXT_TOKENS: '10000', GONGZHI_MODEL_INPUT_USD_PER_MILLION: '1', GONGZHI_MODEL_OUTPUT_USD_PER_MILLION: '1', GONGZHI_RUN_MAX_COST_USD: '1', GONGZHI_RUN_DAILY_MAX_COST_USD: '5' };
 
 function modelSteps(steps) {
   let count = 0;
@@ -37,6 +40,7 @@ function harness(overrides = {}) {
         return { run: structuredClone(stored), created: false };
       }
       stored = { id: 'synthetic-run', ...input, owner_id: identity.owner.id, status: 'running', deadline_at, result_id: null, error: null, usage: { ...emptyUsage }, mode: 'live', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      stored.budget = { limits: { ...fixtureLimits }, currency: 'USD', reserved_microusd: 48000, settled_microusd: null, usage_complete: false };
       return { run: structuredClone(stored), created: true };
     },
     async getRun() { return structuredClone(stored); },
@@ -64,7 +68,7 @@ function harness(overrides = {}) {
 
 test('missing any required runtime configuration is unavailable without provider calls', () => {
   assert.throws(() => getAssistantConfig({}), { name: 'AssistantUnavailableError' });
-  const configured = { GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model' };
+  const configured = { ...modelConfig };
   for (const key of Object.keys(configured)) {
     assert.throws(() => getAssistantConfig({ ...configured, [key]: '' }), { name: 'AssistantUnavailableError' });
   }
@@ -73,7 +77,99 @@ test('missing any required runtime configuration is unavailable without provider
   }
 });
 
-const modelConfig = { GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model' };
+test('missing model pricing or cost caps fail configuration without provider calls', () => {
+  for (const key of Object.keys(modelConfig)) assert.throws(() => getAssistantConfig({ ...modelConfig, [key]: undefined }), { name: 'AssistantUnavailableError' });
+  assert.throws(() => getAssistantConfig({ ...modelConfig, GONGZHI_MODEL_PRICING_MODEL_ID: 'unapproved-other-model' }), { name: 'AssistantUnavailableError' });
+});
+
+test('new run without a matching frozen budget cannot call any model', async () => {
+  for (const variant of ['missing', 'model', 'steps', 'output']) {
+    const h = harness();
+    const claim = h.store.claimRun;
+    h.store.claimRun = async (...args) => {
+      const value = await claim(...args);
+      if (variant === 'missing') delete value.run.budget;
+      else if (variant === 'model') value.run.budget.limits.model_id = 'different-model';
+      else if (variant === 'steps') value.run.budget.limits.max_steps = 5;
+      else value.run.budget.limits.max_output_tokens = 2001;
+      return value;
+    };
+    const provider = modelSteps([]);
+    const result = await executeAssistant({ ...h, model: provider.model });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.error.code, 'unavailable');
+    assert.equal(provider.count(), 0);
+  }
+});
+
+test('frozen lower step and output caps reach the real SDK, and only complete observed usage can settle', async () => {
+  const h = harness();
+  const claim = h.store.claimRun;
+  h.store.claimRun = async (...args) => {
+    const value = await claim(...args);
+    value.run.budget.limits.max_steps = 1;
+    value.run.budget.limits.max_output_tokens = 30;
+    return value;
+  };
+  let settlement;
+  const finish = h.store.finishRun;
+  h.store.finishRun = async (...args) => { settlement = args[2]; return finish(...args); };
+  const provider = modelSteps([options => {
+    assert.equal(options.maxOutputTokens, 30);
+    return [toolCall('readNeed')];
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(provider.count(), 1);
+  assert.equal(result.status, 'failed'); // Budget stops without a prepared result.
+  assert.equal(settlement.usage_complete, true);
+  assert.deepEqual(settlement.usage, { model_steps: 1, zhihu_queries: 0, input_tokens: 10, output_tokens: 20 });
+});
+
+test('missing provider usage retains unknown accounting, never a free completed bill', async () => {
+  const h = harness();
+  let settlement, calls = 0;
+  const finish = h.store.finishRun;
+  h.store.finishRun = async (...args) => { settlement = args[2]; return finish(...args); };
+  const model = new MockLanguageModelV4({ doGenerate: async () => ({ content: [calls++ ? draftCall() : toolCall('readNeed')], finishReason: { unified: 'tool-calls', raw: undefined }, warnings: [], usage: { inputTokens: { total: undefined }, outputTokens: { total: undefined } } }) });
+  const result = await executeAssistant({ ...h, model });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(settlement.usage_complete, false);
+  assert.equal(settlement.usage.input_tokens, null);
+  assert.equal(settlement.usage.output_tokens, null);
+});
+
+test('inconsistent aggregate usage cannot reduce observed step usage or mark billing complete', async () => {
+  const h = harness();
+  let settlement;
+  const finish = h.store.finishRun;
+  h.store.finishRun = async (...args) => { settlement = args[2]; return finish(...args); };
+  const provider = modelSteps([[toolCall('readNeed')], [draftCall()]]);
+  const result = await executeAssistant({ ...h, model: provider.model, generate: async options => {
+    const generated = await generateText(options);
+    return { totalUsage: { inputTokens: 1, outputTokens: 1 }, steps: generated.steps, finishReason: generated.finishReason };
+  } });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(settlement.usage_complete, false);
+  assert.equal(settlement.usage.input_tokens, 20);
+  assert.equal(settlement.usage.output_tokens, 40);
+});
+
+test('usage outside the approved model envelope stops before any further call or result', async () => {
+  const h = harness();
+  let calls = 0, settlement;
+  const finish = h.store.finishRun;
+  h.store.finishRun = async (...args) => { settlement = args[2]; return finish(...args); };
+  const model = new MockLanguageModelV4({ doGenerate: async () => {
+    calls++;
+    return { content: [toolCall('readNeed')], finishReason: { unified: 'tool-calls', raw: undefined }, warnings: [], usage: { inputTokens: { total: 10001 }, outputTokens: { total: 20 } } };
+  } });
+  const result = await executeAssistant({ ...h, model });
+  assert.equal(calls, 1);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'budget_exceeded');
+  assert.equal(h.submitted(), 0);
+  assert.equal(settlement.usage_complete, false);
+});
 
 test('optional Zhihu absence permits actual SDK experience-only execution with a mock model', async () => {
   // Client construction is offline; the configured provider is never invoked.
@@ -353,6 +449,83 @@ test('disconnect propagates to the provider and does not submit', async () => {
   assert.equal(result.status, 'cancelled');
   assert.equal(h.submitted(), 0);
   assert.equal(provider.count(), 1);
+});
+
+test('a cancelled later SDK step retains observed earlier usage without claiming complete billing', async () => {
+  const h = harness();
+  let settlement;
+  const finish = h.store.finishRun;
+  h.store.finishRun = async (...args) => { settlement = args[2]; return finish(...args); };
+  const provider = modelSteps([[toolCall('readNeed')], options => {
+    h.request.abort();
+    assert.equal(options.abortSignal.aborted, true);
+    throw Error('Synthetic second-call disconnect, its usage is unknown');
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(result.usage.model_steps, 2);
+  assert.equal(result.usage.input_tokens, 10);
+  assert.equal(result.usage.output_tokens, 20);
+  assert.equal(settlement.usage_complete, false);
+  assert.equal(h.submitted(), 0);
+});
+
+test('durable cancellation from another process aborts a pending model call without a second step', async () => {
+  const h = harness();
+  let pendingSignal;
+  const provider = modelSteps([options => {
+    h.stored().status = 'cancelled'; // Simulates the other API instance's committed cancellation.
+    pendingSignal = options.abortSignal;
+    return new Promise((_, reject) => options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true }));
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(pendingSignal.aborted, true);
+  assert.equal(provider.count(), 1);
+  assert.equal(h.submitted(), 0);
+});
+
+test('a monitor database failure aborts execution and cannot create a success receipt', async () => {
+  const h = harness();
+  let generating = false, readOptions;
+  const read = h.store.getRun;
+  h.store.getRun = async (...args) => {
+    if (!generating) return read(...args);
+    readOptions = args[2];
+    throw Error('Synthetic monitor database unavailable');
+  };
+  const provider = modelSteps([options => {
+    generating = true;
+    return new Promise((_, reject) => options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true }));
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'upstream_failed');
+  assert.equal(readOptions.timeout_ms, 1000);
+  assert.equal(readOptions.signal.aborted, true);
+  assert.equal(h.submitted(), 0);
+});
+
+test('request disconnect aborts and joins an in-flight status read before returning', async () => {
+  const h = harness();
+  let generating = false, readClosed = false;
+  const read = h.store.getRun;
+  h.store.getRun = async (...args) => {
+    if (!generating) return read(...args);
+    const { signal, timeout_ms } = args[2];
+    assert.equal(timeout_ms, 1000);
+    const close = new Promise((_, reject) => signal.addEventListener('abort', () => { readClosed = true; reject(signal.reason); }, { once: true }));
+    h.request.abort();
+    return close;
+  };
+  const provider = modelSteps([options => {
+    generating = true;
+    return new Promise((_, reject) => options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true }));
+  }]);
+  const result = await executeAssistant({ ...h, model: provider.model });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(readClosed, true);
+  assert.equal(h.submitted(), 0);
 });
 
 test('deadline expires during provider work and reports timeout', async () => {

@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createZhihuSearch } from '../zhihu/search.ts';
+import { getRunPolicy } from '../run-policy.ts';
 
 export class AssistantUnavailableError extends Error {
   constructor() { super('平台体验助手尚未配置可用服务。'); this.name = 'AssistantUnavailableError'; }
@@ -13,6 +14,8 @@ export function getAssistantConfig(env: Record<string, string | undefined> = pro
   const modelId = env.GONGZHI_MODEL_ID;
   const secret = env.ZHIHU_ACCESS_SECRET?.trim() || '';
   if (env.GONGZHI_ASSISTANT_ENABLED !== 'true' || !apiKey?.trim() || !modelId?.trim()) throw new AssistantUnavailableError();
+  // Match the operator-approved model, prices and caps before constructing a provider.
+  try { getRunPolicy(env); } catch { throw new AssistantUnavailableError(); }
   if (env.GONGZHI_MODEL_BASE_URL) {
     try {
       const base = new URL(env.GONGZHI_MODEL_BASE_URL);
