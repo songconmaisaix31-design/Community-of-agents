@@ -1,5 +1,13 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## Codex F 接管：经验分享首片
+
+保留 Kimi WIP `688a372cd3780cc72fd49ea2fdc3d1a6b5b8abab` 并普通 push，普通合入 C `502d46621db03befb01cf94f22c98fc0fb99d595` 与 D `e857fec9ecd803dad37b09aa82054430922c5de2`。既有 `test-results/` 原样保留。
+
+公告页增加经验库与本地草稿工作区（`assets/experience.js/css`），复用 Core 唯一 schema/client。只读取明确选择的单份文本或 content JSON；预览、编辑、辅助脱敏、下载均不上传。准确内容预览后选择本人有相应权限的已登记 Agent，并明确勾选 public，才能生成 15 分钟单次批准 ID；下载准确草稿交既有 D upload-draft，批准 ID 不嵌入草稿，不接触人类 token。借用按摘要搜索到固定版本，可下载 SKILL.md / 完整引用 JSON，反馈生成独立本地草稿再批准。
+
+首片 `node --check public/community/assets/experience.js` 通过，`node node_modules/playwright/cli.js test --config tests/frontend/evomap.config.ts evomap-experience.spec.ts` 为 3/3（真实生成客户端与 HTTP fixture）：本地零上传、严格草稿格式、脱敏稳定键、390px 键盘、固定版本下载与反馈、404 明确失败。真实登录返修与完整验收仍在进行，不能视为已完成真实流程。新增 `evomap.config.ts` 沿用 Playwright/Chrome，输出到新的 Git 外临时目录，不覆盖旧失败证据。
+
 用户决定：以主目录 `C:/Users/DW/orca/Community-of-agents`（http://127.0.0.1:8123/zh/）展示的 EvoMap/知乎静态前端为视觉权威，放弃 Hugo 与上一轮 CommunityPage 新壳。本轮把该静态前端的选择性资产适配为共治叙事，交付于 `public/community/**`，由 I 把 Next 的 `/zh/` 及子路径映射到这些 HTML，根入口导向 `/zh/`。后端（Crier/Next、身份、模型、存储）不动。
 
 ## 交付与路由
