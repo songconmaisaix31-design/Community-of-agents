@@ -21,6 +21,8 @@ test("root opens the selected zh static page with isolated local assets", async 
   await expect(page).toHaveURL(/\/zh\/?$/);
   await expect(page).toHaveTitle(/共治/);
   await expect(page.locator("h1:visible").first()).toBeVisible();
+  await expect(page.locator(".kanshan-ctas a")).toHaveCount(2);
+  await expect(page.locator('a[href^="/demo"]')).toHaveCount(0);
   expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
   await page.evaluate(() => document.fonts.ready);
   await page.screenshot({ path: info.outputPath("selected-zh-page.png"), fullPage: true });
@@ -59,6 +61,9 @@ test("Next routes expose real unavailability and preserve local navigation", asy
   await expect(page.locator("#cli")).toContainText("GONGZHI_SELF_HOSTED_URL");
   await expect(page.locator("#cli")).toContainText("GONGZHI_AGENT_GRANT_TOKEN");
   await expect(page.locator("#cli")).toContainText("GONGZHI_AGENT_CREDENTIAL_FILE");
+  const header = (await page.locator("header").boundingBox())!;
+  const firstSection = (await page.locator("#connect .cm-eyebrow").boundingBox())!;
+  expect(firstSection.y).toBeGreaterThanOrEqual(header.y + header.height);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath("connect-guide.png"), fullPage: true });
   expect(external).toEqual([]);
@@ -83,12 +88,18 @@ async function stubRecords(page: Page, baseURL: string) {
     mode: "live", nodes: [a, b].map(x => ({ id: x.id, kind: x.kind as "external_agent" | "platform_agent", label: x.name, owner_id: "integration-human", mode: "live" })),
     edges: [{ id: "integration-edge", source: b.id, target: a.id, evidence_id: records[2].id, reply_to_id: records[0].id, thread_id: records[0].id, mode: "live" }],
   };
+  // Malformed extras exercise the visible Agent-only guard; never sent to the backend.
+  const graphResponse = { ...graph,
+    nodes: [...graph.nodes, { id: "integration-human", kind: "human", label: "不是Agent", owner_id: "integration-human", mode: "live" }, graph.nodes[0]],
+    edges: [...graph.edges, { ...graph.edges[0], id: "invalid-human-edge", target: "integration-human" }],
+  };
   const external: string[] = [];
   await page.route("**/*", route => {
     const url = new URL(route.request().url());
     if (url.origin !== new URL(baseURL!).origin) { external.push(url.href); return route.abort(); }
+    if (!url.pathname.startsWith("/api/gongzhi/")) return route.continue();
     const data = url.pathname.endsWith("/board") ? { records, next_cursor: null, mode: "live" }
-      : url.pathname.endsWith("/agent-graph") ? graph
+      : url.pathname.endsWith("/agent-graph") ? graphResponse
       : url.pathname.includes("/threads/") ? { thread_id: records[0].id, records: records.filter(r => r.thread_id === records[0].id), next_cursor: null, mode: "live" }
       : url.pathname.includes("/records/") ? records.find(r => url.pathname.endsWith(r.id)) : undefined;
     return data ? route.fulfill({ json: { ok: true, mode: "live", data } }) : route.continue();
@@ -110,12 +121,35 @@ test("synthetic HTTP records render five bulletin kinds and complete thread text
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.locator(".cm-thread-record")).toHaveCount(4);
   await expect(page.getByRole("dialog")).toContainText("末尾标记-reply");
+  for (const key of ["Shift+Tab", "Tab", "Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    expect(await page.getByRole("dialog").evaluate(el => el.contains(document.activeElement))).toBe(true);
+  }
   await page.screenshot({ path: info.outputPath("synthetic-thread.png"), fullPage: true });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator('#board [data-record-id="integration-record-2"]')).toBeFocused();
   await expect(page.locator(".cm-agent-chips button")).toHaveCount(2);
   expect(await page.locator("body").innerText()).not.toMatch(/收益|积分|进化|排行榜|定价|胶囊/);
   expect(external).toEqual([]);
+});
+
+test("unavailable WebGL preserves the Agent list and bulletin thread", async ({ page, baseURL }, info) => {
+  await stubRecords(page, baseURL!);
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, ...args: unknown[]) {
+      if (kind.includes("webgl")) return null;
+      return Reflect.apply(original, this, [kind, ...args]);
+    } as typeof original;
+  });
+  await page.goto("/zh");
+  await expect(page.locator(".cm-graph-fallback")).toBeVisible();
+  await expect(page.locator(".cm-agent-chips button")).toHaveCount(2);
+  await expect(page.locator("#board .cm-record")).toHaveCount(5);
+  await page.locator('#board [data-record-id="integration-record-2"]').click();
+  await expect(page.getByRole("dialog")).toContainText("末尾标记-reply");
+  await page.screenshot({ path: info.outputPath("webgl-unavailable-thread.png"), fullPage: true });
 });
 
 type ProbeWindow = Window & { __integrationGraph?: Graph; __firstGraph?: Graph };
@@ -142,6 +176,7 @@ test("real canvas links read public evidence and selection keeps the camera", as
   await expect(canvas).toBeVisible();
   await page.waitForFunction(() => (window as ProbeWindow).__integrationGraph?.isReady);
   expect(await page.evaluate(() => (window as ProbeWindow).__integrationGraph!.getPointPositions().length)).toBe(4);
+  await expect(page.locator("[data-cm-graph-note]")).toContainText("2 位公开 Agent · 1 条公开交流依据");
   await canvas.scrollIntoViewIfNeeded();
   const box = (await canvas.boundingBox())!;
   const camera = () => page.evaluate(() => {
@@ -175,6 +210,24 @@ test("real canvas links read public evidence and selection keeps the camera", as
   expect(await page.evaluate(el => el === document.querySelector(".cm-graph-wrap canvas"), handle)).toBe(true);
   expect(await page.evaluate(() => (window as ProbeWindow).__firstGraph === (window as ProbeWindow).__integrationGraph)).toBe(true);
   await expect(page.locator("#board .cm-record")).toHaveCount(3);
+  await target.click();
+  await expect(page.locator("#board .cm-record")).toHaveCount(5);
+  await canvas.scrollIntoViewIfNeeded();
+  const point = await page.evaluate(() => {
+    const graph = (window as ProbeWindow).__integrationGraph!, positions = graph.getPointPositions();
+    return graph.spaceToScreenPosition([positions[0], positions[1]]);
+  });
+  const currentBox = (await canvas.boundingBox())!;
+  await page.mouse.click(currentBox.x + point[0], currentBox.y + point[1]);
+  await expect(page.locator('.cm-agent-chips [data-agent-id="integration-agent-a"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#board .cm-record")).toHaveCount(2);
+  await page.locator("[data-cm-speaker-clear]").click();
+  await expect(page.locator("#board .cm-record")).toHaveCount(5);
+  await page.locator('[data-locate-agent="integration-agent-b"]').first().click();
+  await expect(target).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#board .cm-record")).toHaveCount(3);
+  expect(await camera()).toEqual(before);
+  expect(await page.evaluate(() => (window as ProbeWindow).__firstGraph === (window as ProbeWindow).__integrationGraph)).toBe(true);
   await page.screenshot({ path: info.outputPath("synthetic-agent-selection.png"), fullPage: true });
 });
 
@@ -198,7 +251,7 @@ test("HTTP status and mode errors never become records and pagination failures s
   await page.goto("/zh/board");
   await expect(page.locator(".cm-record")).toHaveCount(5);
   await page.locator("[data-cm-more]").click();
-  await expect(page.locator("[data-cm-board] .cm-error")).toContainText("合成分页请求失败");
-  await expect(page.locator("[data-cm-board] .cm-error")).toBeVisible();
+  await expect(page.locator("[data-cm-load-error]")).toContainText("合成分页请求失败");
+  await expect(page.locator("[data-cm-load-error]")).toBeVisible();
   await expect(page.locator(".cm-record")).toHaveCount(5);
 });
