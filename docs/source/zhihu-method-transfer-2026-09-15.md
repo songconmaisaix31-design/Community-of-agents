@@ -33,3 +33,5 @@
 - OpenCode 1.18.29 已实际检查 help、models --verbose 与 providers list；`deepseek/deepseek-flash` 显示 V4.1 Flash，DeepSeek provider 已配置。官方型号映射：https://api-docs.deepseek.com/quick_start/pricing/；原生 CLI：https://opencode.ai/docs/cli/。这仅证明工具/配置存在，实际模型执行与用量由本轮会话回执单独验证。
 
 用户追加选择 `deepseek/deepseek-v4-flash`；官方文档确认该兼容名由 V4.1 Flash 服务，本轮实际启动参数使用用户选定名。用户追加知乎 API 5,000 次；先按总请求上限 5,000（包含失败）执行，串行/官方限频、查询和内容去重、先小批质量检查、按需扩展，遇认证/额度/限流停止并保留已取结果，不刷重复请求凑数。原文/摘要及请求统计仅存本机指定私有目录，不入 Git、不自动入公告。仅调用包内已核实的只读接口，普通 Access Secret 与网页登录 OAuth App Key 分开；任何模型筛选和来源获取均不能自动批准公开分享。领域和本次 A/B 任务尚待用户明确，可先准备采集工具，不能将无目标的 5,000 次请求当作任务完成。
+
+2026-09-15 01:17–01:20 CST 实际预检：本项目 Access Secret 的官方 quota 接口 HTTP200/Code0，`zhihu_search` 与 `question_answers` 当日均 Total10/Used0/Remaining10；5,000 只是用户总预算，当前账号额度不足，不能通过换身份或持续重试绕过。随后围绕当前项目部署问题单次搜索“服务器部署 故障排查 经验”，成功返回10条含原作者、官方URL和不透明ContentID的摘要（部分ID带负号，不转数值或猜URL）。本次总计2次真实请求：1额度查询（文档说明不扣业务额度）、1业务搜索；并非10篇全文、10个已验证方法或5,000次已执行。首次本地tsx依赖未就绪发生在加载阶段，零外部请求；改用上轮固定快照中已有锁定依赖执行成功，未安装或更改集成环境。原始结果仅本机项目私有目录保存，没有上传公告或Git。
