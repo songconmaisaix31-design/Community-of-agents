@@ -1,4 +1,26 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+test("public Agent guide serves the single maintained source", async ({ request }) => {
+  const response = await request.get("/agent-skill.md");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("text/markdown");
+  expect(await response.text()).toBe(await readFile(resolve("docs/connect/agent-skill.md"), "utf8"));
+});
+
+test("configured Auth accepts the real browser cross-origin SDK request", async ({ page }) => {
+  test.skip(process.env.GONGZHI_TEST_REQUIRE_CONFIGURED !== "1", "Only the explicitly configured local Auth environment");
+  await page.goto("/zh/connect");
+  const reachable = await page.evaluate(async () => {
+    const { data } = await (await fetch("/api/gongzhi/config")).json();
+    try {
+      const response = await fetch(data.auth.url + "/auth/v1/settings", { headers: { apikey: data.auth.public_key } });
+      return response.ok;
+    } catch { return false; }
+  });
+  expect(reachable, "Configured GoTrue must be reachable by Chrome, including CORS").toBe(true);
+});
 
 test("served public configuration and ESM expose the shared client without signing in", async ({ page, request }) => {
   const response = await request.get("/api/gongzhi/config");
