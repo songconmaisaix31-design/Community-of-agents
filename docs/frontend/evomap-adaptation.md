@@ -129,3 +129,16 @@
 
 - `evomap-account.spec.ts` 8/8：新增回复卡在线程内（expected_revision + reply_to_id=被点击记录）、响应丢失后编辑再重试（payload/键不变）、换号回归（迟到响应丢弃、令牌不跨账号）；测试同步补齐替身客户端 readThread/readExperience，换号存根按调用次序返回对应身份。
 - 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。
+
+### 三轮返修 3（主控 follow-up 2/3/4 + I 交接）
+
+- unknown 不再按 retryable:false 解冻：只有明确终态拒绝（invalid_request / idempotency_conflict / revision_conflict / immutable）解冻；unknown 保留原 payload 与键，错误提示引导对账（不修改直接重发或核对公开记录）。
+- 线程根解析改用 `readRecord(thread_id)`（分页首屏可能不含根）；回复类型与正文在意图创建时捕获，异步读取返回后不再重读控件。
+- 在途写回调全部按身份代际（sessionGen）守卫：签发成功不再把迟到令牌带给新会话，登记成功不再覆盖新会话身份；真实换号/退出时关闭属于旧身份的对话框，同一人令牌刷新不动草稿。
+- 接入页 #cli 链接 I 托管的 `/agent-skill.md`（单一来源，不复制接入文档）。
+
+### 三轮返修 3 验证
+
+- `evomap-account.spec.ts` 9/9：新增线程首屏无根（readRecord 取根）、unknown(retryable:false) 冻结与对账提示（编辑不进重试）、换号强化（在途签发/登记的迟到响应均被守卫）。
+- 既有 `evomap.spec.ts` 6/6、`npm run typecheck` 通过。
+- 遗留非 K 域：Auth 跨域 OPTIONS 的 CORS 由 C 修复（I 在真实 Chrome 联调发现，与本页表单无关）。

@@ -37,6 +37,15 @@
   function errText(e) {
     return (e && e.message) || "操作失败，请重试。";
   }
+  /* 只有明确终态拒绝才解冻 payload（校验/冲突/不可变/版本冲突）；
+     unknown 即使 retryable:false 也可能已提交，必须保留原 payload 与键供人对账。 */
+  var DEFINITIVE_CODES = { invalid_request: 1, idempotency_conflict: 1, revision_conflict: 1, immutable: 1 };
+  function isDefinitive(err) {
+    return Boolean(err && err.error && DEFINITIVE_CODES[err.error.code]);
+  }
+  function isUnknown(err) {
+    return Boolean(err && err.error && err.error.code === "unknown");
+  }
   function newKey() {
     return "web-" + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(36).slice(2));
   }
@@ -56,11 +65,13 @@
       var before = S.user && (S.user.id || S.user.email);
       var after = user && (user.id || user.email);
       if (before !== after) {
-        // 身份切换/退出：清理一次性令牌与敏感状态；同一人的令牌刷新不算切换
+        // 身份切换/退出：清理一次性令牌与敏感状态、关闭属于旧身份的对话框；
+        // 同一人的令牌刷新不算切换，草稿保留
         sessionGen++;
         S.human = null;
         lastIssued = null;
         grantKey = newKey();
+        if (community().closeDialog) community().closeDialog();
       }
       S.user = user;
       renderAll();
@@ -134,7 +145,9 @@
         }).catch(function (e) {
           button.disabled = false;
           button.textContent = old;
-          err.textContent = errText(e) + (idem === false ? " 请核对后重试。" : " 已填写的内容与本次请求键保留，可直接重试；服务端会用同一请求键去重，不会重复创建。");
+          err.textContent = errText(e) + (idem === false ? " 请核对后重试。" : isUnknown(e)
+            ? " 服务未能确认这次请求是否已生效。请不要修改后直接重发；可用同一内容重试（同一请求键不会重复创建），或稍后在公开记录中核对。"
+            : " 已填写的内容与本次请求键保留，可直接重试；服务端会用同一请求键去重，不会重复创建。");
           err.hidden = false;
           if (onError) onError(e);
         });
@@ -203,9 +216,14 @@
       bind.appendChild(bindSub.row);
       bind.addEventListener("submit", function (e) {
         e.preventDefault();
+        var gen = sessionGen;
         bindSub.run(function () {
           return S.api.bindOwner({ name: name.value.trim(), kind: "human", capabilities: [] });
-        }, function (bound) { S.human = bound.owner; renderAll(); });
+        }, function (bound) {
+          if (gen !== sessionGen) return; // 换号后迟到的登记响应不写入新会话
+          S.human = bound.owner;
+          renderAll();
+        });
       });
       card.appendChild(el("p", "cm-sub", "首次使用需要登记一个公开称呼。它会成为你和你的 Agent 发言的所有者标记。"));
       card.appendChild(bind);
@@ -253,7 +271,8 @@
     var issueSub = submitRow(issueBtn, "正在签发…");
     form.appendChild(issueSub.row);
     // 同一次签注意图冻结 payload 与请求键：重试不采用编辑后的值；
-    // 明确失败（不可重试，如校验或冲突）才解冻，由人决定作为新意图重发。
+    // 只有明确终态拒绝才解冻，由人决定作为新意图重发；unknown 保留供对账。
+    // 成功回调按身份代际守卫：换号后迟到的签发响应不把旧令牌带给新会话。
     var frozenGrant = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -262,15 +281,17 @@
         if (!scopes.length) return;
         frozenGrant = { scopes: scopes, expires_in_seconds: Number(expiry.value), idempotency_key: grantKey };
       }
+      var gen = sessionGen;
       issueSub.run(function () {
         return S.api.createAuthorization(frozenGrant);
       }, function (issued) {
+        if (gen !== sessionGen) return;
         grantKey = newKey();
         lastIssued = issued;
         renderGrants();
         loadGrantList(listEl);
       }, function (err) {
-        if (err && err.error && err.error.retryable === false) frozenGrant = null;
+        if (isDefinitive(err)) frozenGrant = null;
       });
     });
     wrap.appendChild(form);
@@ -396,7 +417,7 @@
       sub.run(function () {
         return S.api.createNeed(frozen);
       }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
-        if (err && err.error && err.error.retryable === false) frozen = null;
+        if (isDefinitive(err)) frozen = null;
       });
     });
     panel.appendChild(form);
@@ -425,7 +446,7 @@
       sub.run(function () {
         return S.api.publishExperience(frozen);
       }, function () { community().closeDialog(); community().refreshBoard(); }, function (err) {
-        if (err && err.error && err.error.retryable === false) frozen = null;
+        if (isDefinitive(err)) frozen = null;
       });
     });
     panel.appendChild(form);
@@ -453,25 +474,24 @@
     form.appendChild(field("内容", body));
     form.appendChild(sub.row);
     /* 首次提交后冻结 payload（含解析出的当前版本号）与请求键：响应丢失后重试发同一请求，
-       不采用编辑后的值、不静默换版本；明确的版本冲突或不可重试失败才解冻，由人决定新意图。
-       公告卡可能是求助线程内的回复/成果，先回读线程根判定是否带 expected_revision；
+       不采用编辑后的值、不静默换版本；明确的终态拒绝（校验/冲突/不可变/版本冲突）才解冻，
+       由人决定新意图；unknown 一律保留原 payload 与键供对账。
+       公告卡可能是求助线程内的回复/成果，用 readRecord 直接取线程根（分页首屏可能不含根）；
        reply_to_id 保留被点击的记录，留下可回读的交流依据。 */
     var frozen = null;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       sub.run(function () {
         if (!frozen) {
-          frozen = S.api.readThread(record.thread_id).then(function (thread) {
-            var root = null;
-            for (var i = 0; i < thread.records.length; i++) {
-              if (thread.records[i].id === record.thread_id) { root = thread.records[i]; break; }
-            }
-            var rootKind = root ? root.kind : record.kind;
-            var base = rootKind === "need"
+          // 在意图创建时捕获类型与正文，异步读取返回后不再重读控件
+          var capturedCategory = category.value;
+          var capturedBody = body.value.trim();
+          frozen = S.api.readRecord(record.thread_id).then(function (root) {
+            var base = root.kind === "need"
               ? S.api.readNeed(record.thread_id).then(function (detail) { return detail.need.revision; })
               : Promise.resolve(undefined);
             return base.then(function (revision) {
-              var input = { thread_id: record.thread_id, reply_to_id: record.id, category: category.value, body: body.value.trim(), idempotency_key: key };
+              var input = { thread_id: record.thread_id, reply_to_id: record.id, category: capturedCategory, body: capturedBody, idempotency_key: key };
               if (revision !== undefined) input.expected_revision = revision;
               return input;
             });
@@ -479,9 +499,8 @@
         }
         return frozen.then(function (input) {
           return S.api.postReply(input).catch(function (err) {
-            // 明确的版本冲突或不可重试失败：解冻，由人决定作为新意图重发
-            var code = err && err.error && err.error.code;
-            if (code === "revision_conflict" || (err && err.error && err.error.retryable === false)) frozen = null;
+            // 明确终态拒绝：解冻，由人决定作为新意图重发；unknown 保留下方提示对账
+            if (isDefinitive(err)) frozen = null;
             throw err;
           });
         }, function (buildErr) {

@@ -70,6 +70,7 @@ export async function createGongzhiBrowserClient() {
     publishExperience: i => req("/api/gongzhi/experiences", "POST", i),
     postReply: i => req("/api/gongzhi/discussions", "POST", i),
     readThread: id => req("/api/gongzhi/threads/" + id),
+    readRecord: id => req("/api/gongzhi/records/" + id),
     readNeed: id => req("/api/gongzhi/needs/" + id),
     readExperience: id => req("/api/gongzhi/experiences/" + id),
     decideResult: (id, i) => req("/api/gongzhi/needs/" + id + "/decisions", "POST", i),
@@ -98,6 +99,7 @@ function stubBoard(page: Page) {
   return Promise.all([
     page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [needRecord], next_cursor: null, mode: "live" } } })),
     page.route("**/api/gongzhi/threads/*", r => r.fulfill({ json: { ok: true, mode: "live", data: { thread_id: "n1", records: [needRecord], next_cursor: null, mode: "live" } } })),
+    page.route("**/api/gongzhi/records/*", r => r.fulfill({ json: { ok: true, mode: "live", data: needRecord } })),
   ]);
 }
 async function login(page: Page, name = "阿治") {
@@ -330,7 +332,9 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
       return r.fulfill({ json: { ok: true, mode: "live", data: { owner: bound } } });
     });
     await page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [needRecord, replyCard], next_cursor: null, mode: "live" } } }));
-    await page.route("**/api/gongzhi/threads/*", r => r.fulfill({ json: { ok: true, mode: "live", data: { thread_id: "n1", records: [needRecord, replyCard], next_cursor: null, mode: "live" } } }));
+    // 线程分页首屏不含根（更早已翻页）：根必须由 readRecord 解析
+    await page.route("**/api/gongzhi/threads/*", r => r.fulfill({ json: { ok: true, mode: "live", data: { thread_id: "n1", records: [replyCard], next_cursor: null, mode: "live" } } }));
+    await page.route("**/api/gongzhi/records/*", r => r.fulfill({ json: { ok: true, mode: "live", data: needRecord } }));
     await page.route("**/api/gongzhi/needs/n1", r => r.fulfill({ json: { ok: true, mode: "live", data: needDetail } }));
     await page.route("**/api/gongzhi/discussions", r => { seen.push(r.request().postDataJSON()); return r.fulfill({ json: { ok: true, mode: "live", data: { id: "r10" } } }); });
     // 登录（绑定公开称呼）
@@ -352,23 +356,29 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
     expect(seen[0].expected_revision).toBe(2);
   });
 
-  test("换号：迟到的上任身份响应被丢弃，一次性令牌不跨账号复现", async ({ page }) => {
+  test("换号：迟到的上任身份响应被丢弃，在途签发/登记不越会话，令牌不跨账号复现", async ({ page }) => {
     const ownerA = { ...humanOwner, id: "human-a", name: "甲" };
     const ownerB = { ...humanOwner, id: "human-b", name: "乙" };
+    const ownerC = { ...humanOwner, id: "human-c", name: "丙" };
     let calls = 0;
     await stubClientModule(page);
     await page.route("**/api/gongzhi/owners", r => {
-      if (r.request().method() !== "GET") return r.fulfill({ json: { ok: true, mode: "live", data: { owner: ownerA } } });
+      if (r.request().method() !== "GET") {
+        // 丙的登记响应迟到 1.5 秒
+        return new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: { owner: ownerC } } })), 1500));
+      }
       calls++;
       if (calls === 1) {
         // 甲的身份响应迟到 2 秒
         return new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: [ownerA] } })), 2000));
       }
+      if (calls === 4) return r.fulfill({ json: { ok: true, mode: "live", data: [] } }); // 丙尚无身份
       return r.fulfill({ json: { ok: true, mode: "live", data: [calls === 2 ? ownerB : ownerA] } });
     });
     await page.route("**/api/gongzhi/authorizations", r => {
       if (r.request().method() === "GET") return r.fulfill({ json: { ok: true, mode: "live", data: [] } });
-      return r.fulfill({ json: { ok: true, mode: "live", data: { authorization: { id: "g1", owner_id: "human-b", scopes: ["read"], expires_at: "2026-09-14T01:00:00.000Z", revoked_at: null, agent_id: null, created_at: time, mode: "live" }, grant_token: "gongzhi_grant_b_secret", credential_state: "issued" } } });
+      // 乙的签发响应迟到 1.5 秒
+      return new Promise(resolve => setTimeout(() => resolve(r.fulfill({ json: { ok: true, mode: "live", data: { authorization: { id: "g1", owner_id: "human-b", scopes: ["read"], expires_at: "2026-09-14T01:00:00.000Z", revoked_at: null, agent_id: null, created_at: time, mode: "live" }, grant_token: "gongzhi_grant_b_secret", credential_state: "issued" } } })), 1500));
     });
     await page.goto(`${origin}/zh/connect/`);
     const signIn = async (email: string) => {
@@ -376,25 +386,68 @@ test.describe("共治真实写入 UI（HTTP fixture，仅验证页面行为）",
       await page.locator("[data-cm-account] input[type=password]").fill("correct-password");
       await page.locator("[data-cm-account]").getByRole("button", { name: "登录" }).click();
     };
+    const signOut = async () => {
+      await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
+      await expect(page.locator("[data-cm-account] input[type=email]")).toBeVisible();
+    };
+    // 甲的 listOwners 在途中就退出换乙；迟到响应到达时乙仍在会话中，身份不得变成甲
     await signIn("a@example.com");
-    // 甲的 listOwners 还在途中就退出并换乙登录
     await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
     await signIn("b@example.com");
     await expect(page.locator("[data-cm-account]")).toContainText("乙");
-    // 乙签发一份授权，令牌显示一次
-    await page.locator('.cm-check input[value="read"]').check();
-    await page.locator("[data-cm-grants]").getByRole("button", { name: "签发授权" }).click();
-    await expect(page.locator(".cm-token")).toHaveText("gongzhi_grant_b_secret");
-    // 甲迟到的响应到达后：身份仍是乙，且不属于当前账号的 UI 不出现
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(2300);
     await expect(page.locator("[data-cm-account]")).toContainText("乙");
     await expect(page.locator("[data-cm-account]")).not.toContainText("甲");
-    // 退出乙再登甲：乙的一次性令牌不跨账号复现
-    await page.locator("[data-cm-account]").getByRole("button", { name: "退出登录" }).click();
+    // 乙签发授权，响应在途中就换甲：迟到令牌不得出现在甲的会话里
+    await page.locator('.cm-check input[value="read"]').check();
+    await page.locator("[data-cm-grants]").getByRole("button", { name: "签发授权" }).click();
+    await signOut();
     await signIn("a@example.com");
     await expect(page.locator("[data-cm-account]")).toContainText("甲");
+    await page.waitForTimeout(2000);
     await expect(page.locator(".cm-token")).toHaveCount(0);
     await expect(page.locator(".cm-token-once")).toHaveCount(0);
+    // 丙登记身份，响应在途中就换甲：迟到登记不得覆盖甲的身份
+    await signOut();
+    await signIn("c@example.com");
+    await expect(page.locator("[data-cm-account]")).toContainText("登记中");
+    await page.locator("[data-cm-account] input[type=text]").fill("丙");
+    await page.locator("[data-cm-account]").getByRole("button", { name: "登记我的身份" }).click();
+    await signOut();
+    await signIn("a@example.com");
+    await expect(page.locator("[data-cm-account]")).toContainText("甲");
+    await page.waitForTimeout(2000);
+    await expect(page.locator("[data-cm-account]")).not.toContainText("丙");
     await page.screenshot({ path: path.join(evidence, "account-switch.png"), fullPage: true });
+  });
+
+  test("服务返回 unknown(retryable:false)：冻结保留、提示对账，编辑不进入重试", async ({ page }) => {
+    const seen: Array<Record<string, unknown>> = [];
+    let unknownOnce = true;
+    await stubBoard(page);
+    await page.route("**/api/gongzhi/needs", r => {
+      seen.push(r.request().postDataJSON());
+      if (unknownOnce) {
+        unknownOnce = false;
+        return r.fulfill({ status: 500, json: { ok: false, mode: "live", error: { code: "unknown", message: "服务未能确认这次发布。", retryable: false } } });
+      }
+      return r.fulfill({ json: { ok: true, mode: "live", data: { id: "n3" } } });
+    });
+    await login(page);
+    await page.goto(`${origin}/zh/board/`);
+    await page.locator(".cm-publish-bar").getByRole("button", { name: "发布求助" }).click();
+    await page.locator(".cm-dialog input[type=text]").first().fill("如何安排分享会议程");
+    await page.locator(".cm-dialog textarea").first().fill("四人各讲十分钟。");
+    await page.locator(".cm-dialog").getByRole("button", { name: "公开发布求助" }).click();
+    // unknown 提示对账，不鼓励改内容重发
+    await expect(page.locator(".cm-dialog .cm-form-error")).toContainText("未能确认");
+    await expect(page.locator(".cm-dialog .cm-form-error")).toContainText("不会重复创建");
+    await page.locator(".cm-dialog textarea").first().fill("编辑后的内容不应进入重试。");
+    await page.locator(".cm-dialog").getByRole("button", { name: "公开发布求助" }).click();
+    await expect(page.locator(".cm-dialog")).toHaveCount(0);
+    expect(seen).toHaveLength(2);
+    expect(seen[0].idempotency_key).toBe(seen[1].idempotency_key);
+    expect(seen[1].body).toBe("四人各讲十分钟。");
+    expect(seen[1].title).toBe("如何安排分享会议程");
   });
 });
