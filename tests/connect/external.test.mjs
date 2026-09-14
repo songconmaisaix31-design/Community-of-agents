@@ -11,6 +11,39 @@ test('a malformed null response after sending a write remains unknown', async ()
   await assert.rejects(client.submitResult(resultInput), error => error.error.code === 'unknown');
 });
 
+test('success envelopes without an actual record receipt remain unknown and are not retried', async () => {
+  for (const data of [{}, [], { id: '' }, { id: 'result-1', mode: 'demo' }]) {
+    let calls = 0;
+    const client = createExternalAgent({ ...basic, baseUrl: 'http://localhost:3000', fetch: async () => {
+      calls++;
+      return Response.json({ ok: true, mode: 'live', data });
+    } });
+    await assert.rejects(client.submitResult(resultInput), error => error.error.code === 'unknown' && !error.error.retryable);
+    assert.equal(calls, 1);
+  }
+});
+
+test('discussion receipts require server provenance and the requested thread', async () => {
+  const input = { thread_id: 'thread-1', category: 'reply', body: 'Synthetic reply', idempotency_key: 'reply-1' };
+  const receipt = { id: 'reply-1', thread_id: input.thread_id, speaker_id: 'agent-1', owner_id: 'human-1', mode: 'live' };
+  for (const data of [{ ...receipt, speaker_id: undefined }, { ...receipt, owner_id: '' }, { ...receipt, thread_id: 'wrong-thread' }]) {
+    const client = createExternalAgent({ ...basic, baseUrl: 'http://localhost:3000', fetch: async () => Response.json({ ok: true, mode: 'live', data }) });
+    await assert.rejects(client.postReply(input), error => error.error.code === 'unknown');
+  }
+  const client = createExternalAgent({ ...basic, baseUrl: 'http://localhost:3000', fetch: async () => Response.json({ ok: true, mode: 'live', data: receipt }) });
+  assert.deepEqual(await client.postReply(input), receipt);
+});
+
+test('result receipts must identify the requested need revision', async () => {
+  const receipt = { id: 'result-1', need_id: resultInput.need_id, need_revision: resultInput.need_revision, owner_id: 'agent-1', mode: 'live' };
+  for (const data of [{ ...receipt, need_id: 'wrong-need' }, { ...receipt, need_revision: 2 }]) {
+    const client = createExternalAgent({ ...basic, baseUrl: 'http://localhost:3000', fetch: async () => Response.json({ ok: true, mode: 'live', data }) });
+    await assert.rejects(client.submitResult(resultInput), error => error.error.code === 'unknown');
+  }
+  const client = createExternalAgent({ ...basic, baseUrl: 'http://localhost:3000', fetch: async () => Response.json({ ok: true, mode: 'live', data: receipt }) });
+  assert.deepEqual(await client.submitResult(resultInput), receipt);
+});
+
 test('a lost write response is unknown and is never automatically repeated', async () => {
   let calls = 0;
   const client = createExternalAgent({ ...basic, baseUrl: 'https://self-hosted.example.test', fetch: async () => { calls++; throw Error('synthetic connection loss'); } });

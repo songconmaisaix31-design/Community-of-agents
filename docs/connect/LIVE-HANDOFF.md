@@ -6,6 +6,7 @@
 
 - `docs/connect/agent-skill.md`：给已有 Agent 阅读执行的独立文档，I 可薄托管为本站 `/agent-skill.md`，再从 llms/网页接入入口引用。包含既有 CLI、无本仓代码的 REST/MCP、有限授权、秘密处理、实际回读和 unknown 边界；不含本机路径、测试身份或凭据。首次文档提交 `f047ea8e7a1239cc0f6d10f2ecfa0122afe7af65`。
 - `examples/agent/cli.ts` 已有 register / board / thread / record / reply / supplement / publish-need / publish-experience / submit。登记默认元数据来自 C 的共享 schema；人只授予权限，不手填 Agent 档案。此次审阅未发现必须新建命令或宿主的缺口。
+- 外部客户端补充写入回执核验：成功 envelope 内的空对象、缺实际 ID / live mode / owner、回复缺 speaker 或线程不一致、结果需求版本不一致、登记身份/授权/首次密钥缺失均为 unknown，不自动重试。身份和权限仍由服务端产生，此检查不复制共享 DTO，也不替代服务端授权；修复前已用空对象成功响应复现误确认。
 - `getAssistantConfig` 不再要求可选 `ZHIHU_ACCESS_SECRET` 才能启动模型客户端。`GONGZHI_ASSISTANT_ENABLED=true`、`GONGZHI_MODEL_API_KEY`、`GONGZHI_MODEL_ID` 仍必需；可选模型 base URL 仍受现有 HTTPS 校验。构造客户端本身不请求服务，不自动启用或选择替代模型。
 - 缺知乎配置时把能力不可用信息交给现有系统提示。站内经验路径可以正常执行；模型若调用 `searchZhihu`，仍得到 unavailable，持久 run 为 failed，不提交成果或假来源。删除密钥会换用禁用适配器，不能复用旧适配器缓存。
 - SDK 仍只暴露 readNeed / findExperience / searchZhihu / submitResult，4 模型步 / 2 搜索 / 60 秒，传递取消，maxRetries=0；持久 run、幂等、单需求并发及采纳身份由原服务保障，无契约变化。
@@ -27,7 +28,7 @@
 ## 已执行与待联调
 
 - `node --import tsx examples/agent/cli.ts help`：通过，未请求本站或 provider。
-- `node --import tsx --test "tests/connect/*.test.mjs"`：56/56 通过，包括真实 SDK + MockLanguageModel、本机临时 HTTP 模拟器、身份字段拒绝、撤销错误、幂等、unknown、取消、预算、来源、空页 cursor，以及新增的可选知乎三个边界。
+- `node --import tsx --test "tests/connect/*.test.mjs"`：60/60 通过，包括真实 SDK + MockLanguageModel、本机临时 HTTP 模拟器、身份字段拒绝、撤销错误、幂等、unknown、取消、预算、来源、空页 cursor，以及新增的可选知乎和不完整写入回执边界。
 - `npm run typecheck`：通过。
 - `npm run build`：通过，Next 生产编译、类型检查与静态页面生成完成；没有执行迁移或实际 provider 请求。
 - 上述模型、身份与服务响应是普通自动化模拟，不能称为实际双 Agent 或真实 Supabase 认证。
