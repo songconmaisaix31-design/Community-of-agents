@@ -1,6 +1,6 @@
 import { ApiClientError, createApiClient } from '../../lib/gongzhi/api-client.ts';
 import { CONTRACT_VERSION, AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type AgentStatus, type ConnectInfo, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
-import { ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, SourceSchema, type ExperienceSearchQuery, type ExperienceVersion, type PostExperienceFeedbackInput } from '../../lib/gongzhi/contracts.ts';
+import { ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, SourceSchema, type ContentApproval, type ExperienceSearchQuery, type ExperienceVersion, type PostExperienceFeedbackInput } from '../../lib/gongzhi/contracts.ts';
 
 const nonempty = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 const liveRecord = (value: Pick<Need, 'id' | 'mode' | 'owner_id'>) => nonempty(value.id) && value.mode === 'live' && nonempty(value.owner_id);
@@ -100,6 +100,19 @@ export function createExternalAgent(options: Connection & { apiKey: string }) {
   // Intentionally do not return generic requests, grant management or adoption controls.
   return {
     agentStatus: async () => verifiedStatus(await api.agentStatus()),
+    readContentApproval: async (id: string): Promise<ContentApproval> => {
+      const requested = PublishExperienceSchema.shape.approval_id.unwrap().parse(id);
+      const value = await api.readContentApproval(requested);
+      if (value?.id !== requested || value.mode !== 'live' || !nonempty(value.agent_id) || !nonempty(value.human_owner_id) ||
+        !['publish_experience', 'experience_feedback'].includes(value.action) || value.visibility !== 'public' ||
+        !nonempty(value.content_digest) || !nonempty(value.expires_at) || !nonempty(value.created_at) ||
+        !(value.record_id === null || nonempty(value.record_id))) throw invalidRead();
+      // Readback is not permission to retry; revoked/expired approvals can retain a real receipt.
+      return { id: value.id, human_owner_id: value.human_owner_id, agent_id: value.agent_id, action: value.action,
+        visibility: value.visibility, content_digest: value.content_digest, expires_at: value.expires_at,
+        revoked_at: value.revoked_at, consumed_at: value.consumed_at, record_id: value.record_id,
+        created_at: value.created_at, mode: value.mode };
+    },
     searchExperience: async (query: ExperienceSearchQuery = {}) => {
       const page = await api.searchExperience(ExperienceSearchSchema.parse(query));
       if (page?.mode !== 'live' || !Array.isArray(page.items) || page.items.some(item =>

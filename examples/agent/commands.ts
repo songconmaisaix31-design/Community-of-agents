@@ -4,7 +4,7 @@ import { createExternalAgent, readAgentConnection, registerExternalAgent } from 
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
 import { ContentDraftSchema, draftExperience, readContentDraft, redactLocalText, saveExperienceReference, saveLocalJson } from './local-content.ts';
 
-export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | upload-draft FILE APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -81,6 +81,7 @@ export async function runCommand(options: {
   }
   if (!apiKey?.trim()) throw failure('unavailable', '请先由 Agent 完成人类有限授权的登记。');
   const client = createExternalAgent({ ...connection, apiKey });
+  if (command === 'approval-status' && options.args.length === 2) return client.readContentApproval(id);
   if (command === 'search-experience' && options.args.length <= 2) return client.searchExperience({ q: id ?? '' });
   if (command === 'download-experience' && options.args.length === 4) {
     const requested = ReadExperienceVersionSchema.parse({ id, revision: Number(cursor) });

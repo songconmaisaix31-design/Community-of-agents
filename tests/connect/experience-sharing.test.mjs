@@ -134,6 +134,20 @@ test('summary search uses the dedicated query endpoint', async () => {
   assert.deepEqual(result, page);
 });
 
+test('approval-status recovers a consumed revoked approval without a write or leaking unexpected fields', async () => {
+  let calls = 0;
+  const approval = { id: 'approval-id', agent_id: 'bound-agent', human_owner_id: 'bound-human', action: 'publish_experience', visibility: 'public', content_digest: 'synthetic-digest', expires_at: '2026-09-14T00:00:00Z', created_at: '2026-09-14T00:00:00Z', revoked_at: '2026-09-14T01:00:00Z', consumed_at: '2026-09-14T00:01:00Z', record_id: 'real-receipt', mode: 'live' };
+  const result = await invoke(['approval-status', approval.id], { env, fetch: async (url, init) => {
+    calls++;
+    assert.equal(url.pathname, '/api/gongzhi/content-approvals/approval-id');
+    assert.equal(init.method, 'GET');
+    return envelope({ ...approval, api_key: 'unexpected-secret-must-not-output' });
+  } });
+  assert.deepEqual(result, approval);
+  assert.equal(calls, 1);
+  await assert.rejects(invoke(['approval-status', approval.id], { env, fetch: async () => Response.json({ ok: false, mode: 'live', error: { code: 'forbidden', message: 'fixture', retryable: false } }, { status: 403 }) }), error => error.error.code === 'forbidden');
+});
+
 test('local feedback is redacted and must use exact approved version/body in the confirmed receipt', async t => {
   const directory = await temporary(t), path = join(directory, 'feedback.json');
   const drafted = await invoke(['draft-feedback', 'immutable-id', '3', path, 'feedback-stable-key'], { input: [JSON.stringify({ usage: '在本机检查 CSV', body: '确实检查了两行。\nAPI_KEY=synthetic-value', outcome: 'helpful' })] });

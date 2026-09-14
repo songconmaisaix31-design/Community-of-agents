@@ -111,3 +111,62 @@ test('parallel tool calls are refused and the task stays failed', async () => {
     assert.equal(session.getReceipt(), undefined);
   } finally { budget.dispose(); }
 });
+
+test('experience tool cannot ask the model to approve content or alter a host-reviewed payload', async () => {
+  const budget = createRunBudget({ signal: new AbortController().signal });
+  try {
+    const writes = [];
+    const client = { publishExperience: async input => { writes.push(input); return { id: 'fixture-receipt' }; } };
+    const content = { action: 'publish_experience', payload: { title: 'Approved title', body: 'Approved body', applicability: 'Local CSV', sources: [], tags: [], visibility: 'public', idempotency_key: 'approved-original-key' } };
+    const session = createExternalTools({ client, budget, requestKey: 'must-not-replace-approved-key', approvedContent: { approval_id: 'human-approval-id', content } });
+    content.payload.body = 'host object later mutated';
+    assert.equal(session.tools.publishExperience.inputSchema.safeParse({ approval_id: 'model-approval', body: 'model body' }).success, false);
+    assert.equal(session.tools.createContentApproval, undefined);
+    await session.tools.publishExperience.execute({}, execution);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].body, 'Approved body');
+    assert.equal(writes[0].idempotency_key, 'approved-original-key');
+    assert.equal(writes[0].approval_id, 'human-approval-id');
+    await assert.rejects(session.tools.publishExperience.execute({}, execution));
+    assert.equal(writes.length, 1);
+    const denied = createExternalTools({ client, budget, requestKey: 'missing-human-approval' });
+    await assert.rejects(denied.tools.publishExperience.execute({}, execution));
+    assert.equal(writes.length, 1);
+  } finally { budget.dispose(); }
+});
+
+test('feedback tool requires a read fixed version and only sends the human-approved execution account', async () => {
+  for (const read of [false, true]) {
+    const budget = createRunBudget({ signal: new AbortController().signal });
+    try {
+      const writes = [];
+      const payload = { experience_id: 'fixed-id', revision: 2, body: 'Actually checked local output; fixture test only.', usage: 'CSV check', outcome: 'helpful', visibility: 'public', idempotency_key: 'feedback-approved-key' };
+      const client = { readExperienceVersion: async () => ({ experience: { id: 'fixed-id', revision: 2 } }), postExperienceFeedback: async input => { writes.push(input); return { id: 'feedback-id' }; } };
+      const session = createExternalTools({ client, budget, requestKey: 'session', approvedContent: { approval_id: 'human-feedback-approval', content: { action: 'experience_feedback', payload } } });
+      if (read) {
+        await session.tools.readExperienceVersion.execute({ id: 'fixed-id', revision: 2 }, execution);
+        await session.tools.postExperienceFeedback.execute({}, execution);
+        assert.deepEqual(writes, [{ ...payload, approval_id: 'human-feedback-approval' }]);
+      } else {
+        await assert.rejects(session.tools.postExperienceFeedback.execute({}, execution));
+        assert.deepEqual(writes, []);
+      }
+    } finally { budget.dispose(); }
+  }
+});
+
+test('result method references must identify fixed versions actually read in the session', async () => {
+  for (const revision of [2, 3]) {
+    const budget = createRunBudget({ signal: new AbortController().signal });
+    try {
+      const writes = [];
+      const client = { readNeed: async () => ({ need: { id: root.id, revision: 2 } }), readExperienceVersion: async () => ({ experience: { id: 'fixed-id', revision: 2 } }), submitResult: async input => { writes.push(input); return { id: 'result-id' }; } };
+      const session = createExternalTools({ client, budget, requestKey: 'method-result' });
+      await session.tools.readNeed.execute({ need_id: root.id }, execution);
+      await session.tools.readExperienceVersion.execute({ id: 'fixed-id', revision: 2 }, execution);
+      const input = { need_id: root.id, need_revision: 2, title: 'Test', body: 'Fixture only', subtype: 'result', method_refs: [{ experience_id: 'fixed-id', revision, usage: 'Applied this version' }] };
+      if (revision === 2) { await session.tools.submitResult.execute(input, execution); assert.deepEqual(writes[0].method_refs, input.method_refs); }
+      else { await assert.rejects(session.tools.submitResult.execute(input, execution)); assert.deepEqual(writes, []); }
+    } finally { budget.dispose(); }
+  }
+});
