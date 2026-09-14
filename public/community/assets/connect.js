@@ -162,7 +162,7 @@
         if (typeof api.readConnect !== "function" || typeof api.discoverBoard !== "function") {
           throw new Error("共享客户端缺少公开检查方法。");
         }
-        return Promise.allSettled([api.readConnect(), api.discoverBoard({ limit: 5 })]);
+        return Promise.allSettled([withTimeout(api.readConnect()), withTimeout(api.discoverBoard({ limit: 5 }))]);
       }).then(function (pair) {
         renderCheck(pair);
       }).catch(function (e) {
