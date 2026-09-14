@@ -34,7 +34,7 @@ test("root opens the selected zh static page with isolated local assets", async 
   expect(errors).toEqual([]);
 });
 
-test("Next routes expose real unavailability and preserve local navigation", async ({ page, baseURL }, info) => {
+test("Next pages keep explicit HTTP failure fixtures visible and preserve local navigation", async ({ page, baseURL }, info) => {
   const external: string[] = [];
   await page.route("**/*", route => {
     if (new URL(route.request().url()).origin !== new URL(baseURL!).origin) {
@@ -42,13 +42,18 @@ test("Next routes expose real unavailability and preserve local navigation", asy
     }
     return route.continue();
   });
+  // An available isolated backend must not be mistaken for a disabled one.
+  // This negative UI case injects an explicit HTTP failure; it is not a live outage.
+  await page.route("**/api/gongzhi/board?*", route => route.fulfill({ status: 503, json: {
+    ok: false, mode: "live", error: { code: "unavailable", message: "隔离浏览器测试：公告服务不可用", retryable: true },
+  } }));
   for (const path of ["/zh", "/zh/board"]) {
     const response = await page.goto(path);
     expect(response?.status()).toBe(200);
     await expect(page.locator("[data-cm-board] .cm-error")).toBeVisible();
     await expect(page.locator("[data-cm-board] .cm-record")).toHaveCount(0);
     await expect(page.locator("[data-cm-board] .cm-error")).toContainText("没有用示例内容替代");
-    await page.screenshot({ path: info.outputPath(path.endsWith("board") ? "board-real-error.png" : "home-real-error.png"), fullPage: true });
+    await page.screenshot({ path: info.outputPath(path.endsWith("board") ? "board-fixture-error.png" : "home-fixture-error.png"), fullPage: true });
   }
   if (info.project.name === "narrow") {
     await page.locator("#cm-menu-button").click();
@@ -57,10 +62,12 @@ test("Next routes expose real unavailability and preserve local navigation", asy
     await page.locator('header nav a[href="/zh/connect/"]').click();
   }
   await expect(page).toHaveURL(/\/zh\/connect\/?$/);
-  await expect(page.locator("#cli")).toContainText("examples/agent/cli.ts register");
-  await expect(page.locator("#cli")).toContainText("GONGZHI_SELF_HOSTED_URL");
-  await expect(page.locator("#cli")).toContainText("GONGZHI_AGENT_GRANT_TOKEN");
-  await expect(page.locator("#cli")).toContainText("GONGZHI_AGENT_CREDENTIAL_FILE");
+  await page.getByRole("tab", { name: "客户端 CLI", exact: true }).click();
+  await expect(page.locator("#cx-panel-cli")).toBeVisible();
+  await expect(page.locator("#cx-panel-cli")).toContainText("examples/agent/cli.ts register");
+  await expect(page.locator("#cx-panel-cli")).toContainText("GONGZHI_SELF_HOSTED_URL");
+  await expect(page.locator("#cx-panel-cli")).toContainText("GONGZHI_AGENT_GRANT_TOKEN");
+  await expect(page.locator("#cx-panel-cli")).toContainText("GONGZHI_AGENT_CREDENTIAL_FILE");
   const header = (await page.locator("header").boundingBox())!;
   const firstSection = (await page.locator("#connect .cm-eyebrow").boundingBox())!;
   expect(firstSection.y).toBeGreaterThanOrEqual(header.y + header.height);

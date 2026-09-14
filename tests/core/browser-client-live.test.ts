@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
+import { testProfileFromEnv, assertLocalAuth } from "../../infra/local-auth/local-profile.mjs";
 
 test("self-hosted ESM restores a real GoTrue session and authorizes the container HTTP service", { skip: !process.env.GONGZHI_BROWSER_TEST_URL }, async () => {
-  const url = new URL(process.env.GONGZHI_BROWSER_TEST_URL!);
-  assert.equal(url.hostname, "127.0.0.1"); assert.equal(url.port, "3041");
+  const profile = testProfileFromEnv(process.env);
+  const url = assertLocalAuth(process.env.GONGZHI_BROWSER_TEST_URL, process.env.GONGZHI_ISOLATED_TEST === "true" ? profile.appPort : 3041);
+  assertLocalAuth(process.env.SUPABASE_URL, profile.authPort);
   assert.equal(process.env.GONGZHI_REAL_AUTH_TEST, "true");
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   try {

@@ -187,3 +187,42 @@ textarea.cm-input{resize:vertical;line-height:1.8}
 .cm-run{border-top:1px dashed hsl(var(--c-border-strong));padding-top:12px;display:grid;gap:8px;justify-items:start}
 .cm-run-card{border:1px solid hsl(var(--c-border));border-radius:8px;background:hsl(var(--c-bg-elevated));padding:12px 16px;display:grid;gap:8px;justify-items:start;width:100%}
 .cm-run-card strong{font-size:13px;color:hsl(var(--c-text))}
+
+/* 接入指南：EvoMap 式连接面板（知乎浅色下的深色终端块） */
+.cx-hero{display:grid;gap:22px}
+.cx-skill{border:1px solid hsl(var(--c-border));border-radius:10px;background:hsl(var(--c-bg-card));padding:20px;display:grid;gap:14px;box-shadow:0 1px 3px rgba(26,26,26,.06)}
+.cx-skill-title{font-size:15px;font-weight:600;color:hsl(var(--c-text));margin:0}
+.cx-skill-sub{font-size:12px;color:hsl(var(--c-text)/.66);margin:4px 0 0;line-height:1.8}
+.cx-skill-unit{margin-top:2px}
+.cx-unit{display:grid;gap:0}
+.cx-term-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#e8edf3;border:1px solid hsl(var(--c-border-strong));border-bottom:0;border-radius:8px 8px 0 0;padding:6px 12px;font-size:11px;color:hsl(var(--c-text)/.66)}
+.cx-term-bar button{font-size:11px;color:#175199;background:none;border:0;padding:2px 4px;min-height:26px;cursor:pointer;white-space:nowrap}
+.cx-term-bar button:hover{color:#0066ff;text-decoration:underline}
+.cx-term-bar button[disabled]{opacity:.55;cursor:default;text-decoration:none}
+.cx-term{margin:0;background:#101828;color:#d7e0ea;border-radius:0 0 8px 8px;padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.75}
+.cx-term code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;white-space:pre;display:block}
+.cx-term-wrap code{white-space:pre-wrap;overflow-wrap:anywhere}
+.cx-tabs{display:flex;gap:2px;border-bottom:1px solid hsl(var(--c-border-strong));overflow-x:auto;margin-top:4px}
+.cx-tabs button{flex:0 0 auto;padding:9px 20px;font-size:13px;font-weight:600;color:hsl(var(--c-text-muted));background:none;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;cursor:pointer;min-height:38px}
+.cx-tabs button:hover{color:#0066ff}
+.cx-tabs button[aria-selected="true"]{color:#0066ff;background:hsl(var(--c-bg-card));border-color:hsl(var(--c-border-strong));position:relative}
+.cx-tabs button[aria-selected="true"]::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:hsl(var(--c-bg-card))}
+.cx-panel{border:1px solid hsl(var(--c-border-strong));border-top:0;border-radius:0 0 8px 8px;background:hsl(var(--c-bg-card));padding:18px;display:grid;gap:14px}
+.cx-panel-note{font-size:12px;color:hsl(var(--c-text)/.66);margin:0;line-height:1.9}
+.cx-check-wrap{display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:900px){.cx-check-wrap{grid-template-columns:1fr 1fr}}
+.cx-check,.cx-verify{border:1px solid hsl(var(--c-border));border-radius:10px;background:hsl(var(--c-bg-card));padding:20px;display:grid;gap:12px;justify-items:start;align-content:start}
+.cx-check h3,.cx-verify h3{font-size:15px;font-weight:600;color:hsl(var(--c-text));margin:0}
+.cx-check p,.cx-verify p{font-size:12px;color:hsl(var(--c-text)/.66);margin:0;line-height:1.9}
+.cx-check-result{display:grid;gap:6px;width:100%}
+.cx-check-line{display:flex;gap:8px;align-items:baseline;font-size:12px;color:hsl(var(--c-text)/.75);margin:0;line-height:1.7}
+.cx-check-line strong{color:hsl(var(--c-text))}
+.cx-check-mark{flex:0 0 auto;font-weight:700}
+.cx-check-line.ok .cx-check-mark{color:#0a8754}
+.cx-check-line.fail .cx-check-mark{color:#ae202b}
+.cx-check-note{font-size:11px;color:hsl(var(--c-text)/.55);margin:4px 0 0;line-height:1.7;border-top:1px dashed hsl(var(--c-border-strong));padding-top:8px}
+.cx-next{margin-top:6px}
+.cx-quick{display:grid;gap:14px}
+.cx-quick-links{display:flex;gap:10px;flex-wrap:wrap;margin:0}
+.cx-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media (max-width:640px){.cx-tabs button{padding:9px 14px}.cx-panel{padding:14px}.cx-check,.cx-verify{padding:16px}}
