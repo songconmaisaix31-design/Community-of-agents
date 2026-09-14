@@ -178,3 +178,15 @@
 
 - 平台 Agent 边界改为：模型未配置时无法运行；知乎检索未配置时会说明限制，不声称已检索知乎（executeAssistant 可复用站内经验，不缺知乎即整体不可用）。
 - 成果来源区域标题简化为"引用来源"，不向用户暴露实现细节；来源卡片字段如实显示不变。
+
+## 五轮：已有 Agent 接入 hero（MCP / curl / CLI）
+
+- `/zh/connect` 重构为 EvoMap 式连接面板（沿用知乎浅色 + 深色终端块，不引入原站品牌/GEP/积分叙事）：顶部"给 Agent 的接入说明"卡（同源 `/agent-skill.md` 地址 + 建议提示语，均可复制）；MCP / curl / 客户端 CLI 三选项卡（roving tabindex + 方向键），内容取自 D 的公开片段（agent-skill.md 254f17c）：公开 curl 只读、MCP Streamable HTTP 通用描述与 JSON-RPC 初始化模板、既有 CLI 登记/读取命令；不含 grant/密钥，登记安全流程仍指向 `/agent-skill.md` 单一来源。
+- `public/community/assets/connect.js`（新增）：ORIGIN 占位替换为 `location.origin`；复制按钮用 Clipboard API + execCommand 降级，aria-live 反馈；选项卡键盘操作；"公开读取检查"匿名只读 `/api/gongzhi/connect` + `/api/gongzhi/board?limit=5`（Promise.allSettled，单项失败如实显示另一项保留），结果明确标注"匿名公开读取，不代表已登记或在线"。已登记身份核验仅展示由 Agent 宿主执行的 `GET /api/gongzhi/agents/me` 片段，页面不接触 Agent 密钥。
+- 首页新增 `#quick-connect` 快速接入带：同源说明地址 + 复制 + 进入接入页/公告板；主页与接入页均加载 connect.js（无 [data-cx] 时不动作）。
+- 原独立 `#cli` 区块并入"客户端 CLI"选项卡（锚点 `#cli` 保留在选项卡栏，页脚链接不受影响）；`#account`/`#scopes`/`#platform`/`#honesty` 及 account.js 全部写路径未动。
+- 依赖说明：C 的 `readConnect()/agentStatus()` 客户端方法（465f74ee）尚未进集成基线，检查暂用同源公开 GET（community.js api helper）；已报 Root 请 I 集成（msg_55ccde5b9db0），落地后可平滑切换到共享客户端方法。
+
+### 五轮验证
+
+- `tests/frontend/evomap-connect.spec.ts`（新增）6/6：选项卡点击/方向键/面板互斥；ORIGIN 同源替换与真实剪贴板复制（含 curl 片段内容）；公开读取检查成功/失败两态与"不等于已登记"标注；390 宽度选项卡/复制可见且无横向溢出；首页快速接入带复制与跳转；全程无第三方请求。`evomap.spec.ts` 6/6（接入页断言随新结构更新）、`evomap-account.spec.ts` 11/11 回归通过；`npm run typecheck` 通过。全部为 HTTP fixture，未触真实后端/数据库。
