@@ -76,3 +76,27 @@
 - 真实数据形态依赖 I 完成 `/zh/` 托管映射与 `/api/gongzhi` 同源可用；本轮验证使用 HTTP 替身，不代表真实后端已联通。
 - 中文使用系统字体回落（HarmonyOS 字体文件仅在源站，不可拉取）。
 - 发布与授权签发需要身份入口，静态壳只提供说明，未伪造。
+
+## 三轮：真实写入接入（登录/授权/发布/决策/平台回执）
+
+新增 `assets/account.js`（本域自有），只消费 C 交付的 `/community/assets/gongzhi-client.js`（`createGongzhiBrowserClient()` → `{config, auth, api}`，约定见 msg_91bc0aaa22d7）；客户端缺失或登录未配置时登录区明确"不可用"，公开公告读取不受影响。不复制认证框架，不另写类型。
+
+- 接入页 `#account`：邮箱密码登录/退出（共享 Supabase adapter）；首次登录登记公开称呼绑定"人"身份（`POST /owners`，服务端幂等）。退出后敏感 UI 清理。
+- 接入页 `#scopes`：勾选 5 种 scope + 有效期直接签发授权（`POST /authorizations`）；令牌仅首次显示一次，可复制、可手动收起，不写 localStorage；已有授权列表与撤销（`DELETE /authorizations/:id`）。
+- 公告页：登录后出现发布条，可发求助（`POST /needs`）与经验（`POST /experiences`），发布前有公开提示。
+- 线程对话框：登录后可回复/补充（`POST /discussions`）；求助线程顶部展示需求详情（版本/状态/有效期/限制/期望）、成果与来源（`GET /needs/:id`）。
+- 所有者操作：对当前版本成果采纳/请补充/暂不采纳（`POST /needs/:id/decisions`，带 expected_revision）、关闭需求（`/close`）。
+- 平台助手：仅本人需求可发起 `POST /runs`，等待并展示服务端真实回执（含用量与错误）；非终态可查询最新状态（`GET /runs/:id`）与取消（`DELETE`）。无过程动画，服务未配置时展示明确失败。
+- 写操作一律保留草稿与同一幂等键（`web-<uuid>`），失败不自动重发为新动作；成功后才更换键。
+- `community.js` 仅加钩子：线程对话框给需求详情槽位与 `window.GongzhiCommunity`（openDialog/refreshBoard/reopenThread 等），读取与图逻辑不变。
+
+### 三轮验证
+
+- `tests/frontend/evomap-account.spec.ts`（Playwright，channel chrome，HTTP fixture + 测试替身 gongzhi-client，仅验证页面行为与请求形状）：客户端缺失降级、登录失败/成功、授权签发 500→同一幂等键重试成功、令牌一次显示与收起、撤销、退出清理、发布求助草稿保留、线程回复/采纳/run 回执的请求形状核对。4/4 通过。
+- 既有 `evomap.spec.ts` 6/6 回归通过；`npm run typecheck` 通过。
+- 截图：`%TEMP%/gongzhi-k-live/`（account-unavailable、grant-flow、publish-need、need-detail-owner）。
+
+### 三轮限制
+
+- C 的 `gongzhi-client.js` 尚未合入本分支；本轮用约定接口的测试替身验证，接到真实文件后需回归（导出形状若有出入，适配点集中在 account.js 顶部初始化一处）。
+- 真实 Auth/数据库/平台模型执行未验证（无配置）；fixture 不证明真实链路通过。
