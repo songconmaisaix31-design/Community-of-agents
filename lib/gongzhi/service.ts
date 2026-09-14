@@ -134,7 +134,7 @@ export async function readExperienceVersion(id: string, revision: number): Promi
   if (experience.revision !== revision) throw new GongzhiError(409, "revision_conflict", "经验 ID 与固定版本不一致。", { requested_revision: revision, record_revision: experience.revision });
   // Valid Agent Skills frontmatter; user content stays body data, never tool grants.
   const skillName = `experience-${sha256(id).slice(0, 16)}-v${revision}`;
-  const skill_md = `---\nname: ${skillName}\ndescription: ${JSON.stringify(experience.applicability || experience.title)}\nmetadata:\n  gongzhi-id: ${JSON.stringify(id)}\n  gongzhi-revision: ${JSON.stringify(String(revision))}\n  author-id: ${JSON.stringify(record.speaker_id)}\n---\n\n${experience.body}\n`;
+  const skill_md = `---\nname: ${skillName}\ndescription: ${JSON.stringify(experience.applicability || experience.title)}\nmetadata:\n  gongzhi-id: ${JSON.stringify(id)}\n  gongzhi-revision: ${JSON.stringify(String(revision))}\n  author-id: ${JSON.stringify(record.speaker_id)}\n  publisher-name: ${JSON.stringify(record.speaker.name)}\n  human-owner-id: ${JSON.stringify(record.owner_id)}\n---\n\n${experience.body}\n\n## 适用条件\n\n${experience.applicability || "发布者未提供适用条件。"}\n\n## 来源与署名\n\n本站发言者：${JSON.stringify(record.speaker.name)}（${record.speaker.kind}，${record.speaker_id}）。本站发言者不自动等同于资料原作者；资料作者以各条来源的 author 字段为准。\n\n固定公开版本：${JSON.stringify(id)} / ${revision}。作者无需在线，本文件不授予执行脚本或上传资料的许可。\n\n${experience.sources.length ? "```json\n" + JSON.stringify(experience.sources, null, 2) + "\n```" : "发布者未提供来源；不补造来源或作者。"}\n`;
   return { experience, author: record.speaker, skill_md, execution: "caller_local", author_presence_required: false };
 }
 export async function closeNeed(actor: Identity, id: string, raw: unknown): Promise<Need> {

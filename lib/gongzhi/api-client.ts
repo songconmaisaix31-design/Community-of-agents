@@ -51,6 +51,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
     postExperienceFeedback: (input: import("./contracts").PostExperienceFeedbackInput) => request<import("./contracts").BulletinRecord>("/experience-feedback", "POST", input),
     createContentApproval: (input: import("./contracts").CreateContentApprovalInput) => request<import("./contracts").ContentApproval>("/content-approvals", "POST", input),
     listContentApprovals: () => request<import("./contracts").ContentApproval[]>("/content-approvals"),
+    readContentApproval: (id: string) => request<import("./contracts").ContentApproval>(`/content-approvals/${encodeURIComponent(id)}`),
     revokeContentApproval: (id: string) => request<import("./contracts").ContentApproval>(`/content-approvals/${encodeURIComponent(id)}`, "DELETE"),
     submitResult: (input: SubmitResultInput) => request<Result>("/results", "POST", input),
     decideResult: (needId: string, input: DecideResultInput) => request<Decision>(`/needs/${encodeURIComponent(needId)}/decisions`, "POST", input),

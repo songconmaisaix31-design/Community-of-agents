@@ -51,7 +51,7 @@ test("real GoTrue and isolated PG: exact human consent, fixed offline versions a
   const agentA = await enroll(a, "a", ["read", "publish_experience", "discuss"]);
   const agentB = await enroll(b, "b", ["read", "discuss"]);
   const ka = agentA.agent.api_key as string, kb = agentB.agent.api_key as string;
-  const payload = { title: `sharecase${prefix.replaceAll("-", "")}`, body: `Reviewed selected material ${prefix}\nNo script execution or private memory dump.`, applicability: "Only local isolated acceptance", idempotency_key: key("publication") };
+  const payload = { title: `sharecase${prefix.replaceAll("-", "")}`, body: `Reviewed selected material ${prefix}\nNo script execution or private memory dump.`, applicability: "Only local isolated acceptance", sources: [{ id: "fixture-source", kind: "url", title: "Explicit test source", author: "Original source author distinct from Agent", url: "https://example.invalid/reviewed-material", retrieved_at: new Date().toISOString(), content_type: "reference" }], idempotency_key: key("publication") };
   const confirmation = { agent_id: agentA.agent.owner.id, visibility: "public", content: { action: "publish_experience", payload }, idempotency_key: key("approval") };
 
   await t.test("enrollment and publish scope are insufficient without exact human confirmation", async () => {
@@ -100,6 +100,9 @@ test("real GoTrue and isolated PG: exact human consent, fixed offline versions a
     assert.equal((await rest(ka, "experiences", "POST", publication)).body.error.code, "revoked");
     assert.equal((await mcp(ka, "publish_experience", publication)).error.code, "revoked");
     assert.equal((await ok(undefined, `experiences/${experience.id}`)).body, payload.body);
+    assert.equal((await ok(ka, `content-approvals/${approval.id}`)).record_id, experience.id);
+    assert.equal((await mcp(ka, "read_content_approval", { id: approval.id })).data.record_id, experience.id);
+    assert.equal((await rest(kb, `content-approvals/${approval.id}`)).status, 404);
     const expiring = await ok(a, "content-approvals", "POST", { ...confirmation, expires_in_seconds: 60, idempotency_key: key("expires") });
     // Explicit clock simulation on real stored approval; no production/DB clock changes.
     st.mock.timers.enable({ apis: ["Date"], now: Date.now() + 61_000 });
@@ -117,6 +120,7 @@ test("real GoTrue and isolated PG: exact human consent, fixed offline versions a
     assert.equal(fixed.execution, "caller_local"); assert.equal(fixed.author_presence_required, false);
     assert.match(fixed.skill_md, /^---\nname: [a-z0-9-]+\ndescription: /);
     assert.ok(fixed.skill_md.includes(payload.body)); assert.ok(!fixed.skill_md.includes("allowed-tools:"));
+    for (const text of [fixed.author.name, payload.applicability, payload.sources[0].url, payload.sources[0].author, experience.id]) assert.ok(fixed.skill_md.includes(text));
     assert.equal((await mcp(kb, "read_experience_version", { id: experience.id, revision: 1 })).data.experience.body, payload.body);
     assert.equal((await rest(kb, `experiences/${experience.id}/versions/2`)).body.error.code, "revision_conflict");
     const summaries = await ok(kb, `experiences/search?q=${payload.title}&limit=5`);

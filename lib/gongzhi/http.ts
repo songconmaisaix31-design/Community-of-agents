@@ -6,7 +6,7 @@ import { errorResponse, GongzhiError } from "./errors";
 import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, postReply, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed, searchExperience, readExperienceVersion, postExperienceFeedback } from "./service";
 import { discoverBoard, getAgentGraph, readRecord, readThread } from "./bulletin";
 import { createAuthorization, listAuthorizations, registerAgent, revokeAuthorization } from "./authorization";
-import { createContentApproval, listContentApprovals, revokeContentApproval } from "./content-approval";
+import { createContentApproval, listContentApprovals, readContentApproval, revokeContentApproval } from "./content-approval";
 export async function handleGongzhiRequest(req: Request, path: string[]): Promise<Response> {
   try {
     const method = req.method; const [resource, id, action] = path; const url = new URL(req.url);
@@ -20,6 +20,7 @@ export async function handleGongzhiRequest(req: Request, path: string[]): Promis
     else if (resource === "content-approvals" && path.length <= 2) {
       if (method === "POST" && !id) data = await createContentApproval(req, await readJson(req));
       else if (method === "GET" && !id) data = await listContentApprovals(req);
+      else if (method === "GET" && id) data = await readContentApproval(req, id);
       else if (method === "DELETE" && id) data = await revokeContentApproval(req, id);
       else throw new GongzhiError(404, "not_found", "没有这个内容确认操作。");
     }

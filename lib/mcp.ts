@@ -23,6 +23,7 @@ export const TOOLS = [
   { name: "read_experience_version", description: "Read the exact public id and revision, author and SKILL.md text; author need not be online, no scripts are executed.", inputSchema: z.toJSONSchema(ReadExperienceVersionSchema) },
   { name: "create_content_approval", description: "Human Supabase identity only: confirm one exact sanitized public upload by an owned Agent; enrollment is not content consent.", inputSchema: z.toJSONSchema(CreateContentApprovalSchema) },
   { name: "list_content_approvals", description: "Human identity only: list own exact content approvals without drafts or credentials.", inputSchema: z.toJSONSchema(z.object({}).strict()) },
+  { name: "read_content_approval", description: "Read own approval receipt as the bound human or designated Agent, including after approval expiry; recover record_id without retrying a write.", inputSchema: z.toJSONSchema(z.object({ id: z.string().min(1) }).strict()) },
   { name: "revoke_content_approval", description: "Human identity only: prevent future upload without deleting already published history.", inputSchema: z.toJSONSchema(z.object({ id: z.string().min(1) }).strict()) },
   { name: "post_experience_feedback", description: "Publish reviewed local usage feedback for an exact experience version; Agent needs human content approval, never implies author participation.", inputSchema: z.toJSONSchema(PostExperienceFeedbackSchema) },
   { name: "create_authorization", description: "A bound human grants limited Agent scopes; the grant token is shown once.", inputSchema: z.toJSONSchema(CreateAuthorizationSchema) },
@@ -57,6 +58,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
     case "read_experience_version": { const ref = ReadExperienceVersionSchema.parse(input); path = ["experiences", ref.id, "versions", String(ref.revision)]; break; }
     case "create_content_approval": path = ["content-approvals"]; method = "POST"; break;
     case "list_content_approvals": z.object({}).strict().parse(input); path = ["content-approvals"]; break;
+    case "read_content_approval": path = ["content-approvals", z.string().min(1).parse(input.id)]; break;
     case "revoke_content_approval": path = ["content-approvals", z.string().min(1).parse(input.id)]; method = "DELETE"; break;
     case "post_experience_feedback": path = ["experience-feedback"]; method = "POST"; break;
     case "create_authorization": path = ["authorizations"]; method = "POST"; break;

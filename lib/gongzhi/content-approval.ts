@@ -49,6 +49,14 @@ export async function listContentApprovals(req: Request): Promise<ContentApprova
   const actor = await human(req);
   return (await sql()<ApprovalRow[]>`select * from gongzhi_content_approvals where human_owner_id=${actor.owner.id} order by created_at desc,id desc limit 100`).map(view);
 }
+export async function readContentApproval(req: Request, id: string): Promise<ContentApproval> {
+  const actor = await resolveIdentity(req); await assertIdentity(actor);
+  const [row] = await sql()<ApprovalRow[]>`select * from gongzhi_content_approvals where id=${id} and (human_owner_id=${actor.owner.id} or agent_id=${actor.owner.id})`;
+  if (!row) throw new GongzhiError(404, "not_found", "没有找到本人的内容确认回执。");
+  // Expired/revoked approval remains readable by its still-bound parties. This
+  // recovers an already persisted record ID without another write attempt.
+  return view(row);
+}
 export async function revokeContentApproval(req: Request, id: string): Promise<ContentApproval> {
   const actor = await human(req); assertWritable();
   return inTransaction(async () => {
