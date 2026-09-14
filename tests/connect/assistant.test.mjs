@@ -62,7 +62,52 @@ function harness(overrides = {}) {
 
 test('missing any required runtime configuration is unavailable without provider calls', () => {
   assert.throws(() => getAssistantConfig({}), { name: 'AssistantUnavailableError' });
-  assert.throws(() => getAssistantConfig({ GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model' }), { name: 'AssistantUnavailableError' });
+  const configured = { GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model' };
+  for (const key of Object.keys(configured)) {
+    assert.throws(() => getAssistantConfig({ ...configured, [key]: '' }), { name: 'AssistantUnavailableError' });
+  }
+  for (const base of ['http://model.invalid', 'https://user:secret@model.invalid', 'https://model.invalid/?key=secret']) {
+    assert.throws(() => getAssistantConfig({ ...configured, GONGZHI_MODEL_BASE_URL: base }), { name: 'AssistantUnavailableError' });
+  }
+});
+
+const modelConfig = { GONGZHI_ASSISTANT_ENABLED: 'true', GONGZHI_MODEL_API_KEY: 'synthetic', GONGZHI_MODEL_ID: 'synthetic-model' };
+
+test('optional Zhihu absence permits actual SDK experience-only execution with a mock model', async () => {
+  // Client construction is offline; the configured provider is never invoked.
+  const config = getAssistantConfig(modelConfig);
+  assert.equal(config.zhihuAvailable, false);
+  const h = harness();
+  const experience = { id: 'synthetic-experience', revision: 2, mode: 'live', title: 'Synthetic method', body: 'Synthetic example method.' };
+  h.services.findExperience = async () => [experience];
+  const refs = [{ experience_id: experience.id, revision: experience.revision, usage: 'Use the method read in this run.' }];
+  const provider = modelSteps([options => {
+    assert.ok(options.prompt.some(message => message.role === 'system' && message.content.includes('本站未配置知乎检索')));
+    return [toolCall('readNeed')];
+  }, [toolCall('findExperience', { query: 'method' })], [toolCall('submitResult', { title: 'Synthetic output', body: 'An experience-based output.', source_ids: [], method_refs: refs })]]);
+  const result = await executeAssistant({ ...h, ...config, model: provider.model });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(result.usage.zhihu_queries, 0);
+  assert.deepEqual(h.submittedBodies[0].sources, []);
+  assert.deepEqual(h.submittedBodies[0].method_refs, refs);
+});
+
+test('attempting unconfigured Zhihu still fails the SDK run without a result', async () => {
+  const h = harness();
+  const provider = modelSteps([[toolCall('readNeed')], [toolCall('searchZhihu', { query: 'required evidence' })]]);
+  const result = await executeAssistant({ ...h, ...getAssistantConfig(modelConfig), model: provider.model });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.error.code, 'unavailable');
+  assert.equal(h.submitted(), 0);
+  assert.equal(provider.count(), 2);
+});
+
+test('removing Zhihu configuration cannot reuse a previously enabled adapter', async () => {
+  const enabled = getAssistantConfig({ ...modelConfig, ZHIHU_ACCESS_SECRET: 'synthetic-secret' });
+  assert.equal(enabled.zhihuAvailable, true);
+  const disabled = getAssistantConfig({ ...modelConfig, ZHIHU_ACCESS_SECRET: '   ' });
+  assert.notEqual(disabled.search, enabled.search);
+  await assert.rejects(disabled.search.search('test', new AbortController().signal), { code: 'unavailable' });
 });
 
 test('actual SDK tool calling reads, searches and submits only server-produced sources', async () => {

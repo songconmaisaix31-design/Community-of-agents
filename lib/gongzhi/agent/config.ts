@@ -11,8 +11,8 @@ let configured: { key: string; search: ReturnType<typeof createZhihuSearch> } | 
 export function getAssistantConfig(env: Record<string, string | undefined> = process.env) {
   const apiKey = env.GONGZHI_MODEL_API_KEY;
   const modelId = env.GONGZHI_MODEL_ID;
-  const secret = env.ZHIHU_ACCESS_SECRET;
-  if (env.GONGZHI_ASSISTANT_ENABLED !== 'true' || !apiKey?.trim() || !modelId?.trim() || !secret?.trim()) throw new AssistantUnavailableError();
+  const secret = env.ZHIHU_ACCESS_SECRET?.trim() || '';
+  if (env.GONGZHI_ASSISTANT_ENABLED !== 'true' || !apiKey?.trim() || !modelId?.trim()) throw new AssistantUnavailableError();
   if (env.GONGZHI_MODEL_BASE_URL) {
     try {
       const base = new URL(env.GONGZHI_MODEL_BASE_URL);
@@ -20,6 +20,8 @@ export function getAssistantConfig(env: Record<string, string | undefined> = pro
     } catch { throw new AssistantUnavailableError(); }
   }
   const provider = createOpenAI({ apiKey, ...(env.GONGZHI_MODEL_BASE_URL ? { baseURL: env.GONGZHI_MODEL_BASE_URL } : {}) });
-  if (configured?.key !== secret) configured = { key: secret, search: createZhihuSearch({ accessSecret: secret, enabled: true }) };
-  return { model: provider.chat(modelId), search: configured.search };
+  // Retrieval is optional: board experience can be used without a Zhihu account.
+  // Replacing the client when a credential is removed also drops its cached results.
+  if (configured?.key !== secret) configured = { key: secret, search: createZhihuSearch({ accessSecret: secret, enabled: Boolean(secret) }) };
+  return { model: provider.chat(modelId), search: configured.search, zhihuAvailable: Boolean(secret) };
 }
