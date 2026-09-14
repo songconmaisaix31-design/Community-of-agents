@@ -19,7 +19,9 @@ BrowserAuth 保留 available/initialize/signOut/getAccessToken/onChange/dispose�
 
 `0015-zhihu-web-sessions.sql` 只新增应用用户、永久 provider 标识关联、state 摘要及 session 摘要表，不修改旧 Supabase/owner/history。state 10 分钟且绑定浏览器随机 cookie，session 有效期为交换起点加可信 expires_in 与 8 小时上限的较小者；只登录时 token 在读取 /user 后即丢弃。uid/hash 缺失再补齐沿同 UUID，冲突拒绝，昵称/email 不参与映射。
 
-start/logout 必须同源 POST application/json 空对象，流读取最多 1024 字节；cookie 始终 HttpOnly/Secure/SameSite=Lax/Path=/，不降级公网 HTTP。退出会撤销 session 与在途登录；新 start 取消该浏览器旧流程。state 在上游请求前已消费，未知回调不能复用 code/state，应用户主动重新登录。SDK在焦点、BFCache pageshow、跨标签事件和每分钟回读，失联或过期不保留可写身份；localStorage只含刷新信号，不含用户/凭据。
+start/logout 必须同源 POST application/json 空对象，流读取最多 1024 字节、2 秒；cookie 始终 HttpOnly/Secure/SameSite=Lax/Path=/，不降级公网 HTTP。退出会撤销 session 与在途登录；新 start 取消该浏览器旧流程。state 在上游请求前已消费，未知回调不能复用 code/state，应用户主动重新登录；仅明确 access_denied 映射取消，其他提供方 error 显示失败。SDK在焦点、BFCache pageshow、跨标签事件和每分钟回读，失联或过期不保留可写身份；localStorage只含刷新信号，不含用户/凭据。
+
+三项 SDK 身份请求均限 10 秒（包含响应正文），并发 session 刷新合并；dispose中止请求，退出/新登录/销毁使迟到 start 响应不能导航。写请求超时保留 unknown，不自动重试。`tests/core/web-auth-browser.test.ts` 用受控时钟验证挂起 headers/body、迟到返回与无重试，未模拟实际第三方登录成功。
 
 所有 cookie REST 写入在服务端要求精确配置 Origin，并通过同一 session 行锁串行化写入/退出。runs 仍由 Core identity 守卫核验 Origin/期限/撤销；MCP 保持 header-only，cookie不能代替 MCP Bearer。坏/空显式凭据不会回落到 cookie。
 
@@ -28,3 +30,11 @@ start/logout 必须同源 POST application/json 空对象，流读取最多 1024
 隔离浏览器集成可直接复用 `handleWebAuth(request, action, upstreamFetch)` 的函数参数测试缝：仅测试 runner 注入 fetch，生产路由不接受测试参数/env/header 开关。先 POST start 获取服务端 cookie，测试浏览器保持同一 cookie 跳转 callback（authorization_code/state），后续 session、业务 REST 全部经真实 PG；同进程 runner 可衔接 handleGongzhiRequest。不要用浏览器 addCookies 伪造已登录身份。F/I负责自己的测试 runner，C不改集成或前端路径。
 
 代码就绪不代表线上授权；用户项目 AppID/AppKey/准确 redirect 尚缺，保持 unavailable。实际公网 HTTPS 和用户亲自确认、真实 /user 返回仍未验证；本轮不迁移 3079 主库或部署云。
+
+## 本轮检查（2026-09-14）
+
+- 最终全套 `GONGZHI_COMPOSE_TEST=true npm test`：270 pass / 20 skip / 0 fail；跳过项均为另需显式环境的 live/浏览器/生产验收，另跑适用专用库组。
+- 官方本机 GoTrue + 真实 PG 旧身份/批准链与新 OAuth 上游 fixture 组：25/25；最终新 OAuth PG 组单独 9/9，包含跨浏览器/重放/过期、uid/hash 补齐与冲突、Origin/显式凭据、只读 runs 无副作用、有限 Agent + 人批准、退出与在途 callback 竞态。
+- 0015 仅在专用测试库显式应用；重复迁移显示 all 15 already recorded。没有重建表、修改旧迁移或写主体验库。
+- typecheck、共享客户端构建及 SDK/流限长负例通过。旧邮箱浏览器测试保留为显式 `GONGZHI_LEGACY_BROWSER_TEST=true` 的历史部署检查，新网页登录不能借它证明成功。
+- 首次 PG 运行的 Agent 扩权负例正确返回 forbidden，测试原预期 unauthenticated 已更正；安全检查未放宽。

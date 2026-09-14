@@ -64,19 +64,38 @@ export function createBrowserAuth(mode: Mode, configuration?: PublicAuthConfig):
 /** The browser never receives a Zhihu or app session token. Only UI state lives here. */
 function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserAuth {
   const available = mode === "live" && typeof window !== "undefined" && configuration.available;
-  const api = createApiClient(mode);
   const listeners = new Set<(user: BrowserUser | null) => void>();
   const signalKey = "gongzhi.live.auth.changed.v2";
   let current: BrowserUser | null = null, disposed = false, generation = 0;
+  let intent = 0, refreshPending: Promise<BrowserUser | null> | undefined;
+  const requests = new Map<AbortController, "read" | "start" | "logout">();
+  async function bounded<T>(kind: "read" | "start" | "logout", run: (api: ReturnType<typeof createApiClient>) => Promise<T>): Promise<T> {
+    const controller = new AbortController(); requests.set(controller, kind);
+    const api = createApiClient(mode, { fetch: (url, init) => fetch(url, { ...init, signal: controller.signal }) });
+    let stop!: () => void;
+    const interrupted = new Promise<never>((_, reject) => { stop = () => reject(new ApiClientError(kind === "read"
+      ? { code: "unavailable", message: "登录状态暂时无法确认。", retryable: true }
+      : { code: "unknown", message: "登录操作响应未知，请先确认当前状态，不自动重试。", retryable: false })); });
+    controller.signal.addEventListener("abort", stop, { once: true });
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try { return await Promise.race([run(api), interrupted]); }
+    finally { clearTimeout(timer); controller.signal.removeEventListener("abort", stop); requests.delete(controller); }
+  }
+  const cancel = (kind?: "read" | "start") => { for (const [controller, type] of requests) if (!kind || kind === type) controller.abort(); };
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   const emit = (user: BrowserUser | null) => { current = user; for (const listener of listeners) listener(user); };
   const signal = () => { try { window.localStorage.setItem(signalKey, `${Date.now()}:${Math.random()}`); } catch { /* Focus/expiry still refresh without storage. */ } };
-  async function refresh(notify = false) {
+  function refresh(notify = false): Promise<BrowserUser | null> {
+    if (refreshPending) return refreshPending;
+    refreshPending = read(notify).finally(() => { refreshPending = undefined; });
+    return refreshPending;
+  }
+  async function read(notify: boolean) {
     if (!available || disposed) return null;
     const turn = ++generation;
     let session;
-    try { session = await api.readAuthSession(); }
+    try { session = await bounded("read", api => api.readAuthSession()); }
     catch (error) { if (!disposed && turn === generation) { if (expiryTimer) clearTimeout(expiryTimer); emit(null); } throw error; }
     if (disposed || turn !== generation) return current;
     if (expiryTimer) clearTimeout(expiryTimer);
@@ -100,7 +119,9 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
     initialize: () => refresh(true),
     async startSignIn() {
       if (!available || disposed) throw new ApiClientError({ code: "unavailable", message: "尚未配置本项目知乎登录。", retryable: false });
-      const data = await api.startZhihuLogin();
+      const ownIntent = ++intent; cancel("start");
+      const data = await bounded("start", api => api.startZhihuLogin());
+      if (disposed || ownIntent !== intent) return;
       const url = new URL(data.authorization_url);
       if (url.origin !== "https://openapi.zhihu.com" || url.pathname !== "/authorize" || url.username || url.password || url.hash)
         throw new ApiClientError({ code: "upstream_failed", message: "登录服务返回无效授权地址。", retryable: false });
@@ -109,14 +130,17 @@ function createCookieAuth(mode: Mode, configuration: PublicAuthConfig): BrowserA
     async signIn() { throw new ApiClientError({ code: "unavailable", message: "请通过知乎授权页面登录。", retryable: false }); },
     async signOut() {
       if (!available || disposed) throw new ApiClientError({ code: "unavailable", message: "登录服务不可用。", retryable: false });
-      await api.logout(); generation++;
+      intent++; generation++; cancel("read"); cancel("start");
+      try { await bounded("logout", api => api.logout()); }
+      catch (error) { if (!disposed) { emit(null); signal(); } throw error; }
+      if (disposed) return;
       if (expiryTimer) clearTimeout(expiryTimer);
       emit(null); signal();
     },
     getAccessToken: () => undefined,
     onChange(callback) { listeners.add(callback); return () => { listeners.delete(callback); }; },
     dispose() {
-      disposed = true; generation++; current = null; listeners.clear();
+      disposed = true; generation++; intent++; cancel(); current = null; listeners.clear();
       if (expiryTimer) clearTimeout(expiryTimer);
       if (pollTimer) clearInterval(pollTimer);
       if (available) { window.removeEventListener("focus", onFocus); window.removeEventListener("pageshow", onFocus); window.removeEventListener("storage", onStorage); }

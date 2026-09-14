@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { testProfileFromEnv, assertLocalAuth } from "../../infra/local-auth/local-profile.mjs";
 
-test("self-hosted ESM restores a real GoTrue session and authorizes the container HTTP service", { skip: !process.env.GONGZHI_BROWSER_TEST_URL }, async () => {
+// Retained solely for explicit historical deployments; the current UI uses Zhihu.
+// OAuth browser acceptance must start through the server state/callback flow.
+test("legacy deployment only: ESM restores a real GoTrue session", { skip: process.env.GONGZHI_LEGACY_BROWSER_TEST !== "true" || !process.env.GONGZHI_BROWSER_TEST_URL }, async () => {
   const profile = testProfileFromEnv(process.env);
   const url = assertLocalAuth(process.env.GONGZHI_BROWSER_TEST_URL, process.env.GONGZHI_ISOLATED_TEST === "true" ? profile.appPort : 3041);
   assertLocalAuth(process.env.SUPABASE_URL, profile.authPort);
