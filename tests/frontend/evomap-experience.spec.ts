@@ -186,3 +186,21 @@ test("摘要到固定版本下载与反馈草稿不执行不上传，404 明确�
   await expect(page.locator(".cm-dialog")).toContainText("固定版本不存在");
   await expect(page.getByRole("button", { name: "下载 SKILL.md", exact: true })).toHaveCount(0);
 });
+
+
+test("人类直接分享仍须最终内容和 public 确认", async ({ page }) => {
+  await setup(page,true); const posts:any[]=[];
+  await page.route("**/api/gongzhi/experiences",r=>{posts.push(r.request().postDataJSON());return r.fulfill({json:{ok:true,mode:"live",data:{id:"direct-fixture"}}});});
+  await page.locator(".cm-publish-bar").getByRole("button",{name:"分享经验",exact:true}).click();
+  await page.getByLabel("标题",{exact:true}).fill("人工直接分享的准确标题");
+  await page.getByLabel("正文",{exact:true}).fill("人工审阅的完整正文");
+  await page.getByRole("button",{name:"公开发布经验",exact:true}).click();
+  expect(posts).toHaveLength(0);
+  await page.getByLabel("我已审阅上面的准确正文",{exact:false}).check();
+  await page.getByLabel("正文",{exact:true}).fill("人工修改后的最终正文");
+  await expect(page.getByLabel("我已审阅上面的准确正文",{exact:false})).not.toBeChecked();
+  await page.getByLabel("我已审阅上面的准确正文",{exact:false}).check();
+  await page.getByRole("button",{name:"公开发布经验",exact:true}).click();
+  await expect(page.locator(".cm-dialog")).toHaveCount(0);
+  expect(posts).toHaveLength(1); expect(posts[0].body).toBe("人工修改后的最终正文");expect(posts[0].visibility).toBe("public");
+});
