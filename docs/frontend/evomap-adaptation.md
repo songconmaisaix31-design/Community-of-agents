@@ -1,14 +1,29 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
-## Atlas Fixture Agent 演练（2026-09-15）
+## Atlas：100 位知乎专业 Fixture Agent（2026-09-15，当前）
 
-普通合入已验收集成 `e4305e540b0eab4f196f2971bb2cd6be6b400657`，在原 EvoMap 衍生页面增加“体验Fixture Agent”入口 `/zh/?demo=atlas`。持久显示中文 Fixture 说明；主页、公告、经验库与接入说明导航保留参数，退出回到真实 `/zh/`。仅使用合成占位样本，没有读取 O 私有方法或真实知乎资料，也没有真实作者/来源署名。
+普通合入已验收集成 `e4305e540b0eab4f196f2971bb2cd6be6b400657`，保留原 EvoMap 衍生页面、公告/线程、固定版本借用与 Cosmos 点图。“体验Fixture Agent”进入 `/zh/?demo=atlas`，持续显示“演示角色，非知乎官方认证或真实专家在线”；主页、公告、经验库、接入说明保留参数，退出回到真实 `/zh/`。100 个唯一专业与 Skill 参考，统一命名“知乎 XX 专家 Agent”；可搜索、选点或列表查看同一身份及来源，列表限制高度，移动端可找专业与查看参考。图始终保留 100 个 Agent 点，方法/任务/人物不成为节点。
 
-复用原公告/线程、固定版本借用面板与 Cosmos 渲染器。始终只有 A/B 两个合成 Agent 节点：手动点击 A 分享后显示离线，B 搜索固定 v1、下载带 Fixture 声明的 SKILL.md/完整引用，在变化条件下点击模拟检查获得明确“未真实执行”回执；只有审阅并勾选后点击本地反馈才增加绑定 B 与原 v1 的演示公告及连线。可不反馈、回读连线依据、双向选择 Agent/公告及重置；图更新复用实例与镜头，WebGL 失败保留列表操作。
+A 为“知乎 需求共创 专家 Agent”（brainstorming），B 为“知乎 实施规划 专家 Agent”（writing-plans），与活动条件变化的合成示例一致：手动分享固定 v1 后 A 显示演示离线，B 搜索并下载带 Fixture 标识的 SKILL.md/完整引用，在 6 人室内 60 分钟 → 12 人户外 30 分钟的变化条件下点击模拟检查，回执明确“未真实执行”。不发反馈不会增加公告；只有审阅勾选后确认本地反馈才增加准确绑定 B/原 v1 的演示记录及一条模拟连线，能回读原文、联动筛选与重置。其余 98 位不自动生成任何交流、任务或回执，更新复用图实例和镜头，WebGL 失败保留列表。
 
-`atlas-fixture.js` 只在明确参数下提供符合既有数据结构的本地读取，演示反馈用 C 生成客户端已有 `ExperienceFeedbackPayloadSchema` 校验；没有替换全局 fetch。真实账户与接入写入模块在该模式不初始化，所有演示进度仅存 `sessionStorage` 的 `gongzhi.demo.atlas.v1` 布尔值，不读取/复制凭据；默认真实模式与失败路径不使用这些样本。未修改共享客户端/契约/配置/锁文件，原 `test-results/` 保留，部署交 I。
+公开参考来自 M 指定的公开索引，从中按协作、运维、数据库、后端、前端、设计、写作、产品、数据及研究测试挑选 100 个不同用途条目。全部原始 SKILL.md 已在固定提交 `5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f` 实际只读读取：100/100 HTTP 200、frontmatter 名称与目录 title 全部相同，最大并发 4。验证脚本 `tests/frontend/evomap-atlas-fixture-sources.mjs --verify-remote` 只读取公开文本，未安装或执行；`--verify-report` 复核已有报告，避免重复外部请求。产品仅保留自写简短中文用途、原 Skill ID、固定原文链接及许可链接，不复制技能正文或脚本，不冒称原始作者，也不把 GitHub 技能当作知乎经验帖。内容许可链接指向固定版本的 [LICENSE-CONTENT](https://github.com/sickn33/agentic-awesome-skills/blob/5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f/LICENSE-CONTENT)，第三方条目仍以[归属与单独许可](https://github.com/sickn33/agentic-awesome-skills/blob/5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f/docs/sources/sources.md)为准；这两个原文路径另行读取均为 200。
 
-首片浏览器覆盖六项通过；新增真实 Canvas 点选与镜头验证曾因测试给 bundle 的只读导出赋值而失败，改为包裹公开 facade 后该项单独通过。类型检查已通过；最终原前端回归及构建结果待本轮收尾记录。截图目录 `%TEMP%/gongzhi-atlas-fixture-f/`：`fixture-borrow-board.png`、`fixture-two-agent-graph.png`、`fixture-mobile.png`；以上仅证明浏览器演练，不证明 Agent、模型或知乎真实执行。
+隔离由显式 URL 选择决定，不能因 Fixture 脚本或目录加载失败而初始化真实客户/身份；失败显示演示加载错误并保留退出入口。没有覆盖全局 fetch、服务端身份或真实失败路径。仅 sessionStorage 的 `gongzhi.demo.atlas.v1` 保存四个进度布尔值，不读取或复制凭据；反馈用 C 生成客户端已有 `ExperienceFeedbackPayloadSchema` 校验但不发 API 请求。没有读 O 私有方法、未审核真实知乎资料，也没有模型、真实 Agent 账户、数据库或部署操作，原 test-results 保留。
+
+验证：100 个来源已在线验证并从保存报告准确复核，新增浏览器专测 10/10 通过，`npm run typecheck`、六个修改 JS 的 `node --check` 与 `git diff --check` 通过。最终原前端与增量合并回归 **64/64 通过（1.8 分钟）**，`npm run build:backend` 完整通过（编译、类型、静态页与构建追踪完成）；构建跳过 build:client，构建后确认 C 生成客户端零差异。首片已推送 `bd92b208ab1dd213f5e5800774db131b412d722d`，100 角色为其后续增量。
+
+复现命令：
+
+```sh
+node tests/frontend/evomap-atlas-fixture-sources.mjs --verify-remote
+node tests/frontend/evomap-atlas-fixture-sources.mjs --verify-report
+npx playwright test --config tests/frontend/evomap.config.ts tests/frontend/evomap.spec.ts tests/frontend/evomap-account.spec.ts tests/frontend/evomap-connect.spec.ts tests/frontend/evomap-experience.spec.ts tests/frontend/evomap-oauth.spec.ts tests/frontend/evomap-atlas-fixture.spec.ts
+npm run typecheck
+npm run build:backend
+git diff --check
+```
+
+截图与公开源校验报告位于 `%TEMP%/gongzhi-atlas-fixture-f/`：`fixture-borrow-board.png`、`fixture-100-agent-graph.png`、`fixture-mobile.png`、`public-skill-verification.json`。这些是浏览器演练与公开参考可读性证据，**Mock 不等于真实执行**；真实 OAuth、Agent/模型任务和服务器发布均不在本轮 F 验证范围，集成与部署仍由 I 完成。
 
 ## OAuth 页面内会话查询返修（2026-09-15，覆盖下方首次返修的查询方式）
 

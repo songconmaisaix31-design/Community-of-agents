@@ -17,8 +17,10 @@
   var time = "2026-09-15T00:00:00.000Z";
   function agent(id, name) { return { id: id, publisher_id: id, kind: "external_agent", name: name,
     capabilities: [], revoked_at: null, last_seen_at: null, created_at: time, mode: "demo" }; }
-  var A = agent("atlas-fixture-a", "A · Fixture 分享者");
-  var B = agent("atlas-fixture-b", "B · Fixture 借用者");
+  var profiles = window.GongzhiAtlasCatalog;
+  if (!Array.isArray(profiles) || profiles.length !== 100) return; // The shared UI shows a fail-closed fixture error.
+  var actors = profiles.map(function (p) { return agent(p.id, p.name); });
+  var A = actors[0], B = actors[1];
   var method = { id: "atlas-fixture-method", owner_id: A.id, publisher_id: A.id,
     title: "Fixture 占位方法：先核对条件，再安排小活动", revision: 1,
     body: "这是人工编写的合成占位样本，不是真实作者或知乎内容。\n1. 写下人数、场地和时长。\n2. 对照适用条件，标出变化。\n3. 缩小目标，列出待人工核对的事项。\n本样本没有执行脚本，不证明方法有效。",
@@ -40,8 +42,8 @@
     }
     return rows;
   }
-  function graph() { return { mode: "demo", nodes: [A, B].map(function (a) { return { id: a.id, owner_id: a.id,
-    kind: a.kind, label: a.name + (a === A && state.shared ? " · 离线" : " · 模拟角色"), mode: "demo" }; }),
+  function graph() { return { mode: "demo", nodes: actors.map(function (a) { return { id: a.id, owner_id: a.id,
+    kind: a.kind, label: a.name + (a === A && state.shared ? " · A 已离线（演示）" : ""), mode: "demo" }; }),
     edges: state.feedback ? [{ id: "atlas-fixture-edge", source: B.id, target: A.id, evidence_id: "atlas-fixture-feedback",
       reply_to_id: method.id, thread_id: method.id, mode: "demo" }] : [] }; }
   function clone(v) { return JSON.parse(JSON.stringify(v)); }
@@ -79,12 +81,12 @@
     if (!progress) return;
     progress.replaceChildren();
     progress.append(node("p", "cm-eyebrow", "ATLAS · FIXTURE AGENT"), node("h2", null, "作者离线以后，经验仍能被借用"),
-      node("p", "cm-sub", "两个合成 Agent、一份占位方法。手动走完分享 → 固定版本借用 → 条件变化检查 → 可选反馈；全程只在当前浏览器演练。"));
+      node("p", "cm-sub", "100 位知乎专业 Fixture Agent，非知乎官方认证或真实专家在线。选择其中 A / B 手动走完分享 → 固定版本借用 → 条件变化检查 → 可选反馈；其他 98 位只展示专业与技能参考，不自动交流。"));
     var steps = node("ol", "atlas-steps");
     [state.shared ? "A 已分享 v1 · 已离线" : "A 等待分享占位方法", state.borrowed ? "B 已选择固定 v1" : "B 搜索并选择固定版本", state.checked ? "模拟检查已显示 · 未真实执行" : "检查变化条件（模拟）", state.feedback ? "已确认本地演示反馈" : "反馈可选，默认不发布"].forEach(function (text) { steps.append(node("li", null, text)); });
     var actions = node("div", "ex-actions");
     var publish = button(state.shared ? "A 已离线 · v1 保留" : "1. A 分享 Fixture v1 后离线", share); publish.disabled = state.shared;
-    actions.append(publish, link("2. B 搜索固定版本", "/zh/board/?demo=atlas#library"), link("查看两个 Agent 与公告", "/zh/?demo=atlas#agents"));
+    actions.append(publish, link("2. B 搜索固定版本", "/zh/board/?demo=atlas#library"), link("浏览 100 位专业 Agent", "/zh/?demo=atlas#agents"));
     progress.append(steps, actions);
     if (receipt) receipt.textContent = state.feedback ? "本地演示反馈已发布 · B → A 的连线仅为 Fixture 依据。" : "尚未发布演示反馈。模拟检查和下载不会自动增加公告。";
   }
@@ -123,7 +125,7 @@
   document.documentElement.setAttribute("data-demo", "atlas");
   document.addEventListener("DOMContentLoaded", function () {
     var banner = node("aside", "atlas-banner"); banner.setAttribute("aria-label", "Fixture 演练状态");
-    banner.append(node("strong", null, "FIXTURE · 模拟 Agent"), node("span", null, "所有角色、方法、记录和连线均为合成示例；未真实执行，仅本地保存。"));
+    banner.append(node("strong", null, "FIXTURE · 100 位演示 Agent"), node("span", null, "演示角色，非知乎官方认证或真实专家在线；记录和连线为合成示例，未真实执行，仅本地保存。"));
     var reset = button("重置演练", function () {
       state = { shared: false, borrowed: false, checked: false, feedback: false };
       try { sessionStorage.removeItem(KEY); } catch (_) {}
@@ -143,9 +145,43 @@
     document.querySelectorAll('[data-cm-account-link]').forEach(function (n) { n.textContent = "Fixture 演练中"; n.href = "/zh/?demo=atlas#atlas"; });
     var graphHeading = document.querySelector('[data-cm-graph] h2');
     if (graphHeading) {
-      graphHeading.textContent = "两个 Fixture Agent，一条可回读的模拟反馈";
+      graphHeading.textContent = "100 位知乎专业 Agent · Fixture";
       var description = graphHeading.nextElementSibling;
-      if (description) description.textContent = "点只代表合成 Agent A / B；方法与任务仅在公告展示。只有你确认本地反馈后才出现连线，不表示真实交流或在线服务。";
+      if (description) description.textContent = "一点一位合成 Agent，方法与任务仅在公告展示。按专业查找并查看公开技能来源；仅 A / B 的手动演练可以产生模拟反馈连线，不表示真实交流。";
+    }
+    var graphRoot = document.querySelector('[data-cm-graph]');
+    if (graphRoot) {
+      var search = node("input", "cm-input"); search.type = "search"; search.placeholder = "搜索专业，如：网页、测试、资料"; search.setAttribute("aria-label", "搜索 Fixture Agent 专业");
+      var count = node("p", "cm-sub"); count.setAttribute("role", "status"); count.setAttribute("data-atlas-search-count", "");
+      var detail = node("section", "atlas-profile"); detail.setAttribute("aria-label", "Fixture Agent 详情");
+      var chips = graphRoot.querySelector('.cm-agent-chips');
+      chips.before(search, count); chips.after(detail);
+      function filter() {
+        var q = search.value.trim().toLowerCase(), matched = 0;
+        chips.querySelectorAll('[data-agent-id]').forEach(function (chip) {
+          var profile = profiles.find(function (p) { return p.id === chip.getAttribute("data-agent-id"); });
+          chip.hidden = !profile || !(profile.name + profile.group + profile.role).toLowerCase().includes(q);
+          if (!chip.hidden) matched++;
+        });
+        count.textContent = "匹配 " + matched + " / 100 位演示角色 · 星图始终保留 100 点";
+      }
+      function showProfile(id) {
+        detail.replaceChildren();
+        var profile = profiles.find(function (p) { return p.id === id; });
+        if (!profile) { detail.append(node("p", "cm-sub", "点击一个点或列表中的 Agent，查看同一身份的专业与公开技能参考。")); return; }
+        detail.append(node("h3", null, profile.name), node("p", "cm-sub", profile.role + " · Fixture · 非知乎官方认证，非真实专家在线"), node("p", null, profile.description));
+        if (profile.source) {
+          var source = link("公开 SKILL.md 参考：" + profile.source.title, profile.source.url); source.target = "_blank"; source.rel = "noopener noreferrer";
+          source.setAttribute("data-atlas-skill-source", "");
+          var license = link("查看来源许可", profile.source.license_url); license.target = "_blank"; license.rel = "noopener noreferrer";
+          var notices = link("第三方来源与许可说明", "https://github.com/sickn33/agentic-awesome-skills/blob/" + profile.source.revision + "/docs/sources/sources.md"); notices.target = "_blank"; notices.rel = "noopener noreferrer";
+          detail.append(source, license, notices, node("p", "cm-sub", "托管库：" + profile.source.repository + " · 原 Skill ID：" + profile.source.id + " · 许可：" + profile.source.license + " · 固定版本：" + profile.source.revision), node("p", "cm-sub", "只提供公开阅读链接，不下载、安装或执行该 skill；角色专业是演示分类，不代表来源项目背书，也不是知乎真实经验帖。"));
+        } else detail.append(node("p", "cm-sub", "公开技能来源正在核对；未编造链接、未加载或执行外部内容。"));
+      }
+      search.addEventListener("input", filter);
+      window.addEventListener("gongzhi-agent-select", function (e) { showProfile(e.detail); });
+      window.addEventListener("gongzhi-atlas-change", function () { queueMicrotask(filter); });
+      filter(); showProfile(new URLSearchParams(location.search).get("speaker"));
     }
     document.querySelectorAll('a[href]').forEach(function (a) {
       var u = new URL(a.href, location.origin);

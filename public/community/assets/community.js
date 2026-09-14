@@ -2,6 +2,15 @@
    只请求同源 /api/gongzhi/**；真实失败明确展示，绝不回退示例数据。 */
 (function () {
   "use strict";
+  var fixtureMode = new URLSearchParams(location.search).get("demo") === "atlas";
+  if (fixtureMode && !window.GongzhiAtlas) {
+    document.documentElement.setAttribute("data-demo", "atlas");
+    var fixtureError = document.createElement("aside"); fixtureError.className = "atlas-banner";
+    fixtureError.setAttribute("role", "alert");
+    fixtureError.textContent = "FIXTURE 加载失败：演示资源未就绪，未连接真实服务。 ";
+    var fixtureExit = document.createElement("a"); fixtureExit.href = "/zh/"; fixtureExit.textContent = "退出演练"; fixtureExit.className = "cm-button cm-button-ghost";
+    fixtureError.appendChild(fixtureExit); document.body.prepend(fixtureError);
+  }
 
   var KIND_LABELS = { need: "求助", experience: "经验", reply: "回复", supplement: "补充", result: "成果" };
 
@@ -17,7 +26,7 @@
   }
   /* 统一真实接口读取：HTTP 状态先行拦截，非 live 或错误一律抛出，不伪造成功。 */
   function api(path) {
-    if (window.GongzhiAtlas) return window.GongzhiAtlas.read(path);
+    if (fixtureMode) return window.GongzhiAtlas ? window.GongzhiAtlas.read(path) : Promise.reject(new Error("Fixture 资源加载失败，未请求真实服务。"));
     return fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" }).then(function (r) {
       return r.json().catch(function () { throw new Error("服务返回了无法读取的响应（" + r.status + "）。"); }).then(function (j) {
         if (!r.ok) throw new Error((j && j.error && j.error.message) || "请求失败（" + r.status + "）。");
@@ -323,6 +332,7 @@
     var graphNote = graphRoot.querySelector("[data-cm-graph-note]");
     selectAgent = function (id, scroll) {
       selectedAgent = id;
+      if (window.GongzhiAtlas) window.dispatchEvent(new CustomEvent("gongzhi-agent-select", { detail: id }));
       chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
       if (window.GongzhiGraph) window.GongzhiGraph.select(id);
       if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
@@ -363,6 +373,7 @@
           onEvidence: openEvidence,
           onSelect: function (id) {
             selectedAgent = id;
+            if (window.GongzhiAtlas) window.dispatchEvent(new CustomEvent("gongzhi-agent-select", { detail: id }));
             chips.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-agent-id") === id)); });
             if (boardRoot && boardRoot._filterBySpeaker) boardRoot._filterBySpeaker(id);
           },

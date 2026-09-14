@@ -66,10 +66,10 @@ async function post(page: Page) {
   await expect(page.locator(".atlas-receipt")).toContainText("演示反馈已在本地公告中");
 }
 
-test("fixture：两节点、分享后离线、固定 v1 下载、条件变化模拟与不发反馈", async ({ page }) => {
+test("fixture：100 节点、分享后离线、固定 v1 下载、条件变化模拟与不发反馈", async ({ page }) => {
   await page.goto(origin + "/zh/?demo=atlas");
   await expect(page.getByRole("complementary", { name: "Fixture 演练状态" })).toContainText("未真实执行");
-  await expect(page.locator("[data-agent-id]")).toHaveCount(2);
+  await expect(page.locator("[data-agent-id]")).toHaveCount(100);
   await expect(page.locator(".cm-record")).toHaveCount(1);
   await expect(page.locator("[data-atlas-evidence]")).toHaveCount(0);
   await share(page); await borrow(page);
@@ -88,6 +88,46 @@ test("fixture：两节点、分享后离线、固定 v1 下载、条件变化模
   await page.screenshot({ path: path.join(evidence, "fixture-borrow-board.png"), fullPage: true });
 });
 
+test("fixture：100 个专业与固定 Skill 来源可搜索，同一身份详情且不自动交流", async ({ page }) => {
+  await page.goto(origin + "/zh/?demo=atlas#agents");
+  const catalog = await page.evaluate(() => (window as any).GongzhiAtlasCatalog);
+  expect(catalog).toHaveLength(100);
+  for (const field of ["id", "name", "specialty"]) expect(new Set(catalog.map((p: any) => p[field])).size).toBe(100);
+  expect(new Set(catalog.map((p: any) => p.source.id)).size).toBe(100);
+  for (const p of catalog) {
+    expect(p.name).toMatch(/^知乎 .+ 专家 Agent$/);
+    expect(p.source.url).toBe(`https://github.com/sickn33/agentic-awesome-skills/blob/5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f/${p.source.path}/SKILL.md`);
+    expect(p.source.license_url).toContain("/LICENSE-CONTENT");
+  }
+  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("容器工程");
+  await expect(page.locator("[data-atlas-search-count]")).toContainText("匹配 1 / 100");
+  await page.locator('.cm-agent-chips button:visible').click();
+  await expect(page.getByRole("region", { name: "Fixture Agent 详情" })).toContainText("知乎 容器工程 专家 Agent");
+  await expect(page.locator("[data-atlas-skill-source]")).toHaveAttribute("href", /\/skills\/docker-expert\/SKILL.md$/);
+  await expect(page.locator(".atlas-profile")).toContainText("不是知乎真实经验帖");
+  const graph = await page.evaluate(async () => (window as any).GongzhiAtlas.read("/api/gongzhi/agent-graph"));
+  expect(graph.nodes).toHaveLength(100); expect(graph.edges).toHaveLength(0);
+  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("无此专业");
+  await expect(page.locator("[data-atlas-search-count]")).toContainText("匹配 0 / 100");
+  await page.getByRole("button", { name: "重置演练", exact: true }).click();
+  const after = await page.evaluate(async () => (window as any).GongzhiAtlas.read("/api/gongzhi/agent-graph"));
+  expect(after.nodes).toHaveLength(100); expect(after.edges).toHaveLength(0);
+});
+
+for (const resource of ["atlas-agent-catalog.js", "atlas-fixture.js"]) {
+  test(`fixture：${resource} 加载失败也不初始化真实 API 或身份`, async ({ page }) => {
+    await page.route("**/" + resource, r => r.fulfill({ status: 404, body: "" }));
+    await page.goto(origin + "/zh/?demo=atlas");
+    await expect(page.getByRole("alert")).toContainText("FIXTURE 加载失败");
+    await expect(page.getByRole("link", { name: "退出演练", exact: true })).toHaveAttribute("href", "/zh/");
+    await expect(page.locator(".cm-record")).toHaveCount(0);
+    await expect(page.locator("[data-agent-id]")).toHaveCount(0);
+    await page.goto(origin + "/zh/board/?demo=atlas");
+    await expect(page.getByRole("alert")).toContainText("未连接真实服务");
+    await expect(page.locator("[data-ex-results]")).toContainText("Fixture 资源加载失败");
+  });
+}
+
 test("fixture：反馈明确同意、只增加本地记录、准确 v1 连线与双向选择", async ({ page }) => {
   await share(page); await borrow(page); await simulate(page); await post(page);
   await page.getByRole("link", { name: "查看演示反馈与连线", exact: true }).click();
@@ -95,7 +135,7 @@ test("fixture：反馈明确同意、只增加本地记录、准确 v1 连线与
   await expect(page.locator(".cm-record")).toHaveCount(2);
   await page.getByRole("button", { name: "查看 Fixture 连线依据：B → A / v1", exact: true }).click();
   await expect(page.locator(".cm-dialog .cm-thread-record")).toHaveCount(2);
-  await expect(page.locator(".cm-dialog")).toContainText("B · Fixture 借用者");
+  await expect(page.locator(".cm-dialog")).toContainText("知乎 实施规划 专家 Agent");
   await expect(page.locator(".cm-dialog .ex-feedback")).toContainText("12 人、户外、30 分钟");
   await page.getByRole("button", { name: "回到原经验第 1 版", exact: true }).click();
   await expect(page.locator(".cm-dialog")).toContainText("固定 v1");
@@ -112,7 +152,7 @@ test("fixture：反馈明确同意、只增加本地记录、准确 v1 连线与
   expect(ExperienceFeedbackPayloadSchema.parse(feedback.experience_feedback).revision).toBe(1);
   expect(feedback.speaker_id).toBe("atlas-fixture-b"); expect(feedback.mode).toBe("demo");
   await expect(page.locator(".cm-graph-wrap canvas")).toBeVisible();
-  await page.locator("[data-cm-graph]").screenshot({ path: path.join(evidence, "fixture-two-agent-graph.png") });
+  await page.locator("[data-cm-graph]").screenshot({ path: path.join(evidence, "fixture-100-agent-graph.png") });
 });
 
 test("fixture：重置全部进度与连线但保留真实存储", async ({ page }) => {
@@ -142,8 +182,13 @@ test("fixture：手机键盘导航保持模式，接入页面不初始化身份"
   await expect(page).toHaveURL(/\/zh\/connect\/\?demo=atlas/);
   await expect(page.locator(".atlas-banner")).toBeVisible();
   await expect(page.getByRole("button", { name: "使用知乎登录", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "浏览 100 位专业 Agent", exact: true }).click();
+  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("容器工程");
+  await page.locator('.cm-agent-chips button:visible').click();
+  await expect(page.locator("[data-atlas-skill-source]")).toBeVisible();
+  await expect(page.locator(".atlas-profile")).toContainText("知乎 容器工程 专家 Agent");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: path.join(evidence, "fixture-mobile.png"), fullPage: true });
+  await page.locator("[data-cm-graph]").screenshot({ path: path.join(evidence, "fixture-mobile.png") });
 });
 
 test("fixture：WebGL 不可用仍可借用和选择 Agent", async ({ page }) => {
@@ -180,7 +225,7 @@ test("fixture：实际 Canvas 选点联动公告，更新保留镜头，拒绝�
       if (i % 2 === 0) all.push(g.spaceToScreenPosition([xy[i], xy[i + 1]])); return all;
     }, []);
   });
-  expect(points).toHaveLength(2);
+  expect(points).toHaveLength(100);
   const canvas = page.locator(".cm-graph-wrap canvas");
   await canvas.click({ position: { x: points[0][0], y: points[0][1] } });
   await expect(page.locator('[data-agent-id="atlas-fixture-a"]')).toHaveAttribute("aria-pressed", "true");
@@ -199,7 +244,7 @@ test("fixture：实际 Canvas 选点联动公告，更新保留镜头，拒绝�
   expect(rejected).toBe(true);
   await page.getByRole("button", { name: "重置演练", exact: true }).click();
   await expect(page.locator("[data-atlas-evidence]")).toHaveCount(0);
-  await expect(page.locator("[data-agent-id]")).toHaveCount(2);
+  await expect(page.locator("[data-agent-id]")).toHaveCount(100);
   await expect(page.locator('[data-agent-id][aria-pressed="true"]')).toHaveCount(0);
   await expect(page.locator(".cm-record")).toHaveCount(1);
 });

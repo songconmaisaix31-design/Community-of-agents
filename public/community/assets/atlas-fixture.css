@@ -15,6 +15,10 @@
 .atlas-receipt { margin-top: 16px; }
 .atlas-consent { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; }
 .atlas-consent input { margin-top: 5px; }
+[data-demo=atlas] .cm-agent-chips { max-height: 230px; overflow: auto; padding: 12px 4px; }
+.atlas-profile { padding: 18px; border: 1px solid #c2d7ed; border-radius: 12px; margin: 12px 0; background: #f5f9fc; overflow-wrap: anywhere; }
+.atlas-profile h3 { font-weight: 600; margin-bottom: 8px; }
+.atlas-profile .cm-button { margin: 12px 0; white-space: normal; }
 [data-demo=atlas] .hero-particle-void { min-height: 460px; }
 [data-demo=atlas] [hidden] { display: none !important; }
 .atlas-entry { display: block; width: fit-content; margin: 16px auto; padding: 8px 16px; border: 1px solid #c2d7ed; border-radius: 20px; color: #0066cc; font-size: 14px; }

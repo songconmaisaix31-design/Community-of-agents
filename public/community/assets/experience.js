@@ -1,6 +1,7 @@
 /* 本地内容只在显式审阅确认后发送；唯一 DTO 来自 Core 生成客户端。 */
 (function () {
   "use strict";
+  var fixtureMode = new URLSearchParams(location.search).get("demo") === "atlas";
   var root = document.querySelector("[data-ex-library]");
   var C = window.GongzhiCommunity;
   if (!C) return;
@@ -9,7 +10,10 @@
     if (!modulePromise) modulePromise = import("/community/assets/gongzhi-client.js").catch(function (e) { modulePromise = null; throw e; });
     return modulePromise;
   }
-  function publicApi() { return window.GongzhiAtlas ? Promise.resolve(window.GongzhiAtlas.client) : shared().then(function (m) { return m.createApiClient("live"); }); }
+  function publicApi() {
+    if (fixtureMode) return window.GongzhiAtlas ? Promise.resolve(window.GongzhiAtlas.client) : Promise.reject(new Error("Fixture 资源加载失败，未请求真实服务。"));
+    return shared().then(function (m) { return m.createApiClient("live"); });
+  }
   function context() { return window.GongzhiAccount ? window.GongzhiAccount.context() : {}; }
   function node(tag, cls, text) {
     var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n;
@@ -55,7 +59,7 @@
     return value;
   }
   function openDraft(initial) {
-    if (window.GongzhiAtlas) { window.GongzhiAtlas.share(); return; }
+    if (fixtureMode) { if (window.GongzhiAtlas) window.GongzhiAtlas.share(); return; }
     if (initial) draftText = json(initial);
     if (!draftText) draftText = json(blank());
     var panel = C.openDialog("本地草稿与公开确认", "资料仅在本页内存中处理。先保存草稿，再登录批准；接入 MCP 或签发 grant 不等于同意上传。");
@@ -253,7 +257,7 @@
     }
     search.addEventListener("submit", function (e) { e.preventDefault(); discover(); });
     var draftButton = root.querySelector("[data-ex-draft]");
-    if (window.GongzhiAtlas) {
+    if (fixtureMode) {
       draftButton.hidden = true;
       root.querySelector(".cm-eyebrow").textContent = "FIXTURE · 合成占位方法 · 本地演练";
       root.querySelector(".ex-heading .cm-sub").textContent = "先让 A 分享，再由 B 搜索并选择固定第 1 版。没有真实作者或知乎引用，A 离线仍可借用。";
