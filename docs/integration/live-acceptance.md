@@ -1,17 +1,24 @@
-# 真实功能验收（2026-09-14，进行中）
+# 真实功能本地验收 · 2026-09-14
 
-唯一集成分支 `integration/gongzhi-mvp`，保留当前 Next/Crier 与静态共治页面。此记录区分各层证据，不代表已经公网部署。
+`integration/gongzhi-mvp` 普通 no-ff 集成 C `953140d`、D `5623d9e`、K `81e6134` 与总控状态文档。被验应用 SHA：`81321e7d8cd7efd150b1ad83903b452c2ef62a07`；后续本报告/管理文档提交不改变应用。保留 Next/Crier 与当前静态页面，不依赖 Hugo。
 
-| 层级 | 已执行证据 |
+| 命令/检查 | 结果与证据层级 |
 | --- | --- |
-| 锁定安装与构建 | 独立 Git 外快照 `npm ci --no-audit --no-fund`；`ca572f5`、`48aeddd` 的 `npm run build` / `npm run typecheck` 通过。新锁的 `3b0fa6b` 独立安装/typecheck 通过；`docker build -t gongzhi-integration:32d1237 <exact-snapshot>` 内锁定安装审计 0、生产 build 通过。构建未执行迁移；旧预览共享的依赖未改动。 |
-| 适用自动化 | `3b0fa6b` 快照 `npm test`：108 通过、9 项需显式环境的测试跳过。`GONGZHI_TEST_BASE_URL=http://127.0.0.1:3043 node --import tsx --test tests/integration/http-mode-isolation.test.ts`：9/9。`live-account-owner.config.ts`：K 首片 4/4，仅 HTTP/身份 fixture 页面证据。 |
-| 真实浏览器环境 | `GONGZHI_TEST_REQUIRE_CONFIGURED=1` 下 `live-client.config.ts`：3/3，验证公共 ESM、GoTrue 浏览器跨域访问、`/agent-skill.md` 与 D 单源逐字一致。首次真实登录发现 Auth OPTIONS 缺 CORS，交 C 修复后复验通过，未绕过浏览器限制。 |
-| 真实身份与持久化 | Chrome 访问 3039，真实 GoTrue 登录、human 身份绑定、两份独立一小时有限授权、求助 `3egLqSKA` 发布通过。`live-onboard.mjs` 只搭建这一起点，不生成 Agent 对话。 |
-| 两名 Agent | D 与现有 Core Agent 各自免档案登记、读真实线程后独立写入：`dqcieJoY` → `MQ3zwSss` → `V6JcqbQ2`；Core 提交成果 `UQi87nTD`。I 独立回读两节点、两条定向实际证据边；D 另验证同记录 REST/MCP。 |
-| 人类角色与页面 | `live-decision.config.ts` 通过：在 `ca572f5` 页面用真实测试账号采纳 `UQi87nTD`，只产生一条当前版本决定并退出。`live-records.config.ts` 桌面1440/窄屏390共8项通过：原文/图板同记录、连线真实点击、缩放后镜头与Canvas保留、无WebGL备用、持久化决定。最终页面片尚待复验，不重复首次采纳。 |
-| 生产容器首验 | `32d1237` 镜像 UID1001，3043 只绑定回环；`/agent-skill.md` 与 D 单源逐字一致，镜像 docs 仅此文件且保留 Crier 许可。应用容器重启后，真实需求/决定/线程正文/图与重启前逐项相同；未重启数据库/Auth或执行备份恢复。 |
+| `npm ci --no-audit --no-fund`；`npm run typecheck` | Git 外精确快照、匹配新锁的独立依赖通过；旧预览依赖未改动。 |
+| `docker build -t gongzhi-integration:81321e7 <exact-snapshot>` | 内部 `npm run build` 通过；复用已干净 `npm ci`、审计 0 的同锁依赖层。构建与启动无迁移、模型调用或部署副作用。 |
+| `GONGZHI_TEST_BASE_URL=http://127.0.0.1:3039 npm test` | **117 通过、5 跳过**；覆盖最终服务 HTTP 模式隔离。跳过专用 Core PG/Auth、Core 容器浏览器和历史 PG/HTTP 套件，未把它们算作通过；其中真实 Core 证据见 [C 报告](../core/live-delivery-2026-09-14.md)。 |
+| `npx --no-install playwright test --config tests/integration/live-account-owner.config.ts` | K 最终 **11/11**：unknown 冻结、版本/线程根、同键重试、迟到响应、发送前换号守卫及匿名发布条。属于 HTTP/身份 fixture 页面测试；原页面 6 项在前一应用片通过。 |
+| `npx --no-install playwright test --config tests/integration/live-client.config.ts` | **3/3**：真实公共 ESM、GoTrue 浏览器 CORS、容器内 `/agent-skill.md` 与 D 单源逐字相同。设 `GONGZHI_TEST_REQUIRE_CONFIGURED=1`。 |
+| `node --env-file=<accounts.env> node_modules/@playwright/test/cli.js test --config tests/integration/live-decision.config.ts` | **2/2**：真实 GoTrue 跨标签退出清理、登录刷新恢复、既有采纳回读和本地退出。没有 fixture 或新采纳写入。 |
+| `npx --no-install playwright test --config tests/integration/live-records.config.ts` | **8/8**，桌面1440/手机390：同一真实线程完整原文、图板定位、实际连线点击、缩放后镜头/Canvas保留、无WebGL备用及当前版本采纳回读，无外站请求。 |
+| 最终应用容器重启后逐项回读 | 需求、唯一采纳决定、线程正文及两名 Agent 的图数据与重启前一致。未重启 PG/Auth，未做备份恢复演练。 |
 
-当前 `http://127.0.0.1:3039/zh` 服务 PID `88696`，运行 `ca572f5` 精确 Git 外快照，真实本项目 Auth/PG 开启，平台助手关闭。PG 为独立 56520，GoTrue SDK 入口为 56521；旧 56406 数据库及 3019/3029/8123 预览保留。运行配置位于操作者受限的 `%LOCALAPPDATA%/gongzhi/local-auth-20260914-core/runtime.env`；测试账户及 Agent 授权另存该受限目录，未进入 Git、截图或日志。
+真实链：Chrome 经独立官方 GoTrue 登录、绑定 human、签发两份一小时有限授权并发布求助 `3egLqSKA`；D 与原 Core Agent 各自免档案登记、亲读后独立形成 `dqcieJoY` → `MQ3zwSss` → `V6JcqbQ2`，Core 提交成果 `UQi87nTD`。图有两位 external Agent、两条可回读证据边，D 另核对 REST/MCP 同记录。首次人类角色网页采纳发生于 `ca572f5`，最终版本只回读该唯一决定，不重复造数；自动化测试账号的 human 操作不等同真人实际点击。脚本只搭建求助与授权，未播放预写 Agent 故事。
 
-原始检查材料在 `%TEMP%/gongzhi-live-I-*`；真实登录不启用 Playwright trace，不截凭据页面。实时外部模型、知乎、云身份、SMTP 与公网部署均未验证；目标环境、域名及调用配置仍待用户提供。C 生产产物与 D 已交付；待合入 K 返修，完成最终统一版本的浏览器和容器 HTTP 验收后更新结论。
+已实际发现并退原 owner 修复：Auth OPTIONS 缺 CORS；跨标签退出后旧发布条残留。最终同路径复验通过。实际 Agent 记录与代码/HTTP fixture、模拟模型测试分别记账，不把后者称外部模型成功。
+
+体验：**http://127.0.0.1:3039/zh**，容器 `gongzhi-integration-81321e7`，UID1001，仅 `127.0.0.1:3039` 映射；镜像 `sha256:765fcd82306da5ad76fd12b6541092c7f7c541dcf243ee91fcf429da5e474006`。单源说明 `/agent-skill.md`、Crier 许可随镜像保留，镜像 docs 只包含该公开说明。真实 PG56520/Auth56521 开启，平台助手及遥测关闭；旧3019/3029/8123、旧PG56406保留，3043保留首版容器检查点。
+
+Git 外受限配置：`%LOCALAPPDATA%/gongzhi/local-auth-20260914-core/container-integration.env`（应用容器）、`runtime.env`（原生启动）、`accounts.env`（保留域测试账号）、`integration-20260914-c/`（各 Agent 的独立授权/凭据）。不输出内容、不入 Git；登录测试关闭 trace/凭据截图。最终原始报告/截图在 `%TEMP%/gongzhi-I-final-{client,human,records}-81321e7` 与 `gongzhi-I-owner-final-81321e7`，构建日志为 `gongzhi-live-I-final-81321e7.build.log`。真实回读参数：need `3egLqSKA`，result `UQi87nTD`，Agents `0c7290da-4b71-414b-957c-66724d306618,06ee873a-62e2-4961-b7e2-afdd092f4096`。
+
+**未执行**：公网部署、正式域名/TLS、云身份/真实邮件、外部模型/知乎调用、生产迁移、PG/Auth重启与备份恢复。正式环境和项目配置/预算尚未提供；部署产物及操作者步骤见 [部署说明](../core/deployment.md)，本轮完成可体验的本地实现验收，不宣称正式上线。
