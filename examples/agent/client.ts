@@ -1,5 +1,5 @@
 import { ApiClientError, createApiClient } from '../../lib/gongzhi/api-client.ts';
-import { AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
+import { CONTRACT_VERSION, AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type AgentStatus, type ConnectInfo, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
 
 const nonempty = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 const liveRecord = (value: Pick<Need, 'id' | 'mode' | 'owner_id'>) => nonempty(value.id) && value.mode === 'live' && nonempty(value.owner_id);
@@ -22,12 +22,12 @@ async function confirmedWrite<T>(signal: AbortSignal, write: () => Promise<T>, v
 /** Point the shared HTTP client at the operator's explicitly configured deployment. */
 type Connection = { baseUrl: string; signal: AbortSignal; fetch?: typeof fetch };
 
-function deploymentClient(options: Connection & { apiKey: string }) {
+function deploymentClient(options: Connection & { apiKey?: string }) {
   const base = new URL(options.baseUrl);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname);
   if ((base.protocol !== 'https:' && !(local && base.protocol === 'http:')) || base.username || base.password || base.search || base.hash || base.pathname !== '/') throw new Error('Use the origin of your configured self-hosted deployment.');
   if (base.hostname === 'crier.network' || base.hostname.endsWith('.crier.network')) throw new Error('The example requires your own deployment.');
-  if (!options.apiKey.trim()) throw new Error('A bound external-agent API key is required.');
+  if (options.apiKey !== undefined && !options.apiKey.trim()) throw new Error('A bound external-agent API key is required.');
   const request = options.fetch ?? fetch;
   return createApiClient('live', {
     accessToken: () => options.apiKey,
@@ -39,8 +39,52 @@ function deploymentClient(options: Connection & { apiKey: string }) {
   });
 }
 
+const invalidRead = () => new ApiClientError({ code: 'upstream_failed', message: '服务没有返回可核验的连接或身份信息。', retryable: false });
+
+/** Public discovery never reads or transmits a saved key and is not authentication. */
+export async function readAgentConnection(options: Connection) {
+  const data: ConnectInfo = await deploymentClient({ baseUrl: options.baseUrl, signal: options.signal, fetch: options.fetch }).readConnect();
+  if (data?.contract_version !== CONTRACT_VERSION || data.mcp?.transport !== 'streamable-http' ||
+      !Array.isArray(data.mcp.protocol_versions) || !data.mcp.protocol_versions.length ||
+      !data.mcp.protocol_versions.every(version => /^\d{4}-\d{2}-\d{2}$/.test(version)) ||
+      data.authentication?.agent !== 'bearer_header' || data.registration?.credential !== 'human_grant') throw invalidRead();
+  const endpoint = (path: string) => {
+    if (typeof path !== 'string' || !/^\/[a-z0-9/.-]+$/.test(path) || path.startsWith('//')) throw invalidRead();
+    const url = new URL(path, options.baseUrl);
+    if (url.origin !== new URL(options.baseUrl).origin) throw invalidRead();
+    return url.href;
+  };
+  const endpoints = {
+    api: endpoint(data.endpoints?.api), mcp: endpoint(data.endpoints?.mcp), skill: endpoint(data.endpoints?.skill),
+    register: endpoint(data.endpoints?.register), agent_status: endpoint(data.endpoints?.agent_status),
+  };
+  return {
+    contract_version: data.contract_version, identity_verified: false, endpoints,
+    mcp_template: { transport: data.mcp.transport, url: endpoints.mcp, authentication: { type: 'bearer', source: 'host-secret-store' } },
+    protocol_versions: data.mcp.protocol_versions,
+    template_notice: 'Generic connection description; use your host’s documented secret settings, not a directly importable client config.',
+  };
+}
+
+function verifiedStatus(data: AgentStatus): AgentStatus {
+  const owner = data?.owner;
+  const scopes = AgentScopeSchema.array().safeParse(data?.scopes);
+  if (data?.mode !== 'live' || owner?.mode !== 'live' || owner.kind !== 'external_agent' ||
+      !nonempty(owner.id) || !nonempty(owner.publisher_id) || !nonempty(data.human_owner_id) ||
+      owner.revoked_at !== null || !nonempty(owner.name) || !nonempty(owner.created_at) ||
+      !(owner.last_seen_at === null || nonempty(owner.last_seen_at)) ||
+      !Array.isArray(owner.capabilities) || !owner.capabilities.every(value => typeof value === 'string') || !scopes.success) throw invalidRead();
+  // Project only the shared public status fields; unexpected response secrets are never output.
+  return {
+    owner: { id: owner.id, publisher_id: owner.publisher_id, kind: owner.kind, name: owner.name,
+      capabilities: owner.capabilities, revoked_at: null, last_seen_at: owner.last_seen_at, created_at: owner.created_at, mode: 'live' },
+    human_owner_id: data.human_owner_id, scopes: scopes.data, mode: 'live',
+  };
+}
+
 /** Registration consumes a human-issued grant; it cannot create or enlarge one. */
 export function registerExternalAgent(options: Connection & { grantToken: string }, input: RegisterAgentInput) {
+  if (!options.grantToken?.trim()) throw new Error('A human-issued grant is required.');
   const parsed = RegisterAgentSchema.parse(input);
   const api = deploymentClient({ ...options, apiKey: options.grantToken });
   return confirmedWrite(options.signal, () => api.registerAgent(parsed), result =>
@@ -50,9 +94,11 @@ export function registerExternalAgent(options: Connection & { grantToken: string
 }
 
 export function createExternalAgent(options: Connection & { apiKey: string }) {
+  if (!options.apiKey?.trim()) throw new Error('A bound external-agent API key is required.');
   const api = deploymentClient(options);
   // Intentionally do not return generic requests, grant management or adoption controls.
   return {
+    agentStatus: async () => verifiedStatus(await api.agentStatus()),
     discoverBoard: (query: BoardQuery = {}) => api.discoverBoard(BoardQuerySchema.parse(query)),
     readThread: api.readThread,
     readRecord: api.readRecord,
