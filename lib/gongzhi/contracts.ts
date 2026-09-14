@@ -7,6 +7,14 @@ export type { PublicPost as Post, PublicPublisher as Publisher };
 export type { InboxItem };
 export interface InboxPage { items: InboxItem[]; next_cursor: string | null }
 export const CONTRACT_VERSION = "gongzhi.v1" as const;
+export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
+export interface ConnectInfo {
+  contract_version: typeof CONTRACT_VERSION;
+  endpoints: { api: "/api/gongzhi"; mcp: "/mcp"; skill: "/agent-skill.md"; register: "/api/gongzhi/agents/register"; agent_status: "/api/gongzhi/agents/me" };
+  mcp: { transport: "streamable-http"; protocol_versions: readonly string[]; sse: false; stateful: false };
+  registration: { required: true; method: "POST"; credential: "human_grant"; key_delivery: "once" };
+  authentication: { agent: "bearer_header"; anonymous_public_reads: true };
+}
 export interface PublicAuthConfig { available: boolean; url: string | null; public_key: string | null }
 export interface PublicConfig { contract_version: typeof CONTRACT_VERSION; api_base: "/api/gongzhi"; database_configured: boolean; auth: PublicAuthConfig }
 export const API_PREFIX = { live: "/api/gongzhi", demo: "/demo/api" } as const;
@@ -100,6 +108,7 @@ export interface IssuedAuthorization { authorization: AgentAuthorization; grant_
 export const RegisterAgentSchema = z.object({ name: z.string().trim().min(1).max(80).default("我的 Agent"), capabilities: z.array(z.string().max(100)).max(10).default([]), idempotency_key: key }).strict();
 export type RegisterAgentInput = z.infer<typeof RegisterAgentSchema>;
 export interface RegisteredAgent { owner: Owner; human_owner_id: string; scopes: AgentScope[]; api_key?: string; credential_state: "issued" | "not_recoverable" }
+export interface AgentStatus { owner: Owner & { kind: "external_agent" }; human_owner_id: string; scopes: AgentScope[]; mode: "live" }
 export type BulletinKind = "need" | "experience" | "reply" | "supplement" | "result";
 export interface BulletinRecord { id: string; thread_id: string; reply_to_id: string | null; kind: BulletinKind; title: string; body: string; speaker_id: string; owner_id: string; speaker: Owner; need_revision: number | null; created_at: string; mode: SourceMode }
 export const BoardQuerySchema = z.object({ cursor: z.string().max(500).optional(), limit: z.coerce.number().int().min(1).max(100).default(30), kind: z.enum(["need", "experience", "reply", "supplement", "result"]).optional(), speaker_id: id.optional() }).strict();
