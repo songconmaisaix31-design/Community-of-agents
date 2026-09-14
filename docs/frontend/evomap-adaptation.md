@@ -1,6 +1,43 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
-## Atlas：100 位知乎专业 Fixture Agent（2026-09-15，当前）
+## 主站能力星图与 Agent 进化层（2026-09-15，当前）
+
+从明确集成 `ad4465408db0886d23ac11fefcd742b5bb76b70f` 普通快进同步，沿原 F 分支交付；首片 `7c6758a9c50327949e44501fc7ee58a4922cdd19` 已推送。M 后续按用户要求将优先级调整为主站星图、两站共用理论页，取消视频/配音，并扩回 F 原社区前端写域。原 `test-results/` 保留；共享客户端、根配置/依赖/锁、API、Auth、后端和数据库均未修改。
+
+主站精确 `/zh#agents` 默认显示“能力参考”，这一初始选择发生在真实 API 响应之前。复用既有 100 个公开 Skill 专业角色目录，一点一种 Agent 能力，详情只提供固定提交的公开原文、许可和归属链接；没有安装、执行、外部自动读取、虚构真实在线或新增交流边。选点/搜索不筛掉真实公告。“已接入 Agent”页签及 `/zh/?graph=registered#agents`、`graph=live` 保留原真实空列表和错误，响应到达不会抢走用户所选视图；能力目录失效也不会用真实数据冒充参考目录。真实公告反向定位或带 `speaker` 的链接回到已接入视图。原显式 `demo=atlas` 演练及事实标识保留。
+
+继续使用既有 Cosmos 渲染器。新点改用确定性圆盘播种，减少原 sin/cos 方形边界；已有点保持位置，更新与选择不重新 fitView。就绪回调读取当前视图，避免旧数据晚到覆盖；WebGL 失败状态在后续数据刷新中保留，列表和来源仍可操作。
+
+进化页共用实际静态地址 **`/community/zh/evolution/index.html`**，三旧页桌面/手机导航与星图入口均直达该路径，Atlas 参数往返保留。没有依赖或声称主站 `/zh/evolution/` 路由已存在。页面仅一处轻量“理论设计”，六步展示责任人、输入输出和条件；版本对照可切换适用范围、检查证据、来源归属。A 在准确内容与范围批准后分享固定 v1 并可离线，B 本机适配、检查并自主决定是否反馈，反馈经独立审阅后只形成候选改进，用户批准才另存 v2；保留旧版、获准知乎来源、渐进读取与可选 Kernel。无执行/发布按钮、模型请求、认证、上传、凭据或本地存储。
+
+实际只读阅读以下官方来源，仅自写概念映射，不导入代码或运行其命令：
+
+| 官方参考 | 本页映射 |
+| --- | --- |
+| [EvoMap GEP](https://evomap.ai/zh/wiki/16-gep-protocol)、[Evolver](https://github.com/EvoMap/evolver) | 策略、结果、事件分开记录；固定方法、关联检查与版本来路。 |
+| [GEPA](https://github.com/gepa-ai/gepa) | 根据可检查的诊断反馈反思并比较候选，保留用户审阅。 |
+| [Agent Skills](https://agentskills.io/specification) | SKILL.md 可移植结构，摘要、正文、附加资料按需渐进加载。 |
+
+阅读时 Evolver 标示 GPL-3.0-or-later，并说明未来版本将转向 source-available；没有复制实现、引用代币市场叙事或宣称安装接入。许可证细节保留在本说明，页面只呈现参考机制与链接。
+
+验证与证据：
+
+- 首片受影响前端合并检查 **32/32（1.1 分钟）**：新页 8、能力星图 6、原基础前端 8、Atlas 10。先前首轮 17/18 暴露刷新丢失 WebGL 降级说明，已修复后得到此完整结果；首轮理论页 7/8 的装饰轨道手机溢出也已修复。
+- 最后圆盘播种微调后相关复验 **5/5（11.9 秒）**：主站默认参考、实际能力 Canvas 点选、准确详情、100 个有效点/零边、镜头和同一 Canvas 保留、Atlas 实际点选/反馈更新、无 WebGL 与手机入口。
+- 最后 `npm run typecheck`、六个相关 JS 的 `node --check`、`git diff --check` 通过；构建只打包本域 `graph-src.mjs`，未运行会重写共享客户端的 build:client，也未运行后端全构建。
+- 截图在 `%TEMP%/gongzhi-evolution-f/`：`evolution-desktop.png`、`evolution-mobile.png`、`evolution-mobile-feedback.png`、`capabilities-desktop.png`、`capabilities-mobile-fallback.png`。已实际查看桌面/手机页面及修正后的点云。
+
+```sh
+npx esbuild public/community/assets/graph-src.mjs --bundle --format=iife --global-name=GongzhiGraph --minify --outfile=public/community/assets/graph.bundle.js
+npx playwright test --config tests/frontend/evomap.config.ts tests/frontend/evomap.spec.ts tests/frontend/evomap-atlas-fixture.spec.ts tests/frontend/evomap-evolution.spec.ts tests/frontend/evomap-evolution-graph.spec.ts
+npx playwright test --config tests/frontend/evomap.config.ts tests/frontend/evomap-evolution-graph.spec.ts tests/frontend/evomap-atlas-fixture.spec.ts --grep '默认精确|现有Cosmos|实际 Canvas|WebGL'
+npm run typecheck
+git diff --check
+```
+
+这些是本地静态浏览器与明确 HTTP fixture 检查，不证明真实 Agent 执行或真实知乎授权。F 未部署主站/ECS/Pages，也未录制或配音；M 将最终 SHA 交原 I 统一集成、更新两个站点并验收公开 URL。参考和理论内容共用前端资源，部署产物/入口别名仍由 I 处理。
+
+## Atlas：100 位知乎专业 Fixture Agent（2026-09-15）
 
 普通合入已验收集成 `e4305e540b0eab4f196f2971bb2cd6be6b400657`，保留原 EvoMap 衍生页面、公告/线程、固定版本借用与 Cosmos 点图。“体验Fixture Agent”进入 `/zh/?demo=atlas`，持续显示“演示角色，非知乎官方认证或真实专家在线”；主页、公告、经验库、接入说明保留参数，退出回到真实 `/zh/`。100 个唯一专业与 Skill 参考，统一命名“知乎 XX 专家 Agent”；可搜索、选点或列表查看同一身份及来源，列表限制高度，移动端可找专业与查看参考。图始终保留 100 个 Agent 点，方法/任务/人物不成为节点。
 

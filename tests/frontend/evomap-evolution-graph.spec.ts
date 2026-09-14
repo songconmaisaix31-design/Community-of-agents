@@ -108,6 +108,7 @@ test("现有Cosmos画布在选择与切换中保留镜头，能力图恰好100�
     w.GongzhiGraph = { ...original, mount: (...args: any[]) => { w.evolutionGraphData = args[1]; return w.evolutionGraphInstance = original.mount(...args); } };
   });
   await page.getByRole("button", { name: "已接入 Agent", exact: true }).click();
+  const naturalZoom = await page.evaluate(() => (window as any).evolutionGraphInstance.getZoomLevel());
   await page.evaluate(() => (window as any).evolutionGraphInstance.setZoomLevel(1.7, 0, false));
   const zoom = await page.evaluate(() => (window as any).evolutionGraphInstance.getZoomLevel());
   await page.getByRole("button", { name: "能力参考", exact: true }).click();
@@ -121,6 +122,22 @@ test("现有Cosmos画布在选择与切换中保留镜头，能力图恰好100�
   }));
   expect(actual).toEqual({ nodes: 100, edges: 0, valid: 100, zoom });
   await expect(page.locator('.cm-graph-wrap canvas[data-retained="yes"]')).toHaveCount(1);
+  await page.getByRole("searchbox", { name: "搜索能力参考" }).fill("");
+  const point = await page.evaluate((scale: number) => {
+    const w = window as any, g = w.evolutionGraphInstance;
+    g.setZoomLevel(scale, 0, false);
+    const xy = g.getPointPositions(), bounds = document.querySelector(".cm-graph-wrap canvas")!.getBoundingClientRect();
+    for (let i = 0; i < w.evolutionGraphData.nodes.length; i++) {
+      const [x, y] = g.spaceToScreenPosition([xy[i * 2], xy[i * 2 + 1]]);
+      if (x > 8 && x < bounds.width - 8 && y > 8 && y < bounds.height - 8 && g.findPointsInRect([[x - 5, y - 5], [x + 5, y + 5]]).length === 1) return { x, y, id: w.evolutionGraphData.nodes[i].id, label: w.evolutionGraphData.nodes[i].label };
+    }
+    return null;
+  }, naturalZoom);
+  expect(point, "A visible isolated capability point is available for actual canvas click").not.toBeNull();
+  await page.locator(".cm-graph-wrap canvas").click({ position: { x: point!.x, y: point!.y } });
+  await expect(page.locator(`[data-agent-id="${point!.id}"]`)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "能力参考详情" })).toContainText(point!.label);
+  await expect(page.locator(".cm-record")).toHaveCount(1);
 });
 
 test("能力目录缺失保持不可用，未自动切换到真实接口成功数据", async ({ page }) => {
