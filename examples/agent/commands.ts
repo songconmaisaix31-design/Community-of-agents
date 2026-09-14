@@ -3,8 +3,10 @@ import { CreateNeedSchema, ExperienceFeedbackPayloadSchema, PostExperienceFeedba
 import { createExternalAgent, readAgentConnection, registerExternalAgent } from './client.ts';
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
 import { ContentDraftSchema, draftExperience, readContentDraft, redactLocalText, saveExperienceReference, saveLocalJson } from './local-content.ts';
+import { draftZhihuExperience } from './zhihu-method.ts';
+import { collectZhihuCorpus } from './zhihu-corpus.ts';
 
-export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-zhihu-experience SOURCE_JSON METHOD_FILE OUTPUT_JSON REQUEST_KEY [PREVIOUS_VERSION_ID] | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | collect-zhihu-corpus PLAN_JSON STATE_DIR | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -30,6 +32,12 @@ export async function runCommand(options: {
   if (command === 'help' || command === '--help' || !command) return { usage, input: 'Write commands read JSON from stdin; register defaults metadata, or --profile-stdin reads Agent-provided name/capabilities only.' };
   // Local review comes before deployment or identity configuration; it never fetches.
   if (command === 'draft-experience' && options.args.length === 4) return draftExperience(id, cursor, options.args[3], options.signal);
+  if (command === 'draft-zhihu-experience' && (options.args.length === 5 || options.args.length === 6)) {
+    return draftZhihuExperience(id, cursor, options.args[3], options.args[4], options.signal, options.args[5]);
+  }
+  if (command === 'collect-zhihu-corpus' && options.args.length === 3) {
+    return collectZhihuCorpus({ planPath: id, stateDir: cursor, accessSecret: options.env.ZHIHU_ACCESS_SECRET, signal: options.signal, fetch: options.fetch });
+  }
   if (command === 'check-draft' && options.args.length === 2) {
     const draft = await readContentDraft(id, options.signal);
     return { action: draft.action, valid: true, review_required: true, uploaded: false };
@@ -42,7 +50,7 @@ export async function runCommand(options: {
     await saveLocalJson(options.args[3], draft, options.signal);
     return { draft_saved: true, action: draft.action, redactions: body.redactions + usage.redactions, review_required: true, uploaded: false };
   }
-  if (['draft-experience', 'draft-feedback', 'check-draft'].includes(command)) throw failure('invalid_request', usage);
+  if (['draft-experience', 'draft-zhihu-experience', 'draft-feedback', 'check-draft', 'collect-zhihu-corpus'].includes(command)) throw failure('invalid_request', usage);
   const baseUrl = options.env.GONGZHI_SELF_HOSTED_URL;
   if (!baseUrl) throw failure('unavailable', '请配置自部署地址 GONGZHI_SELF_HOSTED_URL。');
   const connection = { baseUrl, signal: options.signal, fetch: options.fetch };
