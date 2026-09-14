@@ -13,3 +13,11 @@
 完整服务迁往境外需新增资源费用。CLI 当时香港按量询价：2 核 4 GB、40 GB ESSD、3 Mbps 约 CNY0.5900674/小时；仅询价，没有购买或改变现有服务。未备案原站的完整公网访问、未配置的 OAuth 应用凭证和真实 A/B 执行不属于本 fixture 发布已完成项。
 
 依据：[阿里云 ECS 跨地域与备案说明](https://help.aliyun.com/zh/ecs/cross-region-usage-faqs)、[GitHub Pages 自定义域名](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/about-custom-domains-and-github-pages)。
+
+## Agent 进化层与项目视频增量
+
+用户最新要求先增加纯前端的 Agent 进化理论页，再在 Chrome 打开真实部署页面，用本机 Recordly 录屏并配 TTS 项目解说。参考 EvoMap 的可追溯策略/结果/事件、GEPA 的反馈反思、Agent Skills 的便携方法结构；仅借鉴理念并标明来源，不导入运行时、不新增后端或调用模型。主线为获准知乎资料→方法固定版本→借用者本机条件适配与检查→可选反馈→经审阅形成新版本。
+
+F 原长期 Agent 从 `ad4465408db0886d23ac11fefcd742b5bb76b70f` 同步，独占 `public/community/zh/evolution/**`、`assets/evolution.css/js`、三张旧 HTML 必要导航、`tests/frontend/evomap-evolution*` 和原前端说明；保留原 `test-results/` 未跟踪证据。I 继续唯一集成、Pages 别名与必要入口胶水、集成检查和报告，不改 C 的根配置/锁文件或业务后端。M 独占本增量决定、参考资料核实和仓库外录屏/解说产物。F 交小步 SHA 后 I 普通合入、公开部署并验收，再开始正式录屏。
+
+新页面保留一处简洁“理论设计”标识，提供过程选择、方法版本/适用条件/验证依据的可交互说明，不制造实际执行回执或增长数据。视频聚焦共治理念和实际页面操作，不反复强调 mock/fixture；介绍理论时准确使用设计语气。既有事实标识及真实失败语义保持，不把公开页面部署等同于真实 Agent 执行。录制只选择独立 Chrome 公共页面窗口，不录私密桌面；本机现有中文 TTS 优先，无新增费用。
