@@ -6,9 +6,9 @@ const config: NextConfig = {
     return {
       beforeFiles: [
         { source: "/demo/api/:path*", destination: "/api/gongzhi/demo-rejected" },
-        { source: "/", destination: "/hugo/index.html" },
-        { source: "/demo/space", destination: "/hugo/demo/space/index.html" },
-        { source: "/network", destination: "/hugo/network/index.html" },
+        { source: "/zh", destination: "/community/zh/index.html" },
+        { source: "/zh/board", destination: "/community/zh/board/index.html" },
+        { source: "/zh/connect", destination: "/community/zh/connect/index.html" },
       ],
       afterFiles: [], fallback: [],
     };

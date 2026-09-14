@@ -1,6 +1,8 @@
 # 共治开发约定
 
-业务事实源：最新用户四点纠偏见 docs/source/corrections-2026-09-13.md，优先于 docs/source/integration-v3.md、docs/source/tasks-v2.md 和旧验收。Hugo 为产品前端；既有 Crier/Next.js、Supabase Auth/Postgres 和模型服务保留为后端；继续用 cosmos.gl、现有客户端/MCP 与 MSW，不另造布局、消息或调度平台。
+业务事实源：2026-09-14 用户最新指定以本机 8123/zh 展示的 EvoMap 前端适配共治，明确放弃 Hugo 和此前的前端页面；保留适用布局、样式、交互与已有有效代码，改写项目叙事。此要求覆盖下文和旧文档中的 Hugo 要求。既有 Crier/Next.js、Supabase Auth/Postgres 和模型服务继续保留；Agent-only、实际交流证据、有限授权与演示/真实隔离仍按 docs/source/corrections-2026-09-13.md 执行。
+
+本轮从集成基线 2b8fd8b06e12cc43e7bf045e13b75307f79a10d8 续接。Kimi K3 在 gongzhi-kimi-adaptation 独占 public/community/**、tests/frontend/evomap*.ts 与 evomap*.mjs、docs/frontend/evomap-adaptation.md；主目录未提交的原始页面仅作读取来源，不覆盖。Integration I 在 gongzhi-integration 独占本轮入口页面、app/layout.tsx、必要的 next.config.ts 静态路由、package.json 前端命令、tests/integration/** 与 docs/integration/**；不改后端、锁文件或领域组件。资源统一 /community/ 前缀，用户入口 /zh/，仍用现有 /api/gongzhi/** 契约，禁止原站代理和失败返回模拟成功。总控只协调、验收；跨域修改交接，I 唯一集成。
 
 ## 唯一文件所有权
 
@@ -14,6 +16,8 @@
 纠偏增量写域：B 独占新增 frontend/hugo/**（Hugo 模板、内容、样式、浏览器脚本及 Hugo 配置）；全仓依赖/锁文件、根构建与 Next 配置仍由 C 唯一持有，B 不新增独立依赖栈。C 可扩展既有共享 DTO 与 API，D 扩展既有 examples/agent CLI/客户端。I 仍为唯一集成人，领域问题退原轨。各轨续用原 worktree/branch，从集成基线 2a0b5617b5dc5030894bde6541ddcb6bc469c24a 起步。
 
 ## 交付习惯
+
+2026-09-14 EvoMap 风格增量：详见 docs/source/evomap-style-2026-09-14.md。基线更新为 21f710703f131d96f36b601f7b11dcd962e03581。B 已在 msg_7469b7b1a755 明确交接，本轮 D 独占 components/gongzhi/AgentCanvas.tsx、tests/frontend/hugo-graph-theme.spec.ts、docs/connect/graph-theme.md；B 从本轮写域排除这两代码文件，其他前端所有权不变。B 仍独占主题和全局样式；D 仅消费 HTML data-theme 与六个 --graph-* CSS 颜色变量。C 根配置与共享契约所有权不变，I 唯一集成人。
 
 每轨固定 Orca Agent + worktree + branch；Worker 只改写域，读全仓可。阶段完成即 commit + push，交接 SHA、说明、真实检查、遗留问题。禁止 force push、覆盖他人未提交内容、修改历史迁移掩盖差异。根依赖和锁文件只有 C 可写。
 
