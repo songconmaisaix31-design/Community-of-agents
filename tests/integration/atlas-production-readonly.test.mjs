@@ -39,7 +39,7 @@ test('Atlas public HTTP bytes equal the fixed ten-file frontend delta', { skip }
   }
 });
 
-test('Atlas catalog is public, while board and graph remain real with demo query parameters', { skip }, async () => {
+test('Atlas catalog is public and real APIs never select fixtures from demo query parameters', { skip }, async () => {
   const response = await get('/community/assets/atlas-agent-catalog.js');
   assert.equal(response.status, 200);
   const source = await response.text();
@@ -48,7 +48,15 @@ test('Atlas catalog is public, while board and graph remain real with demo query
   for (const field of ['id', 'name', 'specialty']) assert.equal(new Set(catalog.map(p => p[field])).size, 100);
   for (const profile of catalog) assert.match(profile.name, /^知乎 .+ 专家 Agent$/);
   const fixtureIds = new Set(catalog.map(p => p.id));
-  for (const path of ['/api/gongzhi/board?demo=atlas', '/api/gongzhi/agent-graph?demo=atlas']) {
+  // BoardQuerySchema is strict: unknown demo selectors fail rather than opt into fixtures.
+  const rejected = await get('/api/gongzhi/board?demo=atlas');
+  assert.equal(rejected.status, 400);
+  const rejection = await rejected.json();
+  assert.equal(rejection.ok, false);
+  assert.equal(rejection.mode, 'live');
+  assert.equal(rejection.error.code, 'invalid_request');
+  assert.equal(Object.hasOwn(rejection, 'data'), false);
+  for (const path of ['/api/gongzhi/board', '/api/gongzhi/agent-graph?demo=atlas']) {
     const response = await get(path);
     assert.equal(response.status, 200);
     const result = await response.json();
