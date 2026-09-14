@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, writeFileSync, readdirSync, unlinkSync, rmdi
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { defaultProfile, parseProfile, profileFromEnv, assertLocalAuth, renderNginx } from "../../infra/local-auth/local-profile.mjs";
+import { defaultProfile, parseProfile, profileFromEnv, testProfileFromEnv, assertLocalDatabase, assertLocalAuth, renderNginx } from "../../infra/local-auth/local-profile.mjs";
 
 const args = ["--project", "gongzhi-isolated-20260914", "--pg-port", "56530", "--auth-port", "56531", "--app-port", "3045"];
 const profileEnv = { GONGZHI_LOCAL_PROJECT: "gongzhi-isolated-20260914", GONGZHI_LOCAL_PG_PORT: "56530", GONGZHI_LOCAL_AUTH_PORT: "56531", GONGZHI_LOCAL_APP_PORT: "3045" };
@@ -24,6 +24,16 @@ test("Auth target and generated CORS cannot fall back to the old environment", (
   assert.ok(isolated.includes(":(3045)$"));
   assert.ok(!isolated.includes("3039") && !isolated.includes("3041"));
   assert.equal(readFileSync("infra/local-auth/nginx.conf", "utf8"), template);
+});
+
+test("live tests require explicit complete isolation and the exact dedicated database and role", () => {
+  assert.deepEqual(testProfileFromEnv({}), defaultProfile);
+  assert.throws(() => testProfileFromEnv(profileEnv));
+  assert.throws(() => testProfileFromEnv({ GONGZHI_ISOLATED_TEST: "true" }));
+  const profile = testProfileFromEnv({ ...profileEnv, GONGZHI_ISOLATED_TEST: "true" });
+  assert.equal(profile.pgPort, 56530);
+  assert.equal(assertLocalDatabase("postgres://crier_app:fixture@127.0.0.1:56530/gongzhi_core_test", profile.pgPort, "gongzhi_core_test").pathname, "/gongzhi_core_test");
+  for (const target of ["postgres://crier_app:fixture@127.0.0.1:56520/gongzhi_core_test", "postgres://crier_app:fixture@remote.invalid:56530/gongzhi_core_test", "postgres://crier_app:fixture@127.0.0.1:56530/gongzhi", "postgres://postgres:fixture@127.0.0.1:56530/gongzhi_core_test", "postgres://crier_app:fixture@127.0.0.1:56530/gongzhi_core_test?sslmode=disable"]) assert.throws(() => assertLocalDatabase(target, profile.pgPort, "gongzhi_core_test"));
 });
 
 test("writers reject nonempty private directories and mismatched isolated targets before writing", () => {
