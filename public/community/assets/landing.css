@@ -52,6 +52,7 @@
 
 /* ---------- Hero 接入面板（钉钉式浅灰大圆角面板 + tabs + 打字机命令行） ---------- */
 .landing-root .ln-install {
+  position: relative;
   width: 100%;
   max-width: 720px;
   margin-top: 34px;
@@ -140,6 +141,13 @@
   animation: ln-caret-blink 0.68s steps(1, end) infinite;
 }
 @keyframes ln-caret-blink { 50% { opacity: 0; } }
+.landing-root .ln-command-row.is-preparing .ln-command-caret {
+  display: block;
+  opacity: 0;
+  animation: none;
+  transition: opacity 60ms linear;
+}
+.landing-root .ln-command-row.is-preparing .ln-command-caret.is-visible { opacity: 1; }
 .landing-root .ln-copy-btn {
   display: inline-flex;
   align-items: center;
@@ -169,6 +177,38 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------- 装饰元素：hover/聚焦接入面板时弹性飞入（对齐 dws CLI 动效） ---------- */
+.landing-root .ln-decor {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 12px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(0, 102, 255, 0.14);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: transform 0.5s cubic-bezier(0.3, 1.25, 0.5, 1), opacity 0.2s ease;
+  box-sizing: border-box;
+}
+.landing-root .ln-decor svg { width: 100%; height: 100%; display: block; }
+.landing-root .ln-decor-code { top: -26px; left: -132px; transform: translate3d(108px, 40px, 0); }
+.landing-root .ln-decor-team {
+  bottom: -26px; left: -92px; transform: translate3d(78px, -32px, 0);
+  transition: transform 0.5s cubic-bezier(0.22, 0.68, 0.26, 1), opacity 0.2s ease;
+}
+.landing-root .ln-decor-cli { top: 34%; right: -132px; transform: translate3d(-108px, 0, 0); }
+.landing-root .ln-install:hover .ln-decor,
+.landing-root .ln-install:focus-within .ln-decor {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 /* ---------- Agent 工具图标墙 ---------- */
@@ -530,6 +570,7 @@
   .landing-root .ln-h2 { font-size: 26px; }
   .landing-root .ln-sub { font-size: 14px; }
   .landing-root .ln-install { margin-top: 24px; }
+  .landing-root .ln-decor { display: none; }
   .landing-root .ln-install-tabs { gap: 16px; }
   .landing-root .ln-install-panel { padding: 18px 16px 20px; }
   .landing-root .ln-command-row { padding: 14px 16px; gap: 10px; }
@@ -616,6 +657,7 @@
   }
   .landing-root .ln-command-row.is-typing .ln-command-caret { animation: none; }
   .landing-root .ln-copy-btn { transition: none; }
+  .landing-root .ln-decor { transition: none; }
   .landing-root .ln-faq-a { transition: none !important; }
   .landing-root .ln-faq-icon::before,
   .landing-root .ln-faq-icon::after { transition: none !important; }
