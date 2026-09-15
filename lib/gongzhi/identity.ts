@@ -8,11 +8,31 @@ import { BindOwnerSchema, type AgentScope, type AgentStatus, type BoundOwner, ty
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 import { getAuthConfiguration } from "./auth-config";
 import { hasExplicitCredential, isMutation, verifiedWebUser } from "./web-session";
+import { validateMcpToken } from "./mcp-oauth-token";
+import { mcpOAuthConfig } from "./mcp-oauth-config";
 
 export interface Identity { readonly owner: Owner; readonly user_id: string }
 export type OwnerRow = { id: string; user_id: string; publisher_id: string; kind: Owner["kind"]; capabilities: string[]; scopes: AgentScope[]; revoked_at: Date | null; created_at: Date; credential_version: number; name: string; last_seen_at: Date | null; status: string };
 const credentials = new WeakMap<Identity, number>();
 const webRequests = new WeakMap<Identity, Request>();
+const oauthCredentials = new WeakMap<Identity, string>();
+const internalActors = new WeakMap<Request, Identity>();
+export function hasInternalActor(req: Request) { return internalActors.has(req); }
+/** Server-only in-process dispatch; no bearer is forwarded to REST or an arbitrary origin. */
+export function bindInternalActor(req: Request, actor: Identity) {
+  if (!oauthCredentials.has(actor) || !credentials.has(actor)) throw new GongzhiError(403, "forbidden", "Verified MCP actor required.");
+  internalActors.set(req, actor);
+}
+export async function resolveMcpIdentity(req: Request): Promise<Identity> {
+  const c = mcpOAuthConfig();
+  // The route owns origin trust at a reverse proxy; canonical audience always comes from configuration.
+  if (new URL(req.url).pathname !== new URL(c.resource).pathname || new URL(req.url).searchParams.has("access_token") || req.headers.has("x-api-key")) throw new GongzhiError(401, "unauthenticated", "MCP Bearer required.");
+  const token = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
+  const grant = await validateMcpToken(token);
+  const [row] = await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${grant.agent_id}`;
+  if (!row || row.credential_version !== grant.credential_version) throw new GongzhiError(401, "unauthenticated", "MCP credential changed.");
+  const actor = identity(row); oauthCredentials.set(actor, token); return actor;
+}
 export function toOwner(row: OwnerRow): Owner {
   return { id: row.id, publisher_id: row.publisher_id, kind: row.kind, name: row.name, capabilities: row.capabilities, revoked_at: row.revoked_at?.toISOString() ?? null, last_seen_at: row.last_seen_at?.toISOString() ?? null, created_at: row.created_at.toISOString(), mode: "live" };
 }
@@ -23,6 +43,7 @@ function identity(row: OwnerRow): Identity {
   return value;
 }
 export async function verifiedUser(req: Request): Promise<string> {
+  if (internalActors.has(req)) throw new GongzhiError(403, "forbidden", "MCP Agent cannot act as a human.");
   if (!hasExplicitCredential(req)) return verifiedWebUser(req);
   const token = bearer(req);
   if (!token || token.startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请使用人的 Supabase 登录身份。");
@@ -38,6 +59,8 @@ export async function verifiedUser(req: Request): Promise<string> {
   return data.user.id;
 }
 export async function resolveIdentity(req: Request): Promise<Identity> {
+  const internal = internalActors.get(req);
+  if (internal) { await validatedIdentityRow(internal); return internal; }
   const token = bearer(req);
   if (hasExplicitCredential(req) && !token) throw new GongzhiError(401, "unauthenticated", "显式凭据无效。");
   // Verify anonymous requests before attempting any database operation.
@@ -53,6 +76,11 @@ export async function resolveIdentity(req: Request): Promise<Identity> {
 }
 async function validatedIdentityRow(actor: Identity, lock = false, scope?: AgentScope): Promise<OwnerRow> {
   if (!credentials.has(actor)) throw new GongzhiError(403, "unbound_identity", "身份必须由服务器验证。");
+  const oauth = oauthCredentials.get(actor);
+  if (oauth) {
+    const grant = await validateMcpToken(oauth, lock);
+    if (scope && !grant.scopes.includes(scope)) throw new GongzhiError(403, "forbidden", `MCP scope ${scope} required.`);
+  }
   const request = webRequests.get(actor);
   if (request && await verifiedWebUser(request, lock) !== actor.user_id) throw new GongzhiError(401, "unauthenticated", "登录会话已失效。");
   const rows = lock
@@ -71,7 +99,7 @@ export async function assertIdentity(actor: Identity, lock = false, scope?: Agen
 export async function agentStatus(req: Request): Promise<AgentStatus> {
   const header = req.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
-  if (!match?.[1].startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请由宿主通过 Bearer 提供已登记的 Agent 密钥。");
+  if (!internalActors.has(req) && !match?.[1].startsWith("crier_sk_")) throw new GongzhiError(401, "unauthenticated", "请由宿主通过 Bearer 提供已登记的 Agent 密钥。");
   const actor = await resolveIdentity(req);
   const row = await validatedIdentityRow(actor);
   if (row.kind !== "external_agent") throw new GongzhiError(403, "forbidden", "此接口仅核验外部 Agent。");

@@ -1,3 +1,4 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -8,7 +9,7 @@ import { bindOwner, changeOwner, resolveIdentity } from "../../lib/gongzhi/ident
 import { closeNeed, createNeed, updateNeed, publishExperience, readExperience, submitResult, decideResult, readNeed, readInbox, getNetwork } from "../../lib/gongzhi/service.ts";
 import { resolveRunIdentity, claimRun, cancelRun, finishRun, getRun, submitRunResult } from "../../lib/gongzhi/runs.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
-import { handleMcpPost } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost } from "../../lib/mcp.ts";
 import { sql } from "../../lib/db.ts";
 import type { SubmitResultInput } from "../../lib/gongzhi/contracts.ts";
 

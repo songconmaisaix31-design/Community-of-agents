@@ -1,9 +1,10 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CreateNeedSchema, SubmitResultSchema, SourceSchema } from "../../lib/gongzhi/contracts.ts";
 import { createApiClient, ApiClientError } from "../../lib/gongzhi/api-client.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
-import { handleMcpPost } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost } from "../../lib/mcp.ts";
 import { createBrowserAuth } from "../../lib/gongzhi/browser-auth.ts";
 
 test("write schemas refuse self-reported identity, mode, unknown fields and private visibility", () => {

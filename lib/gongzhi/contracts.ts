@@ -12,8 +12,9 @@ export interface ConnectInfo {
   contract_version: typeof CONTRACT_VERSION;
   endpoints: { api: "/api/gongzhi"; mcp: "/mcp"; skill: "/agent-skill.md"; register: "/api/gongzhi/agents/register"; agent_status: "/api/gongzhi/agents/me" };
   mcp: { transport: "streamable-http"; protocol_versions: readonly string[]; sse: false; stateful: false };
-  registration: { required: true; method: "POST"; credential: "human_grant"; key_delivery: "once" };
+  registration: { required: true; method: "POST"; credential: "human_grant"; key_delivery: "once"; transport?: "legacy_rest" };
   authentication: { agent: "bearer_header"; anonymous_public_reads: true };
+  mcp_oauth?: { discovery: "/.well-known/oauth-protected-resource/mcp"; credential: "oauth_access_token"; pkce: "S256"; legacy_credentials_accepted: false };
 }
 export const WEB_AUTH_ENDPOINTS = { start: "/api/gongzhi/auth/zhihu/start", session: "/api/gongzhi/auth/session", logout: "/api/gongzhi/auth/logout", callback: "/auth/zhihu/callback" } as const;
 /** url/public_key remain for callers of the previous public configuration. Zhihu never exposes a provider token/key. */
