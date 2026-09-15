@@ -1,0 +1,2 @@
+# Local historical snapshots are preserved on disk, not published to Git.
+/archive/local/
