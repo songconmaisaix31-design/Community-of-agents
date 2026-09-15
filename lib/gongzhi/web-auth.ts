@@ -6,6 +6,7 @@ import { createZhihuOAuth, ZhihuOAuthError, type ZhihuOAuthUser } from "./zhihu/
 import { assertDatabaseConfigured, errorResponse, GongzhiError } from "./errors";
 import { getWebAuthConfiguration } from "./web-auth-config";
 import { assertBrowserOrigin, hasExplicitCredential, opaqueCookie, readWebSession, SESSION_COOKIE, STATE_COOKIE, webCookie } from "./web-session";
+import { readMcpConsent } from "./mcp-oauth";
 
 const randomToken = () => randomBytes(32).toString("base64url");
 const privateHeaders = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" };
@@ -61,7 +62,7 @@ async function mapUser(user: ZhihuOAuthUser) {
   for (const alias of aliases) await sql()`insert into gongzhi_web_subjects(provider,subject,kind,user_id) values('zhihu',${alias.subject},${alias.kind},${id}) on conflict(provider,subject) do nothing`;
   return id;
 }
-export async function handleWebAuth(req: Request, action: "start" | "session" | "logout" | "callback", upstreamFetch?: typeof fetch): Promise<Response> {
+export async function handleWebAuth(req: Request, action: "start" | "session" | "logout" | "callback", upstreamFetch?: typeof fetch, mcpRequestId?: string): Promise<Response> {
   try {
     if (hasExplicitCredential(req)) throw new GongzhiError(401, "unauthenticated", "网页登录不接受 Agent 或其他显式凭据。");
     if (action === "session") {
@@ -79,8 +80,9 @@ export async function handleWebAuth(req: Request, action: "start" | "session" | 
       // One SQL statement commits the consumption BEFORE any provider network call.
       const [consumed] = await sql()`update gongzhi_web_states set consumed_at=clock_timestamp()
         where state_hash=${sha256(state)} and browser_hash=${sha256(browser)} and redirect_uri=${config.redirectUri}
-        and consumed_at is null and cancelled_at is null and expires_at>clock_timestamp() returning state_hash`;
+        and consumed_at is null and cancelled_at is null and expires_at>clock_timestamp() returning state_hash,mcp_request_id`;
       if (!consumed) throw invalid();
+      if (consumed.mcp_request_id) await readMcpConsent(req, consumed.mcp_request_id);
       if (url.searchParams.has("error")) return callbackResult(url.searchParams.get("error") === "access_denied" ? "cancelled" : "upstream_failed");
       const code = url.searchParams.get("authorization_code");
       if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code) || url.searchParams.has("code")) throw invalid();
@@ -102,6 +104,7 @@ export async function handleWebAuth(req: Request, action: "start" | "session" | 
         await sql()`insert into gongzhi_web_sessions(session_hash,browser_hash,user_id,expires_at) values(${sha256(session)},${sha256(browser)},${userId},${expires})`;
       });
       const response = callbackResult("success");
+      if (consumed.mcp_request_id) response.headers.set("Location", `/oauth/consent?request=${encodeURIComponent(consumed.mcp_request_id)}`);
       response.headers.append("Set-Cookie", webCookie(SESSION_COOKIE, session, (expires.getTime() - Date.now()) / 1000));
       return response;
     }
@@ -109,6 +112,7 @@ export async function handleWebAuth(req: Request, action: "start" | "session" | 
     assertBrowserOrigin(req);
     await emptyJson(req);
     if (action === "start") {
+      if (mcpRequestId) await readMcpConsent(req, mcpRequestId);
       await rateLimit(`web-oauth:${clientIp(req)}`, 20, 600, "login starts");
       const state = randomToken(), browser = randomToken();
       const authorizationUrl = createZhihuOAuth(config).authorizationUrl(state);
@@ -118,7 +122,7 @@ export async function handleWebAuth(req: Request, action: "start" | "session" | 
           await sql()`update gongzhi_web_states set cancelled_at=coalesce(cancelled_at,clock_timestamp()) where browser_hash=${sha256(previous)}`;
           await sql()`update gongzhi_web_sessions set revoked_at=coalesce(revoked_at,clock_timestamp()) where browser_hash=${sha256(previous)}`;
         }
-        await sql()`insert into gongzhi_web_states(state_hash,browser_hash,redirect_uri,expires_at) values(${sha256(state)},${sha256(browser)},${config.redirectUri},clock_timestamp()+interval '10 minutes')`;
+        await sql()`insert into gongzhi_web_states(state_hash,browser_hash,redirect_uri,expires_at,mcp_request_id) values(${sha256(state)},${sha256(browser)},${config.redirectUri},clock_timestamp()+interval '10 minutes',${mcpRequestId ?? null})`;
       });
       const response = result({ authorization_url: authorizationUrl });
       response.headers.append("Set-Cookie", webCookie(STATE_COOKIE, browser, 600));

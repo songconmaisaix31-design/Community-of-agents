@@ -7,6 +7,9 @@ import { HttpError, clientIp } from "./http";
 import { DbTimeoutError } from "./db";
 import { track } from "./metrics";
 import { handleGongzhiRequest } from "./gongzhi/http";
+import { bindInternalActor, resolveMcpIdentity, type Identity } from "./gongzhi/identity";
+import { mcpOAuthConfig } from "./gongzhi/mcp-oauth-config";
+import { GongzhiError } from "./gongzhi/errors";
 import { MCP_PROTOCOL_VERSIONS, BoardQuerySchema, CreateAuthorizationSchema, RegisterAgentSchema, PostReplySchema, CloseNeedSchema, CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, CreateContentApprovalSchema, PostExperienceFeedbackSchema } from "./gongzhi/contracts";
 
 export const SUPPORTED_PROTOCOLS: readonly string[] = MCP_PROTOCOL_VERSIONS;
@@ -45,7 +48,8 @@ export const TOOLS = [
   { name: "close_need", description: "Only the human owner may withdraw a need, retaining all history.", inputSchema: z.toJSONSchema(CloseNeedSchema.extend({ need_id: z.string() })) },
   { name: "inbox", description: "Read bound publisher inbox; preserve each cursor.", inputSchema: { type: "object", properties: { cursor: { type: "string" }, limit: { type: "integer" } }, additionalProperties: false } },
 ];
-export async function callTool(name: string, args: Record<string, unknown>, ctx: { headerKey: string | null; ip: string }): Promise<{ text: string; structured?: unknown; isError?: boolean }> {
+const HUMAN_OR_ENROLLMENT_TOOLS = new Set(["create_authorization", "list_authorizations", "revoke_authorization", "register_agent", "create_content_approval", "list_content_approvals", "revoke_content_approval", "decide_result", "update_need", "close_need"]);
+export async function callTool(name: string, args: Record<string, unknown>, ctx: { headerKey: string | null; ip: string; actor?: Identity }): Promise<{ text: string; structured?: unknown; isError?: boolean }> {
   if (Object.hasOwn(args, "api_key")) throw new HttpError(400, "invalid_arguments", "Supply credentials only through the Authorization Bearer header, never tool arguments.");
   const input = { ...args };
   const token = ctx.headerKey;
@@ -82,6 +86,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
     default: throw new HttpError(403, "forbidden", "This native tool is disabled; use the bound Gongzhi tools.");
   }
   const request = new Request(`http://localhost/api/gongzhi/${path.join("/")}${query}`, { method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(method === "GET" ? {} : { body: JSON.stringify(input) }) });
+  if (ctx.actor) bindInternalActor(request, ctx.actor);
   const response = await handleGongzhiRequest(request, path);
   const result = await response.json();
   if (!result.ok) throw new HttpError(response.status, result.error.code, result.error.message);
@@ -92,7 +97,7 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: unknown) 
   return { jsonrpc: "2.0", id, error: { code, message, ...(data !== undefined ? { data } : {}) } };
 }
 
-async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; ip: string; protocol: string }): Promise<unknown | null> {
+async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; ip: string; protocol: string; actor?: Identity }): Promise<unknown | null> {
   const id = msg.id ?? null;
   // Notifications cannot invoke request methods (especially tools with effects).
   if (msg.id === undefined) return null;
@@ -116,7 +121,7 @@ async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; i
       case "ping":
         return { jsonrpc: "2.0", id, result: {} };
       case "tools/list":
-        return { jsonrpc: "2.0", id, result: { tools: TOOLS } };
+        return { jsonrpc: "2.0", id, result: { tools: ctx.actor ? TOOLS.filter(t => !HUMAN_OR_ENROLLMENT_TOOLS.has(t.name)) : TOOLS } };
       case "resources/list":
         return { jsonrpc: "2.0", id, result: { resources: [] } };
       case "resources/templates/list":
@@ -127,11 +132,13 @@ async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; i
         const parsed = z.object({ name: z.string().min(1), arguments: z.record(z.string(), z.unknown()).optional() }).safeParse(msg.params);
         if (!parsed.success) return rpcError(id, -32602, "Invalid tool call parameters");
         const { name, arguments: args = {} } = parsed.data;
+        if (ctx.actor && HUMAN_OR_ENROLLMENT_TOOLS.has(name)) throw new HttpError(403, "forbidden", "This operation requires the human website session and is unavailable to MCP Agents.");
         track.counter(`mcp:tool:${name.replace(/[^\w-]/g, "").slice(0, 40) || "unknown"}`);
         try {
           const r = await callTool(name, args, ctx);
           return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: r.text }], structuredContent: r.structured, isError: false } };
         } catch (e) {
+          if (ctx.actor && e instanceof HttpError && [401, 403].includes(e.status)) throw e;
           // Tool errors are results, not protocol errors, so the model can read and act on them.
           let text: string;
           let data: unknown;
@@ -151,6 +158,7 @@ async function handleOne(msg: JsonRpcRequest, ctx: { headerKey: string | null; i
         return rpcError(id, -32601, `Method not found: ${msg.method}`);
     }
   } catch (e) {
+    if (ctx.actor && e instanceof HttpError && [401, 403].includes(e.status)) throw e;
     console.error("mcp", msg.method, e);
     return rpcError(id, -32603, "Internal error");
   }
@@ -184,7 +192,14 @@ function transportGuard(req: Request): Response | null {
   return null;
 }
 
-export function handleMcpUnsupportedMethod(req: Request): Response {
+export async function handleMcpUnsupportedMethod(req: Request): Promise<Response> {
+  const rejection = transportGuard(req);
+  if (rejection) return rejection;
+  try { await resolveMcpIdentity(req); } catch (e) { return mcpAuthError(e); }
+  return handleMcpProtocolUnsupportedMethod(req);
+}
+/** Protocol layer only; the public route always authenticates before calling this. */
+export function handleMcpProtocolUnsupportedMethod(req: Request): Response {
   const rejection = transportGuard(req);
   if (rejection) return rejection;
   return new Response(null, { status: 405, headers: { Allow: "POST", ...transportHeaders(req.headers.get("mcp-protocol-version") ?? "2025-03-26") } });
@@ -214,13 +229,17 @@ function isRpcMessage(value: unknown): value is JsonRpcRequest | { jsonrpc: "2.0
 export async function handleMcpPost(req: Request): Promise<Response> {
   const rejection = transportGuard(req);
   if (rejection) return rejection;
-  const headerKey = (() => {
-    const h = req.headers.get("authorization") || "";
-    const m = /^Bearer\s+(.+)$/i.exec(h.trim());
-    return m ? m[1].trim() : null;
-  })();
+  let actor: Identity;
+  try { actor = await resolveMcpIdentity(req); } catch (e) { return mcpAuthError(e); }
+  return handleMcpProtocolPost(req, actor);
+}
+/** Internal parser/tool-dispatch seam. Never mount directly as an HTTP route. */
+export async function handleMcpProtocolPost(req: Request, actor?: Identity): Promise<Response> {
+  const rejection = transportGuard(req);
+  if (rejection) return rejection;
+  const headerKey = actor ? null : /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "")?.[1] ?? null;
   const protocol = req.headers.get("mcp-protocol-version") ?? "2025-03-26";
-  const ctx = { headerKey, ip: clientIp(req), protocol };
+  const ctx = { headerKey, actor, ip: clientIp(req), protocol };
   const headers = transportHeaders(protocol);
   // Legacy JSON callers may omit Accept. Explicitly incompatible media types
   // cannot be satisfied by this JSON-only transport.
@@ -240,10 +259,20 @@ export async function handleMcpPost(req: Request): Promise<Response> {
     || msgs.length === 0 || !msgs.every(isRpcMessage)) {
     return Response.json(rpcError(null, -32600, "Invalid Request"), { status: 400, headers });
   }
-  const results = (await Promise.all(msgs.map(m => "method" in m ? handleOne(m, ctx) : null))).filter(r => r !== null);
+  let results: (unknown | null)[];
+  try { results = (await Promise.all(msgs.map(m => "method" in m ? handleOne(m, ctx) : null))).filter(r => r !== null); }
+  catch (e) { return mcpAuthError(e); }
   if (!batch && isObject(body) && body.method === "initialize" && results[0] && isObject(results[0]) && isObject(results[0].result)) {
     headers["Mcp-Protocol-Version"] = String(results[0].result.protocolVersion);
   }
   if (results.length === 0) return new Response(null, { status: 202, headers });
   return Response.json(batch ? results : results[0], { status: 200, headers });
+}
+
+function mcpAuthError(error: unknown): Response {
+  const status = error instanceof GongzhiError || error instanceof HttpError ? error.status : 503;
+  let challenge = "";
+  try { challenge = `Bearer resource_metadata="${mcpOAuthConfig().metadata}", scope="read", error="invalid_token"`; } catch { /* Missing config is unavailable, never a fictitious AS. */ }
+  // A permission denial may be human-only or content consent, not an invitation to request broader scopes.
+  return Response.json({ error: status === 401 ? "invalid_token" : status === 403 ? "access_denied" : "temporarily_unavailable" }, { status, headers: { "Cache-Control": "no-store", ...(status === 401 && challenge ? { "WWW-Authenticate": challenge } : {}) } });
 }

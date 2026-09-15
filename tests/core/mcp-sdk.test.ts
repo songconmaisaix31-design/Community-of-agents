@@ -1,10 +1,11 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { handleMcpPost, handleMcpUnsupportedMethod } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost, handleMcpProtocolUnsupportedMethod as handleMcpUnsupportedMethod } from "../../lib/mcp.ts";
 
 test("official SDK negotiates over a real loopback HTTP socket with JSON-only MCP and structured auth errors", { timeout: 15000 }, async t => {
   // HTTP adapter only; the request handler under test is the production handler.

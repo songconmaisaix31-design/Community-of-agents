@@ -1,6 +1,7 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { handleMcpPost, handleMcpUnsupportedMethod, SUPPORTED_PROTOCOLS } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost, handleMcpProtocolUnsupportedMethod as handleMcpUnsupportedMethod, SUPPORTED_PROTOCOLS } from "../../lib/mcp.ts";
 
 const ping = { jsonrpc: "2.0", id: 1, method: "ping" };
 function environment(t: TestContext, name: string, value: string) {

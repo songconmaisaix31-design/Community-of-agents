@@ -1,3 +1,4 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,7 +8,7 @@ import { handleWebAuth } from "../../lib/gongzhi/web-auth.ts";
 import { SESSION_COOKIE, STATE_COOKIE } from "../../lib/gongzhi/web-session.ts";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
 import { resolvePlatformIdentity, verifiedUser } from "../../lib/gongzhi/identity.ts";
-import { handleMcpPost } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost } from "../../lib/mcp.ts";
 import { assertLocalDatabase, testProfileFromEnv } from "../../infra/local-auth/local-profile.mjs";
 
 test("dedicated real PG + upstream fixture: browser state, provider identity and original consent chain", { skip: process.env.GONGZHI_WEB_AUTH_TEST !== "true", timeout: 90_000 }, async t => {

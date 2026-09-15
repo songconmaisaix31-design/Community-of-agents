@@ -1,9 +1,10 @@
+// Legacy parser/domain seam only; public MCP OAuth transport is covered in mcp-oauth-live.test.ts.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { handleGongzhiRequest } from "../../lib/gongzhi/http.ts";
-import { handleMcpPost } from "../../lib/mcp.ts";
+import { handleMcpProtocolPost as handleMcpPost } from "../../lib/mcp.ts";
 import { sql } from "../../lib/db.ts";
 import { assertLocalAuth, assertLocalDatabase, testProfileFromEnv } from "../../infra/local-auth/local-profile.mjs";
 
