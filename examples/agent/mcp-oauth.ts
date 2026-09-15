@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
+import { auth, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { AgentScopeSchema, type AgentScope } from '../../lib/gongzhi/contracts.ts';
 
 function checkedUrl(value: string | URL): URL {
   const url = new URL(value);
@@ -26,13 +27,14 @@ export class TaskOAuthProvider implements OAuthClientProvider {
   #pending = false;
   #open: (url: URL) => void | Promise<void>;
 
-  constructor(options: { serverUrl: string | URL; redirectUrl: string | URL; openAuthorization: (url: URL) => void | Promise<void> }) {
+  constructor(options: { serverUrl: string | URL; redirectUrl: string | URL; scopes?: AgentScope[]; openAuthorization: (url: URL) => void | Promise<void> }) {
     this.serverUrl = checkedUrl(options.serverUrl);
     this.redirectUrl = checkedUrl(options.redirectUrl).href;
     this.#open = options.openAuthorization;
     this.clientMetadata = {
       client_name: 'Gongzhi task MCP client', redirect_uris: [this.redirectUrl],
       grant_types: ['authorization_code'], response_types: ['code'], token_endpoint_auth_method: 'none',
+      scope: [...new Set(AgentScopeSchema.array().nonempty().parse(options.scopes ?? ['read']))].join(' '),
     };
   }
 
@@ -100,6 +102,7 @@ export class TaskOAuthProvider implements OAuthClientProvider {
 export async function connectTaskMcp(options: {
   serverUrl: string | URL;
   redirectUrl: string | URL;
+  scopes?: AgentScope[];
   openAuthorization: (url: URL) => void | Promise<void>;
   receiveCallback: () => Promise<string | URL>;
 }) {
@@ -107,6 +110,16 @@ export async function connectTaskMcp(options: {
   let client = new Client({ name: 'gongzhi-task', version: '1.0.0' });
   let transport = new StreamableHTTPClientTransport(provider.serverUrl, { authProvider: provider });
   try {
+    // Explicit additional permissions use the SDK's scope input, never URL edits.
+    // Its standard well-known discovery is used before the first MCP connection.
+    if (provider.clientMetadata.scope !== 'read') {
+      const result = await auth(provider, { serverUrl: provider.serverUrl, scope: provider.clientMetadata.scope });
+      if (result === 'REDIRECT') {
+        const code = provider.consumeCallback(await options.receiveCallback());
+        await transport.finishAuth(code);
+        provider.invalidateCredentials('verifier');
+      }
+    }
     try { await client.connect(transport); }
     catch (error) {
       if (!(error instanceof UnauthorizedError)) throw error;

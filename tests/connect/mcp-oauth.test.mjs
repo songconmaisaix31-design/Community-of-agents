@@ -5,14 +5,14 @@ import { createHash } from 'node:crypto';
 import { TaskOAuthProvider, connectTaskMcp } from '../../examples/agent/mcp-oauth.ts';
 
 // Local protocol simulator only: no project DB, real browser identity or public AS.
-async function fixture(run, { missingMetadata = false, wrongResource = false, deny = false } = {}) {
+async function fixture(run, { missingMetadata = false, wrongResource = false, deny = false, scopes = ['read'] } = {}) {
   const calls = [];
   let challenge, redirect, state, base;
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const part of req) raw += part;
     calls.push({ path: req.url, method: req.method, auth: req.headers.authorization, raw });
     const json = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-    if (req.url === '/metadata/resource') return json(200, { resource: base + (wrongResource ? '/other' : '/mcp'), authorization_servers: [base], scopes_supported: ['read'] });
+    if (['/metadata/resource', '/.well-known/oauth-protected-resource/mcp'].includes(req.url)) return json(200, { resource: base + (wrongResource ? '/other' : '/mcp'), authorization_servers: [base], scopes_supported: ['read', 'discuss'] });
     if (req.url === '/.well-known/oauth-authorization-server') return missingMetadata ? json(404, {}) : json(200, {
       issuer: base, authorization_endpoint: base + '/unusual/consent', token_endpoint: base + '/unusual/exchange',
       registration_endpoint: base + '/unusual/clients', response_types_supported: ['code'], grant_types_supported: ['authorization_code'],
@@ -21,6 +21,7 @@ async function fixture(run, { missingMetadata = false, wrongResource = false, de
     if (req.url === '/unusual/clients') {
       const body = JSON.parse(raw);
       assert.equal(body.token_endpoint_auth_method, 'none'); assert.deepEqual(body.grant_types, ['authorization_code']);
+      assert.equal(body.scope, scopes.join(' '));
       return json(201, { ...body, client_id: 'fixture-client' });
     }
     if (req.url === '/unusual/exchange') {
@@ -29,11 +30,11 @@ async function fixture(run, { missingMetadata = false, wrongResource = false, de
       assert.equal(body.get('redirect_uri'), redirect); assert.equal(body.get('code'), 'fixture-code');
       assert.equal(createHash('sha256').update(body.get('code_verifier')).digest('base64url'), challenge);
       assert.equal(body.get('client_secret'), null);
-      return json(200, { access_token: 'fixture-access-token', token_type: 'Bearer', expires_in: 60, scope: 'read' });
+      return json(200, { access_token: 'fixture-access-token', token_type: 'Bearer', expires_in: 60, scope: scopes.join(' ') });
     }
     if (req.url !== '/mcp') return json(404, {});
     if (req.headers.authorization !== 'Bearer fixture-access-token') {
-      res.writeHead(401, { 'WWW-Authenticate': `Bearer resource_metadata="${base}/metadata/resource"` }); return res.end();
+      res.writeHead(401, { 'WWW-Authenticate': `Bearer resource_metadata="${base}/metadata/resource", scope="read"` }); return res.end();
     }
     if (req.method === 'GET') { res.writeHead(405); return res.end(); }
     const message = JSON.parse(raw);
@@ -45,10 +46,11 @@ async function fixture(run, { missingMetadata = false, wrongResource = false, de
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
   const options = {
-    serverUrl: base + '/mcp', redirectUrl: 'http://127.0.0.1:18765/callback',
+    serverUrl: base + '/mcp', redirectUrl: 'http://127.0.0.1:18765/callback', scopes,
     openAuthorization(url) {
       assert.equal(url.origin + url.pathname, base + '/unusual/consent');
       assert.equal(url.searchParams.get('resource'), base + '/mcp'); assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+      assert.equal(url.searchParams.get('scope'), scopes.join(' '));
       challenge = url.searchParams.get('code_challenge'); redirect = url.searchParams.get('redirect_uri'); state = url.searchParams.get('state');
       assert.ok(state);
     },
@@ -70,6 +72,15 @@ test('official SDK follows 401 PRM, AS metadata, DCR, S256 exchange and authenti
     assert.ok(!calls.some(c => ['/authorize', '/token', '/register'].includes(c.path)));
   } finally { await session.close(); }
 }));
+
+test('host explicitly requests discuss through SDK auth scope and receives a new human callback', async () => fixture(async ({ options, calls }) => {
+  const session = await connectTaskMcp(options);
+  try {
+    assert.equal(calls.filter(c => c.path === '/unusual/exchange').length, 1);
+    assert.ok(calls.some(c => c.path === '/.well-known/oauth-protected-resource/mcp'));
+    await session.client.listTools();
+  } finally { await session.close(); }
+}, { scopes: ['read', 'discuss'] }));
 
 for (const [name, config] of [['missing AS metadata', { missingMetadata: true }], ['wrong resource', { wrongResource: true }], ['human rejection', { deny: true }]]) {
   test(`stops before token exchange on ${name}`, async () => fixture(async ({ options, calls }) => {

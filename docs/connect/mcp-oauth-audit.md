@@ -14,6 +14,8 @@ SDK 1.30.0 有旧版兼容默认端点回退。示例通过 `saveDiscoveryState`
 
 SDK scope 优先顺序是 401 challenge、PRM scopes_supported、provider client metadata。已向 C 交接首次 401 明确 `scope="read"` 的需求，避免首次默认申请全部能力；每次写权限仍由人类 consent 明确同意。SDK 可能为后续 401/403 发起重新授权，宿主不得自动同意或以重试掩盖写入结果未知。
 
+`connectTaskMcp` 默认只读；宿主可明确传入 `scopes: ['read', 'discuss']` 等共享 AgentScopeSchema 允许的权限。显式额外权限调用 SDK `auth(provider, {serverUrl, scope})`，经标准 well-known 发现和新的人类回调后再连接 MCP；不修改生成的授权 URL，不自行构造 token 请求。回调接收器必须先监听并设置超时，`openAuthorization` 只打开 SDK 提供的浏览器地址，不能自动模拟同意。示例不会上传内容，调用者仍必须另获准确内容批准。
+
 ## C 契约交接（待已提交源码复核）
 
 - `GONGZHI_MCP_OAUTH_ISSUER` 为可信 origin，resource 为该 origin 的 `/mcp`。
@@ -25,6 +27,8 @@ SDK scope 优先顺序是 401 challenge、PRM scopes_supported、provider client
 
 ## 当前检查
 
-`node --import tsx --test tests/connect/mcp-oauth.test.mjs`：6/6；本机 HTTP 协议模拟器覆盖 401 → 非默认 PRM/AS/DCR 端点 → S256/resource 换 token → initialize/listTools/callTool，缺元数据、错 resource、人拒绝、state/回调地址错误、重复参数、回调重放。`npm run typecheck`：退出 0。
+`node --import tsx --test tests/connect/mcp-oauth.test.mjs`：7/7；本机 HTTP 协议模拟器覆盖 401 → 非默认 PRM/AS/DCR 端点 → S256/resource 换 token → initialize/listTools/callTool，显式 discuss 权限、缺元数据、错 resource、人拒绝、state/回调地址错误、重复参数、回调重放。`npm run typecheck`：退出 0。
+
+加入第七项显式 scope 测试前，`node --import tsx --test "tests/connect/*.test.mjs"`：226 项，224 通过、0 失败、2 项已有条件跳过；实际执行旧 PowerShell/curl 登记、身份、发言及成果回执检查。该结果不是 C 新授权服务的集成验证。
 
 这些测试调用真实官方 SDK，但服务端及浏览器回调是 fixture。没有项目 PG、真实知乎身份、生产 OAuth、公网标准客户端或真实模型执行证据。最终主 skill 切换须等 C 已提交源码复核；本地真实 HTTP/PG、浏览器 consent、code 并发消费/到期/撤销和全量构建由后续集成验收补齐。
