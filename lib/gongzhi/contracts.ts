@@ -60,6 +60,7 @@ export interface Need {
 export interface Experience {
   id: string; owner_id: string; publisher_id: string; title: string; body: string;
   applicability: string; tags: string[]; revision: number; previous_version_id: string | null;
+  based_on_feedback_ids?: string[];
   sources: Source[]; visibility: "public"; created_at: string; mode: SourceMode;
 }
 export interface ExperienceSummary {
@@ -67,10 +68,19 @@ export interface ExperienceSummary {
   tags: string[]; owner_id: string; author: Owner; source_count: number;
   previous_version_id: string | null; created_at: string; mode: SourceMode;
 }
-export interface ExperienceSearchPage { items: ExperienceSummary[]; mode: SourceMode }
+export interface ExperienceSearchPage { items: ExperienceSummary[]; next_cursor: string | null; mode: SourceMode }
 export interface ExperienceVersion {
   experience: Experience; author: Owner; skill_md: string;
   execution: "caller_local"; author_presence_required: false;
+}
+export interface MethodReferenceUse {
+  result_id: string; need_id: string | null; speaker_id: string; usage: string;
+}
+export interface ExperienceLineageVersion {
+  experience: Experience; feedback: BulletinRecord[]; referenced_by: MethodReferenceUse[];
+}
+export interface ExperienceLineage {
+  root: Experience; versions: ExperienceLineageVersion[]; mode: SourceMode;
 }
 export interface Result {
   id: string; need_id: string; need_revision: number; owner_id: string; publisher_id: string;
@@ -113,9 +123,9 @@ export const UpdateNeedSchema = CreateNeedSchema.omit({ idempotency_key: true })
 export type UpdateNeedInput = z.infer<typeof UpdateNeedSchema>;
 export const CloseNeedSchema = z.object({ expected_revision: revision, idempotency_key: key }).strict();
 export type CloseNeedInput = z.infer<typeof CloseNeedSchema>;
-export const PublishExperienceSchema = z.object({ title, body, applicability: z.string().max(1000).default(""), tags, sources: z.array(SourceSchema).max(6).default([]), previous_version_id: id.optional(), visibility: z.literal("public").default("public"), idempotency_key: key, approval_id: id.optional() }).strict();
+export const PublishExperienceSchema = z.object({ title, body, applicability: z.string().max(1000).default(""), tags, sources: z.array(SourceSchema).max(6).default([]), previous_version_id: id.optional(), based_on_feedback_ids: z.array(id).max(10).optional(), visibility: z.literal("public").default("public"), idempotency_key: key, approval_id: id.optional() }).strict();
 export type PublishExperienceInput = z.infer<typeof PublishExperienceSchema>;
-export const ExperienceSearchSchema = z.object({ q: z.string().max(500).default(""), limit: z.coerce.number().int().min(1).max(30).default(20) }).strict();
+export const ExperienceSearchSchema = z.object({ q: z.string().max(500).default(""), tag: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(30).default(20), cursor: z.string().max(500).optional() }).strict();
 export type ExperienceSearchQuery = z.input<typeof ExperienceSearchSchema>;
 export const ReadExperienceVersionSchema = z.object({ id, revision }).strict();
 export const ExperienceFeedbackPayloadSchema = z.object({

@@ -145,4 +145,18 @@ test("real GoTrue and isolated PG: exact human consent, fixed offline versions a
     assert.equal((await rest(kb, "experience-feedback", "POST", input)).body.error.code, "revoked");
     assert.equal((await ok(undefined, `records/${record.id}`)).body, feedbackPayload.body);
   });
+  await t.test("lineage returns the root, full version chain and per-version feedback", async () => {
+    const lineage = await ok(undefined, `experiences/${revised.id}/lineage`);
+    assert.equal(lineage.root.id, experience.id); assert.equal(lineage.root.revision, 1);
+    assert.deepEqual(lineage.versions.map((v: { experience: { id: string } }) => v.experience.id), [experience.id, revised.id]);
+    const v1 = lineage.versions[0], v2 = lineage.versions[1];
+    assert.equal(v1.experience.revision, 1); assert.equal(v2.experience.revision, 2);
+    assert.equal(v2.experience.previous_version_id, experience.id);
+    assert.equal(v1.feedback.length, 1); assert.equal(v1.feedback[0].speaker_id, agentB.agent.owner.id);
+    assert.equal(v1.feedback[0].experience_feedback.revision, 1); assert.equal(v2.feedback.length, 0);
+    assert.deepEqual(v1.referenced_by, []); assert.deepEqual(v2.referenced_by, []);
+    const fromV1 = await ok(undefined, `experiences/${experience.id}/lineage`);
+    assert.equal(fromV1.root.id, experience.id); assert.equal(fromV1.versions.length, 2);
+    assert.equal((await rest(undefined, `experiences/nonexistent/lineage`)).status, 404);
+  });
 });

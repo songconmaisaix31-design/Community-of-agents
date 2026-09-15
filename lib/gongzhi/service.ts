@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { inTransaction, sql } from "../db";
-import { rateLimit } from "../http";
+import { encodeCursor, decodeCursor, rateLimit } from "../http";
 import { sha256 } from "../ids";
 import { inboxFor, clampLimit, type InboxItem } from "../inbox";
-import { createPost, getPostRow, PostInputSchema, publicPost, repliesFor, updatePost, type PostRow, type PublicPost } from "../posts";
+import { createPost, getPostRow, POST_COLUMNS, PostInputSchema, publicPost, repliesFor, updatePost, type PostRow, type PublicPost } from "../posts";
 import { search } from "../search";
 import { assertWritable } from "../limits";
-import { CloseNeedSchema, CreateNeedSchema, PostReplySchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, type ExperienceSearchPage, type ExperienceVersion, type ExperienceFeedback, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference, type AgentScope } from "./contracts";
+import { CloseNeedSchema, CreateNeedSchema, PostReplySchema, DecideResultSchema, PublishExperienceSchema, SubmitResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, type ExperienceSearchPage, type ExperienceVersion, type ExperienceFeedback, type Decision, type Experience, type Graph, type Need, type NeedDetail, type Network, type Owner, type Result, type Source, type MethodReference, type MethodReferenceUse, type ExperienceLineage, type ExperienceLineageVersion, type BulletinRecord, type AgentScope } from "./contracts";
 import { withContentApproval } from "./content-approval";
 import { assertIdentity, humanOwnerId, resolveIdentity, toOwner, type Identity } from "./identity";
 import { getAgentGraph, readRecord } from "./bulletin";
@@ -14,7 +14,7 @@ import { assertDatabaseConfigured, GongzhiError } from "./errors";
 export { resolveIdentity };
 export type { Identity };
 
-type Metadata = { speaker_id?: string; thread_id?: string; reply_to_id?: string; subtype: string; owner_id: string; owner_kind: Owner["kind"]; mode: "live"; visibility?: string; revision: number; need_revision?: number; constraints?: string; expected_result?: string; applicability?: string; previous_version_id?: string; sources?: Source[]; method_refs?: MethodReference[]; fingerprint?: string; decision?: Decision["decision"]; result_id?: string; run_id?: string; experience_feedback?: Pick<ExperienceFeedback, "experience_id" | "revision" | "usage" | "outcome"> };
+type Metadata = { speaker_id?: string; thread_id?: string; reply_to_id?: string; subtype: string; owner_id: string; owner_kind: Owner["kind"]; mode: "live"; visibility?: string; revision: number; need_revision?: number; constraints?: string; expected_result?: string; applicability?: string; previous_version_id?: string; based_on_feedback_ids?: string[]; sources?: Source[]; method_refs?: MethodReference[]; fingerprint?: string; decision?: Decision["decision"]; result_id?: string; run_id?: string; experience_feedback?: Pick<ExperienceFeedback, "experience_id" | "revision" | "usage" | "outcome"> };
 type NeedRow = { revision: number; status: Need["status"]; accepted_result_id: string | null; updated_at: Date };
 export function gongzhiMetadata(post: Pick<PublicPost, "metadata">): Metadata { return post.metadata.gongzhi as Metadata; }
 function stopped(signal?: AbortSignal) { if (signal?.aborted) throw new GongzhiError(409, "cancelled", "操作已取消。"); }
@@ -31,7 +31,7 @@ export function toResult(post: PublicPost): Result {
 }
 function toExperience(post: PublicPost): Experience {
   const m = gongzhiMetadata(post);
-  return { id: post.id, owner_id: m.owner_id, publisher_id: post.publisher.id, title: post.title, body: post.body, applicability: m.applicability ?? "", tags: post.tags, revision: m.revision, previous_version_id: m.previous_version_id ?? null, sources: m.sources ?? [], visibility: "public", created_at: post.created_at, mode: "live" };
+  return { id: post.id, owner_id: m.owner_id, publisher_id: post.publisher.id, title: post.title, body: post.body, applicability: m.applicability ?? "", tags: post.tags, revision: m.revision, previous_version_id: m.previous_version_id ?? null, based_on_feedback_ids: m.based_on_feedback_ids ?? [], sources: m.sources ?? [], visibility: "public", created_at: post.created_at, mode: "live" };
 }
 function toDecision(post: PublicPost): Decision {
   const m = gongzhiMetadata(post);
@@ -114,19 +114,42 @@ export async function readExperience(id: string): Promise<Experience> {
   return toExperience(post);
 }
 export async function searchExperience(raw: unknown): Promise<ExperienceSearchPage> {
+  assertDatabaseConfigured();
   const query = ExperienceSearchSchema.parse(raw);
-  const found = await findPublicExperience(query.q);
+  const values: unknown[] = [];
+  const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
+  const filters = [
+    `p.deleted_at is null`, `p.hidden_at is null`, `u.status = 'active'`,
+    `p.metadata->'gongzhi'->>'subtype' = 'experience'`,
+    `p.metadata->'gongzhi'->>'mode' = 'live'`,
+    `coalesce(p.metadata->'gongzhi'->>'visibility','public') = 'public'`,
+  ];
+  if (query.tag) {
+    const tagList = query.tag.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (tagList.length) filters.push(`p.tags && ${parameter(tagList)}::text[]`);
+  }
+  if (query.q) filters.push(`p.tsv @@ websearch_to_tsquery('english', ${parameter(query.q)})`);
+  const after = decodeCursor<{ k: string; id: string }>(query.cursor);
+  if (after) filters.push(`(p.created_at, p.id) < (${parameter(after.k)}::text::timestamptz, ${parameter(after.id)})`);
+  const rows = await sql().unsafe<(PostRow & { cursor_time: string })[]>(
+    `select ${POST_COLUMNS}, p.created_at::text as cursor_time
+       from posts p join publishers u on u.id = p.publisher_id
+      where ${filters.join(" and ")}
+      order by p.created_at desc, p.id desc
+      limit ${parameter(query.limit + 1)}`, values as never[]);
+  const page = rows.slice(0, query.limit);
   const items: ExperienceSearchPage["items"] = [];
-  for (const item of found) {
+  for (const row of page) {
+    const item = toExperience(publicPost(row));
     let record;
     try { record = await readRecord(item.id); }
     catch (error) { if (error instanceof GongzhiError && error.code === "not_found") continue; throw error; }
     items.push({ id: item.id, revision: item.revision, title: item.title, summary: item.body.slice(0, 280), applicability: item.applicability,
       tags: item.tags, owner_id: record.owner_id, author: record.speaker, source_count: item.sources.length,
       previous_version_id: item.previous_version_id, created_at: item.created_at, mode: "live" });
-    if (items.length === query.limit) break;
   }
-  return { items, mode: "live" };
+  const last = page.at(-1);
+  return { items, next_cursor: rows.length > query.limit && last ? encodeCursor({ k: last.cursor_time, id: last.id }) : null, mode: "live" };
 }
 export async function readExperienceVersion(id: string, revision: number): Promise<ExperienceVersion> {
   ReadExperienceVersionSchema.parse({ id, revision });
@@ -136,6 +159,59 @@ export async function readExperienceVersion(id: string, revision: number): Promi
   const skillName = `experience-${sha256(id).slice(0, 16)}-v${revision}`;
   const skill_md = `---\nname: ${skillName}\ndescription: ${JSON.stringify(experience.applicability || experience.title)}\nmetadata:\n  gongzhi-id: ${JSON.stringify(id)}\n  gongzhi-revision: ${JSON.stringify(String(revision))}\n  author-id: ${JSON.stringify(record.speaker_id)}\n  publisher-name: ${JSON.stringify(record.speaker.name)}\n  human-owner-id: ${JSON.stringify(record.owner_id)}\n---\n\n${experience.body}\n\n## 适用条件\n\n${experience.applicability || "发布者未提供适用条件。"}\n\n## 来源与署名\n\n本站发言者：${JSON.stringify(record.speaker.name)}（${record.speaker.kind}，${record.speaker_id}）。本站发言者不自动等同于资料原作者；资料作者以各条来源的 author 字段为准。\n\n固定公开版本：${JSON.stringify(id)} / ${revision}。作者无需在线，本文件不授予执行脚本或上传资料的许可。\n\n${experience.sources.length ? "```json\n" + JSON.stringify(experience.sources, null, 2) + "\n```" : "发布者未提供来源；不补造来源或作者。"}\n`;
   return { experience, author: record.speaker, skill_md, execution: "caller_local", author_presence_required: false };
+}
+export async function getExperienceLineage(id: string): Promise<ExperienceLineage> {
+  assertDatabaseConfigured();
+  const start = await readExperience(id);
+  // 1. 沿 previous_version_id 回溯到根
+  const chain: Experience[] = [];
+  let cursor: Experience | null = start;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor.id)) {
+    seen.add(cursor.id);
+    chain.push(cursor);
+    if (!cursor.previous_version_id) break;
+    cursor = await readExperience(cursor.previous_version_id).catch(() => null);
+  }
+  const root = chain[chain.length - 1];
+  const chainIds = chain.map(e => e.id);
+  // 2. 递归收集所有后代（分支也保留，构成树）
+  const rows = await sql()<{ id: string }[]>`
+    with recursive d as (
+      select id from posts where id = any(${chainIds})
+        and metadata->'gongzhi'->>'subtype'='experience' and hidden_at is null and deleted_at is null and metadata->'gongzhi'->>'mode'='live'
+      union
+      select p.id from posts p join d on p.metadata->'gongzhi'->>'previous_version_id' = d.id
+        where p.metadata->'gongzhi'->>'subtype'='experience' and p.hidden_at is null and p.deleted_at is null and p.metadata->'gongzhi'->>'mode'='live'
+    ) select id from d`;
+  const allIds = [...new Set([...chainIds, ...rows.map(r => r.id)])];
+  // 3. 每个版本聚合借用反馈与被引用结果
+  const versions: ExperienceLineageVersion[] = [];
+  for (const vid of allIds) {
+    const experience = await readExperience(vid);
+    const feedback: BulletinRecord[] = [];
+    const feedbackRows = await sql()<{ id: string }[]>`select p.id from posts p
+      where p.metadata->'gongzhi'->'experience_feedback'->>'experience_id'=${vid}
+        and p.hidden_at is null and p.deleted_at is null and p.metadata->'gongzhi'->>'mode'='live'
+        and coalesce(p.metadata->'gongzhi'->>'visibility','public')='public'`;
+    for (const f of feedbackRows) { try { feedback.push(await readRecord(f.id)); } catch { /* 不可见/已失效则跳过 */ } }
+    const referenced_by: MethodReferenceUse[] = [];
+    const refRows = await sql()<{ id: string; parent_id: string | null; speaker_id: string; method_refs: MethodReference[] }[]>`
+      select p.id, p.parent_id, o.id speaker_id, p.metadata->'gongzhi'->'method_refs' method_refs
+      from posts p join gongzhi_owners o on o.publisher_id = p.publisher_id
+      where p.metadata->'gongzhi'->'method_refs' is not null
+        and p.metadata->'gongzhi'->>'subtype' in ('help','result')
+        and p.hidden_at is null and p.deleted_at is null and p.metadata->'gongzhi'->>'mode'='live'
+        and coalesce(p.metadata->'gongzhi'->>'visibility','public')='public'`;
+    for (const r of refRows) {
+      for (const m of r.method_refs ?? []) {
+        if (m.experience_id === vid) referenced_by.push({ result_id: r.id, need_id: r.parent_id ?? null, speaker_id: r.speaker_id, usage: m.usage });
+      }
+    }
+    versions.push({ experience, feedback, referenced_by });
+  }
+  versions.sort((a, b) => a.experience.revision - b.experience.revision);
+  return { root, versions, mode: "live" };
 }
 export async function closeNeed(actor: Identity, id: string, raw: unknown): Promise<Need> {
   const input = CloseNeedSchema.parse(raw);
@@ -157,6 +233,20 @@ export async function findPublicExperience(query: string): Promise<Experience[]>
   const result = await search({ q: query, tags: "experience", kind: "offer", limit: 100, include_expired: "true", rerank: "false" }, { track: false });
   return result.posts.filter((p) => gongzhiMetadata(p)?.subtype === "experience" && gongzhiMetadata(p)?.mode === "live" && (!gongzhiMetadata(p).visibility || gongzhiMetadata(p).visibility === "public")).map(toExperience);
 }
+async function assertFeedbackLinks(previous_version_id: string | undefined, ids: string[]): Promise<void> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return;
+  if (!previous_version_id) throw new GongzhiError(400, "invalid_request", "从反馈发起的改进必须同时指定 previous_version_id 指向被反馈的版本。");
+  const rows = await sql()<{ id: string; experience_id: string | null }[]>`select id, metadata->'gongzhi'->'experience_feedback'->>'experience_id' experience_id
+    from posts where id = any(${unique}) and hidden_at is null and deleted_at is null
+      and metadata->'gongzhi'->>'mode'='live'
+      and coalesce(metadata->'gongzhi'->>'visibility','public')='public'
+      and metadata->'gongzhi'->'experience_feedback' is not null`;
+  if (rows.length !== unique.length) throw new GongzhiError(400, "invalid_request", "based_on_feedback_ids 包含不存在或不可见的反馈记录。");
+  for (const row of rows) {
+    if (row.experience_id !== previous_version_id) throw new GongzhiError(400, "invalid_request", "反馈必须指向被替代的父版本。");
+  }
+}
 export async function publishExperience(actor: Identity, raw: unknown): Promise<Experience> {
   const input = PublishExperienceSchema.parse(raw);
   return inTransaction(async () => {
@@ -170,7 +260,8 @@ export async function publishExperience(actor: Identity, raw: unknown): Promise<
       if (before.publisher_id !== actor.owner.publisher_id) throw new GongzhiError(403, "forbidden", "不能为他人的经验发布替代版本。");
       revision = before.revision + 1;
     }
-    const { post } = await createPost(publisher, PostInputSchema.parse({ ...input, kind: "offer", tags: [...new Set([...input.tags, "experience"])], metadata: { gongzhi: await metadata(actor, "experience", { revision, applicability: input.applicability, previous_version_id: input.previous_version_id, sources: input.sources, fingerprint: fp }) } }));
+    await assertFeedbackLinks(input.previous_version_id, input.based_on_feedback_ids ?? []);
+    const { post } = await createPost(publisher, PostInputSchema.parse({ ...input, kind: "offer", tags: [...new Set([...input.tags, "experience"])], metadata: { gongzhi: await metadata(actor, "experience", { revision, applicability: input.applicability, previous_version_id: input.previous_version_id, based_on_feedback_ids: [...new Set(input.based_on_feedback_ids ?? [])], sources: input.sources, fingerprint: fp }) } }));
     return toExperience(post);
     });
   });
