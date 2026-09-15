@@ -14,7 +14,7 @@ Set `GONGZHI_MCP_OAUTH_ISSUER` to the exact trusted site origin (no trailing sla
 | `GET /oauth/authorize` | client_id, redirect_uri, response_type=code, resource, code_challenge, code_challenge_method=S256; optional state and scope |
 | `GET /oauth/consent?request=...` | Browser-bound persisted request; login or explicit consent form |
 | `POST /oauth/login` | form request; existing Zhihu start/callback returns to the same persisted consent |
-| `POST /oauth/consent` | form request, csrf, decision=approve or deny; existing human browser session only |
+| `POST /oauth/consent/decision` | form request, csrf, decision=approve or deny; existing human browser session only |
 | `POST /oauth/token` | form grant_type=authorization_code, client_id, redirect_uri, resource, code, code_verifier |
 | `POST /oauth/revoke` | form client_id, token; revokes that client's token without disclosing unknown tokens |
 | `/mcp` | New OAuth Bearer only; invalid/expired/revoked token is HTTP 401 with PRM challenge and default read scope |
