@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { inTransaction, sql } from "../db";
 import { bearer } from "../http";
 import { sha256 } from "../ids";
 import { registerPublisher, rotateApiKey, type PublisherRow } from "../publishers";
+import { assertWritable } from "../limits";
 import { BindOwnerSchema, type AgentScope, type AgentStatus, type BoundOwner, type Owner } from "./contracts";
 import { assertDatabaseConfigured, GongzhiError } from "./errors";
 import { getAuthConfiguration } from "./auth-config";
@@ -16,11 +17,13 @@ export type OwnerRow = { id: string; user_id: string; publisher_id: string; kind
 const credentials = new WeakMap<Identity, number>();
 const webRequests = new WeakMap<Identity, Request>();
 const oauthCredentials = new WeakMap<Identity, string>();
+const usernameCredentials = new WeakMap<Identity, true>();
+export function isUsernameActor(actor: Identity): boolean { return usernameCredentials.has(actor); }
 const internalActors = new WeakMap<Request, Identity>();
 export function hasInternalActor(req: Request) { return internalActors.has(req); }
 /** Server-only in-process dispatch; no bearer is forwarded to REST or an arbitrary origin. */
 export function bindInternalActor(req: Request, actor: Identity) {
-  if (!oauthCredentials.has(actor) || !credentials.has(actor)) throw new GongzhiError(403, "forbidden", "Verified MCP actor required.");
+  if ((!oauthCredentials.has(actor) && !usernameCredentials.has(actor)) || !credentials.has(actor)) throw new GongzhiError(403, "forbidden", "Verified MCP actor required.");
   internalActors.set(req, actor);
 }
 export async function resolveMcpIdentity(req: Request): Promise<Identity> {
@@ -32,6 +35,39 @@ export async function resolveMcpIdentity(req: Request): Promise<Identity> {
   const [row] = await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.id=${grant.agent_id}`;
   if (!row || row.credential_version !== grant.credential_version) throw new GongzhiError(401, "unauthenticated", "MCP credential changed.");
   const actor = identity(row); oauthCredentials.set(actor, token); return actor;
+}
+function usernameUuid(username: string): string {
+  const b = createHash("sha256").update(`gongzhi-username:${username}`).digest().subarray(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x50; // version 5
+  b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+  const hex = b.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+/** Username-only MCP auth for internal/testing: Bearer <username> auto-enrolls an external Agent with full scopes. */
+export async function resolveMcpUsernameIdentity(req: Request): Promise<Identity> {
+  const username = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "")?.[1]?.trim() ?? "";
+  if (!username || username.length > 100 || /[\u0000-\u001f\u007f]/.test(username)) throw new GongzhiError(401, "unauthenticated", "请提供 Agent 用户名：Authorization: Bearer <用户名>。");
+  assertDatabaseConfigured();
+  const userId = usernameUuid(username);
+  return inTransaction(async () => {
+    await sql()`select pg_advisory_xact_lock(hashtextextended(${username}, 0))`;
+    const [agent] = await sql()<OwnerRow[]>`select o.*,p.name,p.last_seen_at,p.status from gongzhi_owners o join publishers p on p.id=o.publisher_id where o.user_id=${userId} and o.kind='external_agent'`;
+    if (agent) {
+      if (agent.revoked_at || agent.status !== "active") throw new GongzhiError(403, "revoked", "此 Agent 已停用。");
+      const actor = identity(agent); usernameCredentials.set(actor, true); return actor;
+    }
+    assertWritable();
+    const [human] = await sql()<OwnerRow[]>`select o.id from gongzhi_owners o where o.user_id=${userId} and o.kind='human'`;
+    if (!human) {
+      const { row: hp } = await registerPublisher({ name: username, accept_terms: true, client: "gongzhi-username" });
+      await sql()`insert into gongzhi_owners(id,user_id,publisher_id,kind,capabilities) values(${randomUUID()},${userId},${hp.id},'human',array[]::text[])`;
+    }
+    const { row: pub } = await registerPublisher({ name: username, accept_terms: true, client: "gongzhi-username" });
+    const [newAgent] = await sql()<OwnerRow[]>`insert into gongzhi_owners(id,user_id,publisher_id,kind,capabilities,scopes) values(${randomUUID()},${userId},${pub.id},'external_agent',array[]::text[],array['read','publish_need','publish_experience','submit_result','discuss']::text[]) returning *`;
+    const actor = identity({ ...newAgent, name: pub.name, last_seen_at: null, status: pub.status });
+    usernameCredentials.set(actor, true);
+    return actor;
+  });
 }
 export function toOwner(row: OwnerRow): Owner {
   return { id: row.id, publisher_id: row.publisher_id, kind: row.kind, name: row.name, capabilities: row.capabilities, revoked_at: row.revoked_at?.toISOString() ?? null, last_seen_at: row.last_seen_at?.toISOString() ?? null, created_at: row.created_at.toISOString(), mode: "live" };

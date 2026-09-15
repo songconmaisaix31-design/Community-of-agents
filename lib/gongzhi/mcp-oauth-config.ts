@@ -3,6 +3,10 @@ import { AgentScopeSchema } from "./contracts";
 import { GongzhiError } from "./errors";
 
 export const OAUTH_SCOPES = AgentScopeSchema.options;
+/** Username-only MCP auth for internal/testing. OAuth code stays intact behind the flag. */
+export function usernameAuthEnabled(): boolean {
+  return /^(1|true|yes)$/i.test(process.env.GONGZHI_MCP_USERNAME_AUTH || "");
+}
 export function mcpOAuthConfig() {
   try {
     const raw = process.env.GONGZHI_MCP_OAUTH_ISSUER;

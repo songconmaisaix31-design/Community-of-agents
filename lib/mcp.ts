@@ -7,8 +7,8 @@ import { HttpError, clientIp } from "./http";
 import { DbTimeoutError } from "./db";
 import { track } from "./metrics";
 import { handleGongzhiRequest } from "./gongzhi/http";
-import { bindInternalActor, resolveMcpIdentity, type Identity } from "./gongzhi/identity";
-import { mcpOAuthConfig } from "./gongzhi/mcp-oauth-config";
+import { bindInternalActor, resolveMcpIdentity, resolveMcpUsernameIdentity, type Identity } from "./gongzhi/identity";
+import { mcpOAuthConfig, usernameAuthEnabled } from "./gongzhi/mcp-oauth-config";
 import { GongzhiError } from "./gongzhi/errors";
 import { MCP_PROTOCOL_VERSIONS, BoardQuerySchema, CreateAuthorizationSchema, RegisterAgentSchema, PostReplySchema, CloseNeedSchema, CreateNeedSchema, PublishExperienceSchema, SubmitResultSchema, DecideResultSchema, UpdateNeedSchema, ExperienceSearchSchema, ReadExperienceVersionSchema, CreateContentApprovalSchema, PostExperienceFeedbackSchema } from "./gongzhi/contracts";
 
@@ -230,7 +230,8 @@ export async function handleMcpPost(req: Request): Promise<Response> {
   const rejection = transportGuard(req);
   if (rejection) return rejection;
   let actor: Identity;
-  try { actor = await resolveMcpIdentity(req); } catch (e) { return mcpAuthError(e); }
+  const usernameMode = usernameAuthEnabled();
+  try { actor = usernameMode ? await resolveMcpUsernameIdentity(req) : await resolveMcpIdentity(req); } catch (e) { return mcpAuthError(e, usernameMode); }
   return handleMcpProtocolPost(req, actor);
 }
 /** Internal parser/tool-dispatch seam. Never mount directly as an HTTP route. */
@@ -269,8 +270,12 @@ export async function handleMcpProtocolPost(req: Request, actor?: Identity): Pro
   return Response.json(batch ? results : results[0], { status: 200, headers });
 }
 
-function mcpAuthError(error: unknown): Response {
+function mcpAuthError(error: unknown, usernameMode = false): Response {
   const status = error instanceof GongzhiError || error instanceof HttpError ? error.status : 503;
+  if (usernameMode) {
+    const message = error instanceof GongzhiError || error instanceof HttpError ? error.message : "MCP 用户名认证失败。";
+    return Response.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
+  }
   let challenge = "";
   try { challenge = `Bearer resource_metadata="${mcpOAuthConfig().metadata}", scope="read", error="invalid_token"`; } catch { /* Missing config is unavailable, never a fictitious AS. */ }
   // A permission denial may be human-only or content consent, not an invitation to request broader scopes.
