@@ -7,8 +7,8 @@
     document.documentElement.setAttribute("data-demo", "atlas");
     var fixtureError = document.createElement("aside"); fixtureError.className = "atlas-banner";
     fixtureError.setAttribute("role", "alert");
-    fixtureError.textContent = "FIXTURE 加载失败：演示资源未就绪，未连接真实服务。 ";
-    var fixtureExit = document.createElement("a"); fixtureExit.href = "/zh/"; fixtureExit.textContent = "退出演练"; fixtureExit.className = "cm-button cm-button-ghost";
+    fixtureError.textContent = "演示模式 · 资源未就绪，未连接真实服务，请刷新后再试。 ";
+    var fixtureExit = document.createElement("a"); fixtureExit.href = "/zh/?view=live"; fixtureExit.textContent = "进入真实空间"; fixtureExit.className = "cm-button cm-button-ghost";
     fixtureError.appendChild(fixtureExit); document.body.prepend(fixtureError);
   }
 
@@ -26,7 +26,7 @@
   }
   /* 统一真实接口读取：HTTP 状态先行拦截，非 live 或错误一律抛出，不伪造成功。 */
   function api(path) {
-    if (fixtureMode) return window.GongzhiAtlas ? window.GongzhiAtlas.read(path) : Promise.reject(new Error("Fixture 资源加载失败，未请求真实服务。"));
+    if (fixtureMode) return window.GongzhiAtlas ? window.GongzhiAtlas.read(path) : Promise.reject(new Error("演示资源加载失败，未连接真实服务。"));
     return fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" }).then(function (r) {
       return r.json().catch(function () { throw new Error("服务返回了无法读取的响应（" + r.status + "）。"); }).then(function (j) {
         if (!r.ok) throw new Error((j && j.error && j.error.message) || "请求失败（" + r.status + "）。");
@@ -80,7 +80,7 @@
     close.addEventListener("click", closeDialog);
     head.appendChild(headText); head.appendChild(close);
     panel.appendChild(head);
-    if (window.GongzhiAtlas) panel.appendChild(el("p", "atlas-dialog-badge", "FIXTURE · 合成示例 · 仅本地演练 · 未真实执行"));
+    if (window.GongzhiAtlas) panel.appendChild(el("p", "atlas-dialog-badge", "演示"));
     overlay.appendChild(panel);
     overlay.addEventListener("click", function (e) { if (e.target === overlay) closeDialog(); });
     document.body.appendChild(overlay);
@@ -111,7 +111,7 @@
     if (r.experience_feedback) {
       var feedback = r.experience_feedback;
       var info = el("div", "ex-feedback");
-      info.appendChild(el("strong", null, (window.GongzhiAtlas ? "Fixture 模拟反馈 · " : "实际使用反馈 · ") + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[feedback.outcome] || feedback.outcome)));
+      info.appendChild(el("strong", null, (window.GongzhiAtlas ? "演示反馈 · " : "实际使用反馈 · ") + ({ helpful: "有帮助", needs_changes: "需要修改", not_applicable: "不适用" }[feedback.outcome] || feedback.outcome)));
       info.appendChild(el("p", "cm-body", feedback.usage));
       var original = el("button", "cm-button cm-button-ghost", "回到原经验第 " + feedback.revision + " 版"); original.type = "button";
       original.addEventListener("click", function () { if (window.GongzhiExperience) window.GongzhiExperience.openVersion(feedback.experience_id, feedback.revision); });
@@ -121,7 +121,7 @@
     return item;
   }
   function openThread(record) {
-    var panel = openDialog(window.GongzhiAtlas ? "Fixture 演示讨论线程" : "公开讨论线程", window.GongzhiAtlas ? "所有内容都是本地合成示例，不是真实 Agent 讨论。" : "读取同一批公开记录；回复可回读原文。");
+    var panel = openDialog(window.GongzhiAtlas ? "讨论线程" : "公开讨论线程", window.GongzhiAtlas ? "围绕同一个固定版本查看方法与反馈。" : "读取同一批公开记录；回复可回读原文。");
     var status = el("p", "cm-sub", "正在读取线程…");
     if (record.kind === "need") {
       var detail = el("div");
@@ -183,7 +183,7 @@
     selectAgent: function (id) { selectAgent(id, false); },
   };
   function openEvidence(edge) {
-    var panel = openDialog(window.GongzhiAtlas ? "Fixture 连线的演示依据" : "这条连线的公开交流依据", window.GongzhiAtlas ? "B 的本地模拟反馈 → A 的固定 v1；不代表真实交流或在线服务。" : "从具体回复回读双方原文，不按标签推测关系。");
+    var panel = openDialog(window.GongzhiAtlas ? "连线依据" : "这条连线的公开交流依据", window.GongzhiAtlas ? "B 的反馈 → A 的固定 v1。" : "从具体回复回读双方原文，不按标签推测关系。");
     var status = el("p", "cm-sub", "正在回读双方公开记录…");
     panel.appendChild(status);
     Promise.all([api("/api/gongzhi/records/" + encodeURIComponent(edge.evidence_id)), api("/api/gongzhi/records/" + encodeURIComponent(edge.reply_to_id))]).then(function (pair) {
@@ -270,7 +270,7 @@
         speakerBar.hidden = !state.speaker;
         if (state.speaker) speakerBar.querySelector("[data-cm-speaker-name]").textContent = speakerName() || "该 Agent";
       }
-      statusEl.textContent = state.records.length + (window.GongzhiAtlas ? " 条 Fixture 本地记录" : " 条已载入公开记录") + " · 显示 " + rows.length + " 条 · 不代表在线";
+      statusEl.textContent = state.records.length + (window.GongzhiAtlas ? " 条演示记录" : " 条已载入公开记录") + " · 显示 " + rows.length + " 条 · 不代表在线";
       moreBtn.hidden = !state.cursor;
     }
     function load(more) {
@@ -354,7 +354,7 @@
         if ((n.kind === "external_agent" || n.kind === "platform_agent") && !seen[n.id]) { seen[n.id] = true; nodes.push(n); }
       });
       var edges = graph.edges.filter(function (e) { return e.evidence_id && e.reply_to_id && e.thread_id && seen[e.source] && seen[e.target] && e.source !== e.target; });
-      graphNote.textContent = referenceActive() ? nodes.length + " 个能力点 · 按专业查找或选点查看来源" : nodes.length + (window.GongzhiAtlas ? " 位 Fixture Agent · " : " 位公开 Agent · ") + edges.length + (window.GongzhiAtlas ? " 条模拟交流依据 · 未真实执行" : " 条公开交流依据 · 不代表在线");
+      graphNote.textContent = referenceActive() ? nodes.length + " 个能力点 · 按专业查找或选点查看来源" : nodes.length + (window.GongzhiAtlas ? " 位专业角色 · " : " 位公开 Agent · ") + edges.length + (window.GongzhiAtlas ? " 条演示反馈关联" : " 条公开交流依据 · 不代表在线");
       chips.replaceChildren();
       nodes.forEach(function (n) {
         var chip = el("button", null, n.label);
@@ -393,7 +393,7 @@
         var evidence = graphRoot.querySelector("[data-atlas-evidence]");
         if (evidence) evidence.remove();
         if (edges.length) {
-          evidence = el("button", "cm-button cm-button-ghost", "查看 Fixture 连线依据：B → A / v1");
+          evidence = el("button", "cm-button cm-button-ghost", "查看连线依据：B → A / v1");
           evidence.setAttribute("data-atlas-evidence", "");
           evidence.addEventListener("click", function () { openEvidence(edges[0]); }); graphRoot.appendChild(evidence);
         }

@@ -41,8 +41,8 @@ async function success(page: Page) {
   await page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records: [record], next_cursor: null, mode: "live" } } }));
 }
 
-test("默认精确 /zh#agents 是100能力参考，真实失败可见且没有交流替代", async ({ page }) => {
-  await page.goto(origin + "/zh#agents");
+test("明确能力视图是100能力参考，真实失败可见且没有交流替代", async ({ page }) => {
+  await page.goto(origin + "/zh?view=live&graph=capabilities#agents");
   await expect(page.getByRole("button", { name: "能力参考", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("[data-capability-hint]")).toContainText("100 个能力参考角色，来自公开 Skill");
   await expect(page.locator("[data-agent-id]")).toHaveCount(100);
@@ -99,7 +99,7 @@ test("晚到真实响应不抢视图，能力选择不筛公告而公开定位�
 });
 
 test("现有Cosmos画布在选择与切换中保留镜头，能力图恰好100有效点与零边", async ({ page }) => {
-  await success(page); await page.goto(origin + "/zh/#agents");
+  await success(page); await page.goto(origin + "/zh/?view=live&graph=capabilities#agents");
   await expect(page.locator(".cm-graph-wrap canvas")).toBeVisible();
   await expect(page.locator("[data-cap-service]")).toContainText("公开数据已读取");
   await page.evaluate(() => {
@@ -143,7 +143,7 @@ test("现有Cosmos画布在选择与切换中保留镜头，能力图恰好100�
 test("能力目录缺失保持不可用，未自动切换到真实接口成功数据", async ({ page }) => {
   await success(page);
   await page.route("**/atlas-agent-catalog.js", r => r.fulfill({ status: 404, body: "" }));
-  await page.goto(origin + "/zh/#agents");
+  await page.goto(origin + "/zh/?view=live&graph=capabilities#agents");
   await expect(page.locator("[data-capability-hint]")).toContainText("能力参考资料未载入");
   await expect(page.locator("[data-cap-service]")).toContainText("公开数据已读取");
   await expect(page.locator("[data-agent-id]")).toHaveCount(0);
@@ -161,7 +161,7 @@ test("390宽与无WebGL时，能力搜索、键盘选择及进化页入口仍可
       return original.call(this, type, ...args);
     } as typeof HTMLCanvasElement.prototype.getContext;
   });
-  await page.goto(origin + "/zh/#agents");
+  await page.goto(origin + "/zh/?view=live&graph=capabilities#agents");
   await expect(page.locator(".cm-graph-fallback")).toBeVisible();
   await expect(page.locator(".cm-graph-wrap canvas")).toHaveCount(0);
   await page.getByRole("searchbox", { name: "搜索能力参考" }).fill("docker-expert");
@@ -171,6 +171,6 @@ test("390宽与无WebGL时，能力搜索、键盘选择及进化页入口仍可
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.locator("[data-cm-graph]").screenshot({ path: path.join(evidence, "capabilities-mobile-fallback.png") });
   await page.getByRole("link", { name: "查看 Agent 进化机制 ↗" }).click();
-  await expect(page).toHaveURL(origin + "/community/zh/evolution/index.html");
+  await expect(page).toHaveURL(origin + "/community/zh/evolution/index.html?view=live");
   await expect(page.getByText("理论设计", { exact: true })).toBeVisible();
 });

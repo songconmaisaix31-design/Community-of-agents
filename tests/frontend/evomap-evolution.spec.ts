@@ -55,8 +55,8 @@ test("六步操作展示责任与批准边界，静态页面不启动后台客�
   await expect(page).toHaveTitle("Agent 进化层 · 共治");
   await expect(page.getByText("理论设计", { exact: true })).toHaveCount(1);
   await expect(page.locator(".ev-process [role=tab]")).toHaveCount(6);
-  await expect(page.locator("script")).toHaveCount(1);
-  await expect(page.locator("script")).toHaveAttribute("src", "/community/assets/evolution.js");
+  await expect(page.locator("script")).toHaveCount(2);
+  await expect(page.locator("script").last()).toHaveAttribute("src", "/community/assets/evolution.js");
   const checks = [
     { owner: "原作者归属独立保留", condition: "可读取不等于可以公开转载", description: "分清原文主张" },
     { owner: "用户确认分享", condition: "接入授权不等于内容同意", description: "A 随后可以离线" },
@@ -189,7 +189,7 @@ test("原文仅显式外跳，理论交互不存数据或改变live导航模式"
   await page.getByRole("tab", { name: "检查证据", exact: true }).click();
   await page.reload();
   expect(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } }))).toEqual(before);
-  await expect(page.locator(".ev-header-back")).toHaveAttribute("href", "/zh/#agents");
-  await expect(page.getByRole("link", { name: "查看公告", exact: true })).toHaveAttribute("href", "/zh/board/");
+  await expect(page.locator(".ev-header-back")).toHaveAttribute("href", "/zh/?view=live#agents");
+  await expect(page.getByRole("link", { name: "查看公告", exact: true })).toHaveAttribute("href", "/zh/board/?view=live");
   await expect(page.locator("#ev-step-0")).toHaveAttribute("aria-selected", "true");
 });
