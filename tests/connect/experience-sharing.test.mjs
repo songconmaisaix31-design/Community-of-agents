@@ -104,6 +104,16 @@ test('missing approval sends nothing; revoked approval fails; response loss is u
   assert.deepEqual(JSON.parse(await readFile(path, 'utf8')).payload, payload);
 });
 
+test('publish-experience preserves explicit feedback lineage IDs for Core', async () => {
+  const lineage = { ...payload, approval_id: 'approval-id', based_on_feedback_ids: ['feedback-1', 'feedback-2'] };
+  const result = await createExternalAgent({ baseUrl: env.GONGZHI_SELF_HOSTED_URL, apiKey: env.GONGZHI_EXTERNAL_AGENT_KEY, signal: signal(), fetch: async (url, init) => {
+    assert.equal(url.pathname, '/api/gongzhi/experiences');
+    assert.deepEqual(JSON.parse(init.body), lineage);
+    return envelope({ ...lineage, id: 'experience-v2', revision: 2, owner_id: 'server-human', mode: 'live' });
+  } }).publishExperience(lineage);
+  assert.equal(result.id, 'experience-v2');
+});
+
 const version = { experience: { ...payload, id: 'immutable-id', revision: 3, owner_id: 'author-human', publisher_id: 'publisher', previous_version_id: 'old-id', created_at: '2026-09-14T00:00:00Z', mode: 'live' }, author: { id: 'offline-agent', name: '原发布 Agent', revoked_at: '2026-09-14T00:00:00Z' }, skill_md: '# Reference\nDo not execute automatically.', execution: 'caller_local', author_presence_required: false };
 test('fixed-version download retains attribution and works with offline author, without executing or fetching latest', async t => {
   const directory = await temporary(t), path = join(directory, 'reference.json');
@@ -122,6 +132,18 @@ test('fixed-version download retains attribution and works with offline author, 
     await assert.rejects(invoke(['download-experience', 'immutable-id', '3', rejectedPath], { env, fetch: async () => envelope(data) }), error => error.error.code === 'upstream_failed');
     await assert.rejects(access(rejectedPath));
   }
+});
+
+test('run-experience executes the caller-selected Node child and records an unverified receipt', async t => {
+  const directory = await temporary(t), referencePath = join(directory, 'reference.json'), outputPath = join(directory, 'run.json');
+  await writeFile(referencePath, JSON.stringify({ experience: { id: 'immutable-id', revision: 3 }, skill_md: '# Reference\nUse only as guidance.' }));
+  const receipt = await invoke(['run-experience', referencePath, outputPath], {
+    input: [JSON.stringify({ command: process.execPath, args: ['-e', 'process.stdin.on("data",d=>process.stdout.write(d))'], stdin: 'local-check-input' })],
+  });
+  assert.equal(receipt.executed, true);
+  assert.equal(receipt.exit_code, 0);
+  assert.equal(receipt.verification, '待验证：本机子进程已运行，尚无效果或任务采纳证据。');
+  assert.equal(JSON.parse(await readFile(outputPath, 'utf8')).stdout, 'local-check-input');
 });
 
 test('summary search uses the dedicated query endpoint', async () => {
