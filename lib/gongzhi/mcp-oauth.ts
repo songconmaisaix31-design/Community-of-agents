@@ -54,6 +54,15 @@ function validRedirect(value: string) {
       && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname));
   } catch { return false; }
 }
+// Next.js may normalize loopback "127.0.0.1" to "localhost" in request URLs; the DCR body is not
+// normalized the same way. Canonicalize both sides to 127.0.0.1 so registration and authorize match.
+function canonicalRedirect(value: string): string {
+  try {
+    const u = new URL(value);
+    if (u.hostname === "localhost") u.hostname = "127.0.0.1";
+    return u.href;
+  } catch { return value; }
+}
 type Pending = { id: string; browser_hash: string; client_id: string; redirect_uri: string; issuer: string; resource: string; scopes: AgentScope[]; state: string | null; challenge: string; csrf_hash: string | null; user_id: string | null; name: string };
 export async function readMcpConsent(req: Request, id: string, lock = false): Promise<Pending> {
   const c = mcpOAuthConfig(), browser = opaqueCookie(req, MCP_BROWSER_COOKIE);
@@ -101,12 +110,12 @@ export async function handleOAuth(req: Request, action: "resource" | "server" | 
       if (!name.trim() || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) throw new OAuthError("invalid_client_metadata");
       if (input.scope) scopeList(input.scope);
       const id = randomUUID();
-      await sql()`insert into gongzhi_oauth_clients(id,name,redirect_uris) values(${id},${name},${input.redirect_uris})`;
+      await sql()`insert into gongzhi_oauth_clients(id,name,redirect_uris) values(${id},${name},${input.redirect_uris.map(canonicalRedirect)})`;
       return json({ client_id: id, client_id_issued_at: Math.floor(Date.now()/1000), client_name: name, redirect_uris: input.redirect_uris, token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"] }, 201);
     }
     if (action === "authorize") {
       const p = single(new URL(req.url).searchParams);
-      const client = p.get("client_id") ?? "", uri = p.get("redirect_uri") ?? "";
+      const client = p.get("client_id") ?? "", uri = canonicalRedirect(p.get("redirect_uri") ?? "");
       const [registered] = await sql()`select id from gongzhi_oauth_clients where id=${client} and ${uri}=any(redirect_uris) and revoked_at is null`;
       if (!registered) throw invalid(); // Never redirect to unvalidated client input.
       if (p.get("response_type") !== "code") throw new OAuthError("unsupported_response_type");
