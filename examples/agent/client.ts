@@ -59,15 +59,11 @@ export async function readAgentConnection(options: Connection) {
     api: endpoint(data.endpoints?.api), mcp: endpoint(data.endpoints?.mcp), skill: endpoint(data.endpoints?.skill),
     register: endpoint(data.endpoints?.register), agent_status: endpoint(data.endpoints?.agent_status),
   };
-  const oauth = data.mcp_oauth;
-  if (oauth && (oauth.credential !== 'oauth_access_token' || oauth.pkce !== 'S256' || oauth.legacy_credentials_accepted !== false)) throw invalidRead();
   return {
     contract_version: data.contract_version, identity_verified: false, endpoints,
-    mcp_template: { transport: data.mcp.transport, url: endpoints.mcp, authentication: oauth
-      ? { type: 'oauth', discovery: endpoint(oauth.discovery), pkce: oauth.pkce, legacy_credentials_accepted: false }
-      : { type: 'bearer', source: 'host-secret-store' } },
+    mcp_template: { transport: data.mcp.transport, url: endpoints.mcp, authentication: { type: 'bearer', source: 'username' } },
     protocol_versions: data.mcp.protocol_versions,
-    template_notice: 'Generic connection description; use your host’s documented OAuth discovery or secret settings, not a directly importable client config.',
+    template_notice: 'Generic connection description; use your host’s documented username auth settings, not a directly importable client config.',
   };
 }
 

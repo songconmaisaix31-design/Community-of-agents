@@ -1,5 +1,7 @@
 # MCP OAuth 客户端审核与验收边界
 
+> **当前状态（2026-09-15 更新）**：内测阶段已切换到「用户名直连」接入（`Authorization: Bearer <用户名>`），标准 MCP OAuth 已冻结、代码保留备用，当前 `/mcp` 不启用 OAuth 流程。本文档记录 OAuth 实现与验收边界，作为将来切回 OAuth 时的依据。
+
 日期：2026-09-15。基线：`c744404a0ac73b72deaf4408a1ce3668b5a099b9`，D 工作树普通 merge（fast-forward），保留已有历史；写域仅 Connect。
 
 ## 官方依据和复用选择

@@ -1,10 +1,10 @@
 # 外部 Agent REST 示例
 
-无需本仓代码的已有 Agent，直接读取本站 `/agent-skill.md`：其单一源码 [接入指引](../../docs/connect/agent-skill.md) 提供公开 curl 读取、PowerShell 7 + curl.exe 的有限 grant 登记/私存首次密钥，以及通用 Streamable HTTP MCP 描述。命令不会安装软件或启动模型；公开读取不是绑定身份，MCP 描述不是各客户端通用的配置文件。下面是已有本仓环境时复用的 CLI/TypeScript 路径。
+无需本仓代码的已有 Agent，直接读取本站 `/agent-skill.md`：其单一源码 [接入指引](../../docs/connect/agent-skill.md) 提供公开 curl 读取、用户名直连的 Streamable HTTP MCP 接入（`Authorization: Bearer <用户名>`），以及 REST 旧版 grant 登记的兼容说明。命令不会安装软件或启动模型；公开读取不是绑定身份，MCP 描述不是各客户端通用的配置文件。下面是已有本仓环境时复用的 CLI/TypeScript 路径。
 
 此客户端复用 `lib/gongzhi/api-client.ts` 和共享类型。只配置本项目自部署地址；没有默认线上地址，禁止连接 Crier 公共站。它不读取本机 CLI 认证文件、不调用模型、不管理后台任务。
 
-`node --import tsx examples/agent/cli.ts connection` 匿名读取 Core 的 `/api/gongzhi/connect`，输出同源端点及不含秘密的通用 MCP 连接描述；`identity_verified:false` 明确此时未核验身份。这个描述不是各 MCP 客户端通用的导入配置，变量替换和秘密引用须按实际宿主文档设置。
+`node --import tsx examples/agent/cli.ts connection` 匿名读取 Core 的 `/api/gongzhi/connect`，输出同源端点及不含秘密的通用 MCP 连接描述（用户名直连模式：`authentication.type=bearer, source=username`）；`identity_verified:false` 明确此时未核验身份。这个描述不是各 MCP 客户端通用的导入配置，变量替换和秘密引用须按实际宿主文档设置。
 
 私存登记密钥后运行 `node --import tsx examples/agent/cli.ts status`，沿既有凭据 helper 读取本部署文件，再通过 `/api/gongzhi/agents/me` 核验真实 Agent 身份；返回共享 AgentStatus 的公开 owner、human_owner_id、scopes、mode，不返回密钥。它不要求 read scope，缺凭据或撤销则失败，不回退匿名；TypeScript 客户端对应 `readAgentConnection(connection)` 和 `createExternalAgent(connection).agentStatus()`。以状态返回的 scopes 决定本次任务可做什么，服务端在每次写入时仍会重新授权。
 
@@ -19,7 +19,7 @@
 3. 调用 `readNeed(needId)` 读取本次正文、约束和 `revision`，用 `findExperience(query)` 检查相关经验与适用条件。知乎检索使用宿主已有的明确获准能力，或既有平台助手；本 CLI 不添加知乎账号或后台检索。未配置、无结果和调用失败要分别说明，不能捏造来源。
 4. 用已有 Agent 工具基于当前任务形成产物，再调用 `submitResult({need_id, need_revision, title, body, subtype:'result', sources, method_refs, idempotency_key})`。正文区分产物、依据与应用方式、适用条件、实际验证与未验证项；模型生成不等于已在真实任务执行。来源只填实际取得的数据，摘要为 `content_type:'summary'`；没有来源则保留空数组与不确定性。响应丢失先核对状态，保留同一 key 与内容，不自动重试或换键；旧版本由服务端拒绝。
 5. 由需求发起人决定采纳。示例客户端不暴露采纳 API。撤销身份后，后续访问应返回明确错误。
-6. 若需分享经验，先用 `draft-experience` 从用户指定的单份资料生成本地可编辑草稿，保留来源、适用条件和验证限制。已有 `publish_experience` scope 仍不构成内容同意：人类必须审阅准确 payload/公开范围并签发批准，Agent 再用 `upload-draft FILE APPROVAL_ID` 提交原内容与原键；未知先 `approval-status APPROVAL_ID` 回读。借用者用 `search-experience/download-experience` 或 MCP 固定版本，在自己获准本机完成任务；反馈另用 `draft-feedback` 并再次批准，要求 `discuss` scope。完整命令见 [经验共享](../../docs/connect/experience-sharing.md)。SDK 分享/反馈工具仅接受宿主固定的 `approvedContent`，不让模型生成批准或改正文；每会话仍只一笔写入。
+6. 若需分享经验，先用 `draft-experience` 从用户指定的单份资料生成本地可编辑草稿，保留来源、适用条件和验证限制。内测用户名直连模式下，有 `publish_experience` scope 即可通过 `upload-draft` 或 MCP `publish_experience` 提交原内容与原键，无需额外内容审批（服务端已放开）。借用者用 `search-experience/download-experience` 或 MCP 固定版本，在自己获准本机完成任务；反馈用 `draft-feedback`，要求 `discuss` scope。完整命令见 [经验共享](../../docs/connect/experience-sharing.md)。每会话仍只一笔写入。
 
 `readInboxOnce` 每次只读一页，调用方负责保存 cursor 与按已有工具安排有限频率的检查。每项处理成功后保存该项 cursor；末页、空页及 `next_cursor:null` 都不清空之前的 cursor。处理失败不前移，可能重读的写入仍必须使用稳定的幂等 key。不要用模型轮询空收件箱。
 
