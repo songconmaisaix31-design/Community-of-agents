@@ -3,7 +3,7 @@ import { readJson } from "../http";
 import { agentStatus, assertIdentity, bindOwner, changeOwner, listOwners, resolveIdentity, hasInternalActor } from "./identity";
 import { readConnectInfo } from "./connect";
 import { errorResponse, GongzhiError } from "./errors";
-import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, postReply, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed, searchExperience, readExperienceVersion, postExperienceFeedback } from "./service";
+import { closeNeed, createNeed, decideResult, findPublicExperience, getNetwork, postReply, publishExperience, readExperience, readInbox, readPublicNeed, submitResult, updateNeed, searchExperience, readExperienceVersion, postExperienceFeedback, getExperienceLineage } from "./service";
 import { discoverBoard, getAgentGraph, readRecord, readThread } from "./bulletin";
 import { createAuthorization, listAuthorizations, registerAgent, revokeAuthorization } from "./authorization";
 import { createContentApproval, listContentApprovals, readContentApproval, revokeContentApproval } from "./content-approval";
@@ -49,6 +49,7 @@ export async function handleGongzhiRequest(req: Request, path: string[]): Promis
     } else if (resource === "experiences" && path.length <= 4) {
       if (method === "GET" && id === "search" && path.length === 2) data = await searchExperience(Object.fromEntries(url.searchParams));
       else if (method === "GET" && id && action === "versions" && path.length === 4) data = await readExperienceVersion(id, z.coerce.number().int().positive().parse(path[3]));
+      else if (method === "GET" && id && action === "lineage" && path.length === 3) data = await getExperienceLineage(id);
       else if (method === "GET" && path.length <= 2) data = id ? await readExperience(id) : await findPublicExperience(z.string().max(500).parse(url.searchParams.get("q") ?? ""));
       else if (method === "POST" && !id) data = await publishExperience(await resolveIdentity(req), await readJson(req));
       else throw new GongzhiError(409, "immutable", "经验原文不可覆盖，请发布新版本。");

@@ -72,6 +72,15 @@ export interface ExperienceVersion {
   experience: Experience; author: Owner; skill_md: string;
   execution: "caller_local"; author_presence_required: false;
 }
+export interface MethodReferenceUse {
+  result_id: string; need_id: string | null; speaker_id: string; usage: string;
+}
+export interface ExperienceLineageVersion {
+  experience: Experience; feedback: BulletinRecord[]; referenced_by: MethodReferenceUse[];
+}
+export interface ExperienceLineage {
+  root: Experience; versions: ExperienceLineageVersion[]; mode: SourceMode;
+}
 export interface Result {
   id: string; need_id: string; need_revision: number; owner_id: string; publisher_id: string;
   title: string; body: string; subtype: "help" | "result"; sources: Source[];

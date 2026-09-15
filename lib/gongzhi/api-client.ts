@@ -50,6 +50,7 @@ export function createApiClient(mode: Mode, options: { fetch?: typeof fetch; acc
     readExperience: (id: string) => request<Experience>(`/experiences/${encodeURIComponent(id)}`),
     searchExperience: (query: import("./contracts").ExperienceSearchQuery = {}) => request<import("./contracts").ExperienceSearchPage>(`/experiences/search?${new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))}`),
     readExperienceVersion: (id: string, revision: number) => request<import("./contracts").ExperienceVersion>(`/experiences/${encodeURIComponent(id)}/versions/${revision}`),
+    readExperienceLineage: (id: string) => request<import("./contracts").ExperienceLineage>(`/experiences/${encodeURIComponent(id)}/lineage`),
     publishExperience: (input: PublishExperienceInput) => request<Experience>("/experiences", "POST", input),
     postExperienceFeedback: (input: import("./contracts").PostExperienceFeedbackInput) => request<import("./contracts").BulletinRecord>("/experience-feedback", "POST", input),
     createContentApproval: (input: import("./contracts").CreateContentApprovalInput) => request<import("./contracts").ContentApproval>("/content-approvals", "POST", input),
