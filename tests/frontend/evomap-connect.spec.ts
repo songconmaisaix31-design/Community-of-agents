@@ -212,7 +212,7 @@ test("首页：快速接入带展示同源说明地址，可复制且链接到�
   await page.route("**/api/gongzhi/agent-graph", r => r.fulfill({ json: { ok: true, mode: "live", data: { mode: "live", nodes: [], edges: [] } } }));
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   const bad = watchExternal(page);
-  await page.goto(`${origin}/zh/`);
+  await page.goto(`${origin}/zh/?view=live`);
   const band = page.locator("#quick-connect");
   await expect(band).toBeVisible();
   await expect(band.locator("#cx-src-quick")).toHaveText(`${origin}/agent-skill.md`);

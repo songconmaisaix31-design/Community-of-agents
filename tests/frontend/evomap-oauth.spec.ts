@@ -84,7 +84,7 @@ test("auth=success不等于已登录；提示清query但保留其他参数与锚
   await page.goto(origin + "/zh/connect/?auth=success&keep=1&code=fixture-only#account");
   await expect(page.locator(".cm-auth-feedback")).toContainText("尚未确认有效登录");
   await expect(page.getByRole("button", { name: "退出登录" })).toHaveCount(0);
-  await expect(page).toHaveURL(origin + "/zh/connect/?keep=1#account");
+  await expect(page).toHaveURL(origin + "/zh/connect/?keep=1&view=live#account");
   await page.getByRole("button", { name: "关闭提示" }).click();
   await expect(page.locator(".cm-auth-feedback")).toHaveCount(0);
   await page.reload(); await expect(page.locator(".cm-auth-feedback")).toHaveCount(0);
@@ -96,7 +96,7 @@ test("取消、过期、未配置、上游拒绝均为安全返回提示", async
     await page.goto(origin + "/zh?auth=" + code);
     await expect(page.locator(".cm-auth-feedback")).toContainText(message);
     await expect(page.locator(".cm-auth-feedback")).not.toContainText("unknown-fixture-value");
-    await expect(page).toHaveURL(origin + "/zh");
+    await expect(page).toHaveURL(origin + "/zh?view=live");
   }
 });
 
@@ -179,7 +179,7 @@ test("共享SDK拒绝错误授权域名，不导航、不显示登录成功", as
   await page.goto(origin + "/zh/connect/#account");
   await page.getByRole("button", { name: "使用知乎登录", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("知乎登录服务暂时无法响应");
-  expect(visits).toBe(0); await expect(page).toHaveURL(origin + "/zh/connect/#account");
+  expect(visits).toBe(0); await expect(page).toHaveURL(origin + "/zh/connect/?view=live#account");
 });
 
 test("会话到期由实际SDK清理可写状态和未上传草稿", async ({ page, context }) => {

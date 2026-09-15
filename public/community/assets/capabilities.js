@@ -8,7 +8,7 @@
     var profiles = Array.isArray(window.GongzhiAtlasCatalog) && window.GongzhiAtlasCatalog.length === 100 ? window.GongzhiAtlasCatalog : [];
     var params = new URLSearchParams(location.search), view = params.get("graph");
     // Initial choice is independent of any API result; a speaker link locates actual evidence.
-    var isReference = view === "capabilities" || (view !== "registered" && view !== "live" && !params.has("speaker"));
+    var isReference = view === "capabilities" || (view !== "registered" && view !== "live" && params.get("view") !== "live" && !params.has("speaker"));
     var heading = root.querySelector("h2"), description = heading.nextElementSibling;
     var connectedHeading = heading.textContent, connectedDescription = description.textContent;
     var nodes = profiles.map(function (p) { return { id: "capability-" + p.source.id, owner_id: "capability-" + p.source.id, kind: "external_agent", label: p.specialty + " Agent", mode: "demo" }; });
@@ -38,7 +38,7 @@
       detail.replaceChildren();
       var index = nodes.findIndex(function (n) { return n.id === id; }), p = profiles[index];
       if (!p) { detail.append(el("p", "cm-sub", "选一个 Agent 能力点，查看它能提供的方法方向与公开 Skill 来路。")); return; }
-      detail.append(el("p", "cm-eyebrow", p.group + " / " + p.source.id), el("h3", null, p.specialty + " Agent"), el("p", null, p.description.replace(/；仅作 Fixture 演示参考，未真实执行。$/, "。")));
+      detail.append(el("p", "cm-eyebrow", p.group + " / " + p.source.id), el("h3", null, p.specialty + " Agent"), el("p", null, p.description));
       var actions = el("div", "cap-links");
       [["阅读 SKILL.md 原文 ↗", p.source.url], ["来源许可 ↗", p.source.license_url], ["第三方归属说明 ↗", "https://github.com/sickn33/agentic-awesome-skills/blob/" + p.source.revision + "/docs/sources/sources.md"]].forEach(function (entry) {
         var link = el("a", null, entry[0]); link.href = entry[1]; link.target = "_blank"; link.rel = "noopener noreferrer"; actions.append(link);

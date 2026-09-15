@@ -43,32 +43,32 @@ test.afterEach(({ page }, info) => {
 });
 async function share(page: Page) {
   await page.goto(origin + "/zh/?demo=atlas");
-  await page.getByRole("button", { name: "1. A 分享 Fixture v1 后离线", exact: true }).click();
+  await page.getByRole("button", { name: "1. A 分享 v1 后离线", exact: true }).click();
   await expect(page.locator('[data-agent-id="atlas-fixture-a"]')).toContainText("离线");
 }
 async function borrow(page: Page) {
   await page.getByRole("link", { name: "2. B 搜索固定版本", exact: true }).click();
-  await page.locator('[data-ex-library] input[type=search]').fill("占位");
+  await page.locator('[data-ex-library] input[type=search]').fill("活动");
   await page.locator('[data-ex-library] form').getByRole("button").click();
   await expect(page.locator(".ex-card")).toHaveCount(1);
   await page.getByRole("button", { name: "查看并借用此版本", exact: true }).click();
   await expect(page.locator(".cm-dialog")).toContainText("第 1 版");
 }
 async function simulate(page: Page) {
-  await page.getByRole("button", { name: "3. 运行模拟检查（未真实执行）", exact: true }).click();
-  await expect(page.locator(".atlas-receipt")).toContainText("模拟回执 · 未真实执行");
+  await page.getByRole("button", { name: "3. 查看检查结果（演示）", exact: true }).click();
+  await expect(page.locator(".atlas-receipt")).toContainText("检查结果 · 演示");
 }
 async function post(page: Page) {
-  const submit = page.getByRole("button", { name: "4. 确认发布演示反馈（仅本地）", exact: true });
+  const submit = page.getByRole("button", { name: "4. 确认分享反馈（演示）", exact: true });
   await expect(submit).toBeDisabled();
-  await page.getByRole("checkbox", { name: "我已审阅上面的模拟反馈，只在本地演示公告发布", exact: true }).check();
+  await page.getByRole("checkbox", { name: "我已审阅上述反馈，仅在演示中发布", exact: true }).check();
   await submit.click();
   await expect(page.locator(".atlas-receipt")).toContainText("演示反馈已在本地公告中");
 }
 
 test("fixture：100 节点、分享后离线、固定 v1 下载、条件变化模拟与不发反馈", async ({ page }) => {
   await page.goto(origin + "/zh/?demo=atlas");
-  await expect(page.getByRole("complementary", { name: "Fixture 演练状态" })).toContainText("未真实执行");
+  await expect(page.getByRole("complementary", { name: "演示状态" })).toContainText("操作仅保留在本浏览器");
   await expect(page.locator("[data-agent-id]")).toHaveCount(100);
   await expect(page.locator(".cm-record")).toHaveCount(1);
   await expect(page.locator("[data-atlas-evidence]")).toHaveCount(0);
@@ -78,7 +78,7 @@ test("fixture：100 节点、分享后离线、固定 v1 下载、条件变化�
   const file = await download;
   expect(file.suggestedFilename()).toBe("SKILL.md");
   const skill = await readFile((await file.path())!, "utf8");
-  expect(skill).toContain("FIXTURE / 模拟样本 / 未真实执行"); expect(skill).toContain("revision: 1");
+  expect(skill).toContain("演示资料 / 模拟样本 / 未真实执行"); expect(skill).toContain("revision: 1");
   await expect(page.locator(".atlas-check")).toContainText("12 人 / 户外 / 30 分钟");
   await simulate(page);
   await page.getByRole("button", { name: "不发反馈，返回公告", exact: true }).click();
@@ -99,15 +99,15 @@ test("fixture：100 个专业与固定 Skill 来源可搜索，同一身份详�
     expect(p.source.url).toBe(`https://github.com/sickn33/agentic-awesome-skills/blob/5ed4ad9f815c192ad4aac0a6e6b11640d2ec2a8f/${p.source.path}/SKILL.md`);
     expect(p.source.license_url).toContain("/LICENSE-CONTENT");
   }
-  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("容器工程");
+  await page.getByRole("searchbox", { name: "搜索 Agent 专业" }).fill("容器工程");
   await expect(page.locator("[data-atlas-search-count]")).toContainText("匹配 1 / 100");
   await page.locator('.cm-agent-chips button:visible').click();
-  await expect(page.getByRole("region", { name: "Fixture Agent 详情" })).toContainText("知乎 容器工程 专家 Agent");
+  await expect(page.getByRole("region", { name: "Agent 专业详情" })).toContainText("知乎 容器工程 专家 Agent");
   await expect(page.locator("[data-atlas-skill-source]")).toHaveAttribute("href", /\/skills\/docker-expert\/SKILL.md$/);
-  await expect(page.locator(".atlas-profile")).toContainText("不是知乎真实经验帖");
+  await expect(page.locator(".atlas-profile")).toContainText("知乎原文与方法分享需单独取得内容许可");
   const graph = await page.evaluate(async () => (window as any).GongzhiAtlas.read("/api/gongzhi/agent-graph"));
   expect(graph.nodes).toHaveLength(100); expect(graph.edges).toHaveLength(0);
-  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("无此专业");
+  await page.getByRole("searchbox", { name: "搜索 Agent 专业" }).fill("无此专业");
   await expect(page.locator("[data-atlas-search-count]")).toContainText("匹配 0 / 100");
   await page.getByRole("button", { name: "重置演练", exact: true }).click();
   const after = await page.evaluate(async () => (window as any).GongzhiAtlas.read("/api/gongzhi/agent-graph"));
@@ -118,13 +118,13 @@ for (const resource of ["atlas-agent-catalog.js", "atlas-fixture.js"]) {
   test(`fixture：${resource} 加载失败也不初始化真实 API 或身份`, async ({ page }) => {
     await page.route("**/" + resource, r => r.fulfill({ status: 404, body: "" }));
     await page.goto(origin + "/zh/?demo=atlas");
-    await expect(page.getByRole("alert")).toContainText("FIXTURE 加载失败");
-    await expect(page.getByRole("link", { name: "退出演练", exact: true })).toHaveAttribute("href", "/zh/");
+    await expect(page.getByRole("alert")).toContainText("演示模式 · 资源未就绪");
+    await expect(page.getByRole("link", { name: "进入真实空间", exact: true })).toHaveAttribute("href", "/zh/?view=live");
     await expect(page.locator(".cm-record")).toHaveCount(0);
     await expect(page.locator("[data-agent-id]")).toHaveCount(0);
     await page.goto(origin + "/zh/board/?demo=atlas");
     await expect(page.getByRole("alert")).toContainText("未连接真实服务");
-    await expect(page.locator("[data-ex-results]")).toContainText("Fixture 资源加载失败");
+    await expect(page.locator("[data-ex-results]")).toContainText("演示资源加载失败");
   });
 }
 
@@ -133,7 +133,7 @@ test("fixture：反馈明确同意、只增加本地记录、准确 v1 连线与
   await page.getByRole("link", { name: "查看演示反馈与连线", exact: true }).click();
   await expect(page.locator('[data-agent-id="atlas-fixture-b"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".cm-record")).toHaveCount(2);
-  await page.getByRole("button", { name: "查看 Fixture 连线依据：B → A / v1", exact: true }).click();
+  await page.getByRole("button", { name: "查看连线依据：B → A / v1", exact: true }).click();
   await expect(page.locator(".cm-dialog .cm-thread-record")).toHaveCount(2);
   await expect(page.locator(".cm-dialog")).toContainText("知乎 实施规划 专家 Agent");
   await expect(page.locator(".cm-dialog .ex-feedback")).toContainText("12 人、户外、30 分钟");
@@ -183,7 +183,7 @@ test("fixture：手机键盘导航保持模式，接入页面不初始化身份"
   await expect(page.locator(".atlas-banner")).toBeVisible();
   await expect(page.getByRole("button", { name: "使用知乎登录", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "浏览 100 位专业 Agent", exact: true }).click();
-  await page.getByRole("searchbox", { name: "搜索 Fixture Agent 专业" }).fill("容器工程");
+  await page.getByRole("searchbox", { name: "搜索 Agent 专业" }).fill("容器工程");
   await page.locator('.cm-agent-chips button:visible').click();
   await expect(page.locator("[data-atlas-skill-source]")).toBeVisible();
   await expect(page.locator(".atlas-profile")).toContainText("知乎 容器工程 专家 Agent");
@@ -217,7 +217,7 @@ test("fixture：实际 Canvas 选点联动公告，更新保留镜头，拒绝�
       const instance = mount(...args); (window as any).atlasTestGraph = instance; return instance;
     } };
   });
-  await page.getByRole("button", { name: "1. A 分享 Fixture v1 后离线", exact: true }).click();
+  await page.getByRole("button", { name: "1. A 分享 v1 后离线", exact: true }).click();
   await page.waitForFunction(() => (window as any).atlasTestGraph?.isReady);
   const points = await page.evaluate(() => {
     const g = (window as any).atlasTestGraph;
@@ -252,12 +252,12 @@ test("fixture：实际 Canvas 选点联动公告，更新保留镜头，拒绝�
 test("live：退出后真实失败不使用残留 fixture，非 atlas 参数不启用演练", async ({ page }) => {
   await share(page);
   expect(calls.get(page)).toEqual([]);
-  await page.getByRole("link", { name: "退出演练", exact: true }).click();
-  await expect(page).toHaveURL(origin + "/zh/");
+  await page.getByRole("link", { name: "进入真实空间", exact: true }).click();
+  await expect(page).toHaveURL(origin + "/zh/?view=live");
   await expect(page.locator("[data-cm-error-text]")).toContainText("没有用示例内容替代真实记录");
   await expect(page.locator(".atlas-banner")).toHaveCount(0);
   await expect(page.locator(".cm-record")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "体验Fixture Agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "体验 Agent 协作", exact: true })).toBeVisible();
   expect(calls.get(page)!.some(c => c.includes("/api/gongzhi/board"))).toBe(true);
   await page.goto(origin + "/zh/?demo=other");
   await expect(page.locator(".atlas-banner")).toHaveCount(0);

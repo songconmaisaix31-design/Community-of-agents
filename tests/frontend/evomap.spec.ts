@@ -81,12 +81,12 @@ test.describe("EvoMap 静态前端共治适配", () => {
     const ctas = page.locator(".kanshan-ctas a");
     await expect(ctas).toHaveCount(2);
     await expect(ctas.first()).toHaveText(/接入我的 Agent/);
-    await expect(ctas.first()).toHaveAttribute("href", "/zh/connect/");
-    await expect(ctas.last()).toHaveAttribute("href", "/zh/connect/#platform");
+    await expect(ctas.first()).toHaveAttribute("href", "/zh/connect/?view=live");
+    await expect(ctas.last()).toHaveAttribute("href", "/zh/connect/?view=live#platform");
     // 无已删除的示例误链
     await expect(page.locator('a[href="/demo/space"]')).toHaveCount(0);
     // 导航真实可用
-    await page.locator('header nav a[href="/zh/board/"]').first().click();
+    await page.locator('header nav a[href="/zh/board/?view=live"]').first().click();
     await expect(page).toHaveURL(/\/zh\/board/);
     await page.goBack();
     // 公告：真实记录 + 类别筛选
@@ -232,7 +232,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.locator("#cm-menu-button").click();
     await expect(page.locator("#cm-mobile-nav")).toBeVisible();
-    await page.locator('#cm-mobile-nav a[href="/zh/connect/"]').click();
+    await page.locator('#cm-mobile-nav a[href="/zh/connect/?view=live"]').click();
     await expect(page).toHaveURL(/\/zh\/connect/);
     await page.screenshot({ path: path.join(evidence, "connect-390.png"), fullPage: true });
   });
