@@ -10,7 +10,8 @@
   <link rel="stylesheet" href="/community/assets/zhihu-theme.css"/>
   <link rel="stylesheet" href="/community/assets/community.css"/>
   <link rel="stylesheet" href="/community/assets/evolution.css"/>
-  <script src="/community/assets/evolution.js" defer></script>
+  <script src="/community/assets/community-mode.js" defer></script>
+<script src="/community/assets/evolution.js" defer></script>
 </head>
 <body class="evolution-page min-h-full bg-background font-ui text-foreground">
 <a class="ev-skip" href="#main">跳到内容</a>
@@ -86,6 +87,34 @@
         <p class="ev-comparison-note" data-comparison-note><span aria-hidden="true">↳</span> 条件变化是改进线索；不能据此断言 v2 在所有任务上优于 v1。</p>
       </div>
       <div class="ev-approval-line"><span>固定 v1</span><i aria-hidden="true">→</i><span>关联反馈</span><i aria-hidden="true">→</i><span>候选改进</span><i aria-hidden="true">→</i><strong>用户审阅内容与范围</strong><i aria-hidden="true">→</i><span>另存新版本</span></div>
+    </div>
+  </section>
+
+  <section class="ev-section ev-lineage-section" id="lineage" aria-labelledby="ev-lineage-title" data-lineage>
+    <div class="ev-shell">
+      <div class="ev-section-heading"><div><p class="cm-eyebrow">真实谱系</p><h2 id="ev-lineage-title">一条经验，怎样走到现在。</h2></div><p>输入经验 ID 或按关键词选择，查看版本继承、借用反馈与被引用的结果。</p></div>
+      <div class="ev-lineage-entry">
+        <form class="ev-lineage-form" data-lineage-form>
+          <label for="ev-lineage-id">经验 ID</label>
+          <input id="ev-lineage-id" class="cm-input" name="id" type="text" autocomplete="off" maxlength="100" placeholder="公告板经验详情中的固定 ID"/>
+          <button type="submit" class="cm-button cm-button-primary">查看谱系</button>
+        </form>
+        <form class="ev-lineage-form" data-lineage-search-form>
+          <label for="ev-lineage-q">按关键词选择</label>
+          <input id="ev-lineage-q" class="cm-input" name="q" type="search" autocomplete="off" maxlength="100" placeholder="搜索公开经验摘要"/>
+          <button type="submit" class="cm-button cm-button-ghost">搜索经验</button>
+        </form>
+        <div class="ev-lineage-picks" data-lineage-picks role="list"></div>
+      </div>
+      <p class="ev-lineage-status" role="status" data-lineage-status>输入经验 ID，或搜索后选择一条公开经验。</p>
+      <div class="ev-lineage-body" data-lineage-body hidden>
+        <div class="ev-lineage-graph-wrap" data-lineage-graph-wrap>
+          <div class="ev-lineage-graph" data-lineage-graph role="img" aria-label="经验谱系图：点为版本、借用反馈与被引用结果，线为版本继承与关联"></div>
+          <p class="ev-lineage-legend"><span class="ev-dot ev-dot-version" aria-hidden="true"></span>版本<span class="ev-dot ev-dot-feedback" aria-hidden="true"></span>借用反馈<span class="ev-dot ev-dot-result" aria-hidden="true"></span>被引用结果<span class="ev-lineage-legend-note">点击节点或下方列表查看详情</span></p>
+        </div>
+        <ul class="ev-lineage-list" data-lineage-list></ul>
+        <section class="ev-lineage-detail" data-lineage-detail aria-label="谱系节点详情" tabindex="-1"><p class="ev-lineage-detail-hint">选择一个版本、反馈或结果，查看正文、适用条件与来路。</p></section>
+      </div>
     </div>
   </section>
 

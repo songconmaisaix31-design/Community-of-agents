@@ -1,5 +1,17 @@
 # EvoMap 静态前端共治适配说明（2026-09-14）
 
+## 进化层真实「经验进化谱系」（2026-09-15，最新增量）
+
+普通 merge 集成 `538db16d5ee1b44878607c1ef692d6c63b2d05c1`（含 C 的 `/api/gongzhi/experiences/:id/lineage` 与生成客户端 `readExperienceLineage`），只消费不改共享客户端。进化页 `/community/zh/evolution/index.html` 新增 `#lineage` 区块：
+
+- 入口契约：任意页面带 `?id=<experienceId>` 直达即自动读取真实谱系；页内保留两个入口——按 ID 提交、按关键词 `searchExperience` 选择（只在用户点击后发请求）。经验列表/搜索页挂「看谱系」链接属 `experience.js`/`community.js` 写域，本轮未动，留交接。
+- 谱系图：复用既有 `graph.bundle.js`（`GongzhiGraph.mount`）在独立宿主新建挂载，不改主站交流图；节点 = 版本（蓝）+ 借用反馈（绿）+ 被引用结果（紫），边 = `previous_version_id` 版本继承 + 反馈→版本 + 结果→版本引用，点击节点/连线或下方同一列表查看详情（正文、适用条件、来源、反馈使用方式、结果归属与 usage）。选中后由本页重绘自定义三色，不移交调色盘。
+- demo=atlas：渲染硬编码 v1/v2 演示谱系（与版本对照小节同一示例），明确标注演示，不发任何 API 请求；无 id 的真实模式也不发请求，仅显示入口提示。
+- 状态如实可见：加载中、空谱系（单版本无反馈/引用明确说明）、读取失败（"未用示例内容替代"）、窄屏（≤650px）与无 WebGL 均降级为内容完全一致的列表，图例与详情面板保留。
+- 六步理论 `steps` 数组与版本对照交互未动；页面仍只有两个静态脚本，图谱 bundle 仅在渲染谱系时按需注入。
+
+验证（本地静态 + 明确 HTTP fixture，不证明真实后端联通）：`npx playwright test --config tests/frontend/evomap.config.ts tests/frontend/evomap-evolution.spec.ts tests/frontend/evomap-evolution-graph.spec.ts tests/frontend/evomap-evolution-lineage.spec.ts` → **20/20**。新增 `evomap-evolution-lineage.spec.ts` 6 项：fixture 谱系图渲染与真实 canvas 点选详情、demo 零请求、单版本/失败状态、页内 ID 与搜索入口跳转、390 宽与无 WebGL 降级。期间修复一处本页 CSS 括号失衡（影响 900px 媒体查询），回归已覆盖。截图 `%TEMP%/gongzhi-evolution-f/evolution-lineage-desktop.png`、`evolution-lineage-mobile.png`。
+
 ## 主站能力星图与 Agent 进化层（2026-09-15，当前）
 
 从明确集成 `ad4465408db0886d23ac11fefcd742b5bb76b70f` 普通快进同步，沿原 F 分支交付；首片 `7c6758a9c50327949e44501fc7ee58a4922cdd19` 已推送。M 后续按用户要求将优先级调整为主站星图、两站共用理论页，取消视频/配音，并扩回 F 原社区前端写域。原 `test-results/` 保留；共享客户端、根配置/依赖/锁、API、Auth、后端和数据库均未修改。
