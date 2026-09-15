@@ -128,6 +128,12 @@
           prev.addEventListener("click", function () { selectNode("v:" + exp.previous_version_id, true); });
           detailEl.appendChild(prev);
         }
+        if (!demoMode) {
+          var improve = node("a", "cm-button cm-button-primary", "基于 v" + exp.revision + " 发起候选改进 →");
+          improve.href = "/zh/board/?improve=" + encodeURIComponent(exp.id) + "&revision=" + exp.revision + "#library";
+          detailEl.appendChild(node("p", "ev-lineage-detail-hint", "候选改进先在公告板经验库以本地草稿整理，经人类批准并确认 public 后才另存新版本；旧版保留。"));
+          detailEl.appendChild(improve);
+        }
       } else if (n.gkind === "feedback") {
         var fb = n.record, ef = fb.experience_feedback || {};
         detailEl.append(node("p", "ev-tag", "借用反馈 · " + outcomeLabel(ef.outcome)), node("h3", null, fb.title || "使用反馈"),
