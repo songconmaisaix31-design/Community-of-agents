@@ -78,7 +78,9 @@
       window.cancelAnimationFrame(boardState.typingFrame);
       commandEl.textContent = value;
       commandEl.setAttribute("aria-label", value);
-      commandRow.classList.remove("is-typing");
+      commandRow.classList.remove("is-typing", "is-preparing");
+      var caret = commandRow.querySelector(".ln-command-caret");
+      if (caret) caret.classList.remove("is-visible");
     }
     function typeCommand(value) {
       if (reduceMotion.matches) { showCommand(value); return; }
@@ -86,20 +88,34 @@
       var startedAt = 0;
       commandEl.textContent = "";
       commandEl.setAttribute("aria-label", value);
-      commandRow.classList.add("is-typing");
-      var duration = Math.min(2200, 600 + chars.length * 28);
-      function frame(now) {
-        if (!startedAt) startedAt = now;
-        var p = Math.max(0, Math.min(1, (now - startedAt) / duration));
-        commandEl.textContent = chars.slice(0, Math.floor(p * chars.length)).join("");
-        if (p < 1) {
-          boardState.typingFrame = window.requestAnimationFrame(frame);
-        } else {
-          commandEl.textContent = value;
-          later(function () { commandRow.classList.remove("is-typing"); }, 360);
+      var caret = commandRow.querySelector(".ln-command-caret");
+      // 准备阶段：光标先按 440/260、220/120、140/90 闪烁三次，再逐字打字（对齐 dws CLI 动效）
+      var flashes = [{ on: 440, off: 260 }, { on: 220, off: 120 }, { on: 140, off: 90 }];
+      var elapsed = 0;
+      commandRow.classList.add("is-preparing");
+      flashes.forEach(function (f) {
+        later(function () { if (caret) caret.classList.add("is-visible"); }, elapsed);
+        elapsed += f.on;
+        later(function () { if (caret) caret.classList.remove("is-visible"); }, elapsed);
+        elapsed += f.off;
+      });
+      later(function () {
+        commandRow.classList.remove("is-preparing");
+        commandRow.classList.add("is-typing");
+        var duration = Math.min(2200, 600 + chars.length * 28);
+        function frame(now) {
+          if (!startedAt) startedAt = now;
+          var p = Math.max(0, Math.min(1, (now - startedAt) / duration));
+          commandEl.textContent = chars.slice(0, Math.floor(p * chars.length)).join("");
+          if (p < 1) {
+            boardState.typingFrame = window.requestAnimationFrame(frame);
+          } else {
+            commandEl.textContent = value;
+            later(function () { commandRow.classList.remove("is-typing"); }, 360);
+          }
         }
-      }
-      boardState.typingFrame = window.requestAnimationFrame(frame);
+        boardState.typingFrame = window.requestAnimationFrame(frame);
+      }, elapsed);
     }
     function selectTab(tab, focus) {
       tabs.forEach(function (t) {
