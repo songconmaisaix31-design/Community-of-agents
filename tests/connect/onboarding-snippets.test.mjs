@@ -180,13 +180,19 @@ for (const behavior of ['confirmed', 'wrong-revision', 'response-lost', 'without
   }));
 }
 
-test('published MCP status request reaches the real handler and missing Bearer is an error, not connected', async () => {
+test('published MCP status request reaches the real handler and missing Bearer is an HTTP 401 OAuth challenge, not connected', async () => {
   const body = JSON.parse(skill.split('<!-- snippet:mcp-status -->')[1].match(/```json\r?\n([\s\S]*?)\r?\n```/)[1]);
-  const response = await handleMcpPost(new Request('http://127.0.0.1/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify(body) }));
-  assert.equal(response.status, 200);
-  const rpc = await response.json();
-  assert.equal(rpc.id, body.id);
-  assert.equal(rpc.result.isError, true);
-  assert.equal(rpc.result.structuredContent.error.code, 'unauthenticated');
+  const issuer = 'https://oauth-connect.example.invalid';
+  const previous = { SITE_URL: process.env.SITE_URL, GONGZHI_MCP_OAUTH_ISSUER: process.env.GONGZHI_MCP_OAUTH_ISSUER };
+  Object.assign(process.env, { SITE_URL: issuer, GONGZHI_MCP_OAUTH_ISSUER: issuer });
+  try {
+    const response = await handleMcpPost(new Request(`${issuer}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify(body) }));
+    assert.equal(response.status, 401);
+    assert.match(response.headers.get('www-authenticate') ?? '', /oauth-protected-resource\/mcp/);
+    assert.match(response.headers.get('www-authenticate') ?? '', /scope="read"/);
+    assert.deepEqual(await response.json(), { error: 'invalid_token' });
+  } finally {
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
   assert.deepEqual(body.params.arguments, {});
 });
