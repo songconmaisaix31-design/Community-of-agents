@@ -11,6 +11,7 @@ const config: NextConfig = {
         { source: "/zh", destination: "/community/zh/index.html" },
         { source: "/zh/board", destination: "/community/zh/board/index.html" },
         { source: "/zh/connect", destination: "/community/zh/connect/index.html" },
+        { source: "/zh/library", destination: "/community/zh/library/index.html" },
       ],
       afterFiles: [], fallback: [],
     };
