@@ -1,8 +1,14 @@
 import { ApiClientError, createApiClient } from '../../lib/gongzhi/api-client.ts';
+import { z } from 'zod';
 import { CONTRACT_VERSION, AgentScopeSchema, BoardQuerySchema, CreateNeedSchema, PostReplySchema, PublishExperienceSchema, RegisterAgentSchema, SubmitResultSchema, type AgentStatus, type ConnectInfo, type BoardQuery, type CreateNeedInput, type Need, type PostReplyInput, type PublishExperienceInput, type RegisterAgentInput, type SubmitResultInput } from '../../lib/gongzhi/contracts.ts';
 import { ExperienceSearchSchema, ReadExperienceVersionSchema, PostExperienceFeedbackSchema, SourceSchema, type ContentApproval, type ExperienceSearchQuery, type ExperienceVersion, type PostExperienceFeedbackInput } from '../../lib/gongzhi/contracts.ts';
 
 const nonempty = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
+// Kept here until the shared Core contract lands on this branch. The field is
+// sent verbatim to Core and becomes part of the shared schema after sync.
+const PublishExperienceWithFeedbackSchema = PublishExperienceSchema.extend({
+  based_on_feedback_ids: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+});
 const liveRecord = (value: Pick<Need, 'id' | 'mode' | 'owner_id'>) => nonempty(value.id) && value.mode === 'live' && nonempty(value.owner_id);
 
 async function confirmedWrite<T>(signal: AbortSignal, write: () => Promise<T>, validReceipt: (result: T) => boolean): Promise<T> {
@@ -152,8 +158,8 @@ export function createExternalAgent(options: Connection & { apiKey: string }) {
       const parsed = CreateNeedSchema.parse(input);
       return confirmedWrite(options.signal, () => api.createNeed(parsed), liveRecord);
     },
-    publishExperience: (input: PublishExperienceInput) => {
-      const parsed = PublishExperienceSchema.parse(input);
+    publishExperience: (input: PublishExperienceInput & { based_on_feedback_ids?: string[] }) => {
+      const parsed = PublishExperienceWithFeedbackSchema.parse(input);
       if (!nonempty(parsed.approval_id)) throw new ApiClientError({ code: 'forbidden', message: '经验上传需要人类对准确内容及公开范围的批准。', retryable: false });
       return confirmedWrite(options.signal, () => api.publishExperience(parsed), result =>
         liveRecord(result) && Number.isSafeInteger(result.revision) && result.revision > 0 &&

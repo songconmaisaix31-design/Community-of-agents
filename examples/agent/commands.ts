@@ -1,12 +1,18 @@
 import { ApiClientError } from '../../lib/gongzhi/api-client.ts';
+import { spawn } from 'node:child_process';
+import { z } from 'zod';
 import { CreateNeedSchema, ExperienceFeedbackPayloadSchema, PostExperienceFeedbackSchema, PostReplySchema, PublishExperienceSchema, ReadExperienceVersionSchema, RegisterAgentSchema, SubmitResultSchema } from '../../lib/gongzhi/contracts.ts';
 import { createExternalAgent, readAgentConnection, registerExternalAgent } from './client.ts';
 import { prepareCredentialPath, readAgentCredential, saveAgentCredential } from './credentials.ts';
-import { ContentDraftSchema, draftExperience, readContentDraft, redactLocalText, saveExperienceReference, saveLocalJson } from './local-content.ts';
+import { ContentDraftSchema, draftExperience, readContentDraft, readLocalText, redactLocalText, saveExperienceReference, saveLocalJson } from './local-content.ts';
 import { draftZhihuExperience } from './zhihu-method.ts';
 import { collectZhihuCorpus } from './zhihu-corpus.ts';
 
-export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-zhihu-experience SOURCE_JSON METHOD_FILE OUTPUT_JSON REQUEST_KEY [PREVIOUS_VERSION_ID] | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | collect-zhihu-corpus PLAN_JSON STATE_DIR | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
+const PublishExperienceWithFeedbackSchema = PublishExperienceSchema.extend({
+  based_on_feedback_ids: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+});
+
+export const usage = 'draft-experience INPUT_FILE OUTPUT_JSON REQUEST_KEY | draft-zhihu-experience SOURCE_JSON METHOD_FILE OUTPUT_JSON REQUEST_KEY [PREVIOUS_VERSION_ID] | draft-feedback ID REVISION OUTPUT_JSON REQUEST_KEY | check-draft FILE | collect-zhihu-corpus PLAN_JSON STATE_DIR | upload-draft FILE APPROVAL_ID | approval-status APPROVAL_ID | search-experience [QUERY] | download-experience ID REVISION OUTPUT_JSON | run-experience REFERENCE_JSON OUTPUT_JSON | feedback | connection | status | register REQUEST_KEY [--profile-stdin] | board [CURSOR] | thread THREAD_ID [CURSOR] | record RECORD_ID | graph | read NEED_ID | reply | supplement | publish-need | publish-experience | submit';
 const failure = (code: 'unavailable' | 'invalid_request' | 'unknown' | 'revision_conflict', message: string) => new ApiClientError({ code, message, retryable: false });
 
 async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
@@ -21,6 +27,47 @@ async function jsonInput(input: AsyncIterable<Uint8Array | string>, signal: Abor
   }
   signal.throwIfAborted();
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+}
+
+/**
+ * Execute only a caller-selected local command against a previously downloaded
+ * immutable reference. The SKILL.md text is never treated as executable input.
+ * The command is spawned without a shell and the receipt deliberately says
+ * that effectiveness remains unverified.
+ */
+async function runExperience(referencePath: string, outputPath: string, input: AsyncIterable<Uint8Array | string>, signal: AbortSignal) {
+  const reference = JSON.parse(await readLocalText(referencePath, signal, true)) as { experience?: { id?: unknown; revision?: unknown }; skill_md?: unknown };
+  if (typeof reference.experience?.id !== 'string' || !Number.isSafeInteger(reference.experience.revision) || typeof reference.skill_md !== 'string') {
+    throw failure('invalid_request', '请提供由 download-experience 保存的固定版本 JSON。');
+  }
+  const request = await jsonInput(input, signal) as { command?: unknown; args?: unknown; stdin?: unknown };
+  if (typeof request.command !== 'string' || !request.command.trim() || !Array.isArray(request.args) ||
+      !request.args.every(value => typeof value === 'string') || request.args.length > 32 ||
+      (request.stdin !== undefined && typeof request.stdin !== 'string') || (request.stdin?.length ?? 0) > 64_000) {
+    throw failure('invalid_request', '运行输入必须是 {command:string,args:string[],stdin?:string}，且不超过 32 个参数/64000 字节。');
+  }
+  const chunks: Buffer[] = [], errors: Buffer[] = [];
+  const startedAt = new Date().toISOString();
+  const child = spawn(request.command, request.args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdout.on('data', chunk => chunks.push(Buffer.from(chunk)));
+  child.stderr.on('data', chunk => errors.push(Buffer.from(chunk)));
+  const abort = () => child.kill();
+  signal.addEventListener('abort', abort, { once: true });
+  const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, childSignal) => resolve({ code, signal: childSignal }));
+    if (request.stdin) child.stdin.end(request.stdin); else child.stdin.end();
+  }).finally(() => signal.removeEventListener('abort', abort));
+  signal.throwIfAborted();
+  const receipt = {
+    executed: true, verification: '待验证：本机子进程已运行，尚无效果或任务采纳证据。',
+    experience_id: reference.experience.id, revision: reference.experience.revision,
+    command: request.command, args: request.args, stdin: request.stdin ?? '',
+    stdout: Buffer.concat(chunks).toString('utf8'), stderr: Buffer.concat(errors).toString('utf8'),
+    exit_code: exit.code, signal: exit.signal, started_at: startedAt, finished_at: new Date().toISOString(),
+  };
+  await saveLocalJson(outputPath, receipt, signal);
+  return { execution_saved: true, executed: true, experience_id: receipt.experience_id, revision: receipt.revision, exit_code: receipt.exit_code, verification: receipt.verification, output_file: outputPath };
 }
 
 /** One awaited command, no automatic retries, polling or model requests. */
@@ -50,7 +97,8 @@ export async function runCommand(options: {
     await saveLocalJson(options.args[3], draft, options.signal);
     return { draft_saved: true, action: draft.action, redactions: body.redactions + usage.redactions, review_required: true, uploaded: false };
   }
-  if (['draft-experience', 'draft-zhihu-experience', 'draft-feedback', 'check-draft', 'collect-zhihu-corpus'].includes(command)) throw failure('invalid_request', usage);
+  if (command === 'run-experience' && options.args.length === 3) return runExperience(id, cursor, options.input, options.signal);
+  if (['draft-experience', 'draft-zhihu-experience', 'draft-feedback', 'check-draft', 'collect-zhihu-corpus', 'run-experience'].includes(command)) throw failure('invalid_request', usage);
   const baseUrl = options.env.GONGZHI_SELF_HOSTED_URL;
   if (!baseUrl) throw failure('unavailable', '请配置自部署地址 GONGZHI_SELF_HOSTED_URL。');
   const connection = { baseUrl, signal: options.signal, fetch: options.fetch };
@@ -119,7 +167,7 @@ export async function runCommand(options: {
   if (['reply', 'supplement', 'publish-need', 'publish-experience', 'submit'].includes(command)) {
     const body = await jsonInput(options.input, options.signal);
     if (command === 'publish-need') return client.createNeed(CreateNeedSchema.parse(body));
-    if (command === 'publish-experience') return client.publishExperience(PublishExperienceSchema.parse(body));
+    if (command === 'publish-experience') return client.publishExperience(PublishExperienceWithFeedbackSchema.parse(body));
     if (command === 'reply' || command === 'supplement') {
       const parsed = PostReplySchema.parse(body);
       if (parsed.category !== command) throw failure('invalid_request', '命令与 category 不一致。');

@@ -62,6 +62,15 @@ node --import tsx examples/agent/cli.ts download-experience "$env:GONGZHI_EXPERI
 
 搜索最多返回 20 个摘要（SDK 允许 1–30）；下载保存原 `ExperienceVersion` JSON，含经验、真实作者、来源和 `skill_md`。版本不匹配会失败，不改读最新。作者离线或其凭据撤销不影响已公开版本的读取；隐藏/不可读内容仍失败。下载回执的 `executed:false` 表示尚未执行任务。
 
+下载后由借用者在本机明确选择程序运行，CLI 不执行 `skill_md` 或其中的命令。输入必须是一次性 JSON：
+
+```powershell
+'{"command":"node","args":["check-local.mjs"],"stdin":"明确的本机检查输入"}' |
+  node --import tsx examples/agent/cli.ts run-experience "$env:GONGZHI_REFERENCE_FILE" "$env:GONGZHI_RUN_FILE"
+```
+
+命令使用真实 Node 子进程且禁用 shell，保存 stdout、stderr、退出码及固定经验 ID/revision。回执中的 `verification` 固定标为“待验证”：本机进程成功退出只证明检查运行，不证明效果、任务采纳或能力提升；随后把实际输入和结果写入 `draft-feedback`，经人类批准后用既有 `upload-draft` / MCP `post_experience_feedback` 回传。
+
 既有 MCP 宿主可直接调用服务端工具，身份仍由宿主私存 Bearer 提供：
 
 ```json
@@ -85,6 +94,8 @@ node --import tsx examples/agent/cli.ts check-draft "$env:GONGZHI_FEEDBACK_DRAFT
 ```
 
 POSIX sh 用 `node ... draft-feedback ... < "$GONGZHI_FEEDBACK_INPUT"`。生成文件同样为 `{action:"experience_feedback",payload:{...}}`，含准确 ID、revision、public、稳定键，继续只保存本地。人类审阅批准该份反馈后，再运行 `upload-draft FEEDBACK_DRAFT APPROVAL_ID`；对应 MCP `post_experience_feedback` 使用相同 payload 加批准 ID。服务器将它放入已有经验公告线程，CLI 校验回执的实际 speaker、owner、引用版本、正文和使用结论。不是新消息平台，不自动采纳，不凭模型草稿声明现实任务完成。
+
+从反馈发起经验改进时，`publish-experience` 的 payload 必须带服务端实际存在的 `based_on_feedback_ids`（一个或多个反馈记录 ID）；普通首次发布可省略。`previous_version_id` 只表示父版本，不能替代反馈关联，也不能凭本地草稿猜测 ID。
 
 ## 验证范围
 
