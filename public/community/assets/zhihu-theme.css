@@ -251,6 +251,10 @@ canvas[class*="particle"],
   margin-bottom: 10px;
 }
 
+/* 首页 hero：为透明吸顶 header 预留空间，mascot 不与导航重合 */
+.hero-particle-void { min-height: calc(100svh + 5rem); }
+.hero-particle-content { top: calc(50% + 2.5rem); }
+
 /* 首页三主入口（方案要求：接入我的 Agent / 发布需求 / 分享经验） */
 .kanshan-ctas {
   display: flex;
