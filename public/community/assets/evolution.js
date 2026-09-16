@@ -257,7 +257,7 @@
     }
     function fail(message) {
       statusEl.classList.add("ev-lineage-error");
-      statusEl.textContent = message + "。未用示例内容替代。";
+      statusEl.textContent = message + "。未用虚假内容替代。";
     }
     function loadLineage(id) {
       statusEl.classList.remove("ev-lineage-error");
@@ -300,7 +300,7 @@
       statusEl.textContent = "正在搜索公开经验…";
       liveApi().then(function (api) { return api.searchExperience({ q: q }); }).then(function (page) {
         var items = (page && page.items || []).slice(0, 8);
-        if (!items.length) { statusEl.textContent = "没有匹配的公开经验，未用示例内容替代。"; renderPicks([]); return; }
+        if (!items.length) { statusEl.textContent = "没有匹配的公开经验，未用虚假内容替代。"; renderPicks([]); return; }
         statusEl.textContent = "匹配 " + items.length + " 条公开经验，选择一条查看谱系。";
         renderPicks(items.map(function (it) {
           return { label: it.title + " · v" + it.revision + " · " + it.id, action: function () { goLineage(it.id); } };

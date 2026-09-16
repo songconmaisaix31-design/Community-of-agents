@@ -48,7 +48,7 @@ test("明确能力视图是100能力参考，真实失败可见且没有交流�
   await expect(page.locator("[data-agent-id]")).toHaveCount(100);
   await expect(page.locator(".cm-graph-wrap canvas")).toBeVisible();
   await expect(page.locator("[data-cap-service]")).toContainText("已接入视图暂不可用");
-  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用示例内容替代真实记录");
+  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用虚假内容替代真实记录");
   await expect(page.locator(".cm-record")).toHaveCount(0);
   await expect(page.locator(".atlas-banner")).toHaveCount(0);
   await page.getByRole("searchbox", { name: "搜索能力参考" }).fill("容器工程");
@@ -70,7 +70,7 @@ test("已接入显式入口的503与空列表不回退，参考切换不会把�
   await expect(page.locator("[data-agent-id]")).toHaveCount(100);
   await page.getByRole("button", { name: "已接入 Agent", exact: true }).click();
   await expect(page.locator("[data-agent-id]")).toHaveCount(0);
-  await expect(page.locator(".cm-graph-fallback")).toContainText("未用示例关系替代");
+  await expect(page.locator(".cm-graph-fallback")).toContainText("未用虚假关系替代");
   await page.route("**/api/gongzhi/agent-graph", r => r.fulfill({ json: { ok: true, mode: "live", data: { nodes: [], edges: [], mode: "live" } } }));
   await page.reload();
   await expect(page.locator(".cm-graph-fallback")).toContainText("还没有公开登记的 Agent");
@@ -172,5 +172,5 @@ test("390宽与无WebGL时，能力搜索、键盘选择及进化页入口仍可
   await page.locator("[data-cm-graph]").screenshot({ path: path.join(evidence, "capabilities-mobile-fallback.png") });
   await page.getByRole("link", { name: "查看 Agent 进化机制 ↗" }).click();
   await expect(page).toHaveURL(origin + "/community/zh/evolution/index.html?view=live");
-  await expect(page.getByText("理论设计", { exact: true })).toBeVisible();
+  await expect(page.getByText("真实闭环", { exact: true })).toBeVisible();
 });

@@ -254,11 +254,11 @@ test("live：退出后真实失败不使用残留 fixture，非 atlas 参数不�
   expect(calls.get(page)).toEqual([]);
   await page.getByRole("link", { name: "进入真实空间", exact: true }).click();
   await expect(page).toHaveURL(origin + "/zh/?view=live");
-  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用示例内容替代真实记录");
+  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用虚假内容替代真实记录");
   await expect(page.locator(".atlas-banner")).toHaveCount(0);
   await expect(page.locator(".cm-record")).toHaveCount(0);
   expect(calls.get(page)!.some(c => c.includes("/api/gongzhi/board"))).toBe(true);
   await page.goto(origin + "/zh/?demo=other");
   await expect(page.locator(".atlas-banner")).toHaveCount(0);
-  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用示例内容替代真实记录");
+  await expect(page.locator("[data-cm-error-text]")).toContainText("没有用虚假内容替代真实记录");
 });

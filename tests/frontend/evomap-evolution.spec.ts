@@ -53,7 +53,7 @@ test("六步操作展示责任与批准边界，静态页面不启动后台客�
   page.on("response", r => { if (r.status() >= 400) failures.push(r.url()); });
   await page.goto(origin + direct);
   await expect(page).toHaveTitle("Agent 进化层 · 共治");
-  await expect(page.getByText("理论设计", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("真实闭环", { exact: true })).toHaveCount(1);
   await expect(page.locator(".ev-process [role=tab]")).toHaveCount(6);
   await expect(page.locator("script")).toHaveCount(2);
   await expect(page.locator("script").last()).toHaveAttribute("src", "/community/assets/evolution.js");
@@ -166,7 +166,7 @@ for (const from of ["/zh/", "/zh/board/", "/zh/connect/"]) {
       const link = page.getByRole("link", { name: "进化层", exact: true }).filter({ visible: true });
       await link.focus(); await page.keyboard.press("Enter");
       await expect(page).toHaveURL(/\/community\/zh\/evolution\/index.html\?demo=atlas$/);
-      await expect(page.getByText("理论设计", { exact: true })).toHaveCount(1);
+      await expect(page.getByText("真实闭环", { exact: true })).toHaveCount(1);
       await expect(page.locator(".atlas-banner")).toHaveCount(0);
       await expect(page.locator(".ev-outro a").first()).toHaveAttribute("href", "/zh/?demo=atlas#agents");
       await page.getByRole("link", { name: "查看公告", exact: true }).click();

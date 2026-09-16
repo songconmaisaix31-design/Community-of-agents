@@ -126,7 +126,7 @@ test("单版本空谱系与读取失败都明确可见，不用示例替代", as
   await page.route("**/api/gongzhi/experiences/*/lineage", r => r.fulfill({ status: 503, json: { ok: false, mode: "live", error: { code: "unavailable", message: "隔离测试 API 不可用", retryable: true } } }));
   await page.goto(origin + direct + "?id=exp-missing");
   await expect(page.locator("[data-lineage-status]")).toContainText("谱系读取失败：隔离测试 API 不可用");
-  await expect(page.locator("[data-lineage-status]")).toContainText("未用示例内容替代");
+  await expect(page.locator("[data-lineage-status]")).toContainText("未用虚假内容替代");
   await expect(page.locator("[data-lineage-body]")).toBeHidden();
   await expect(page.locator("[data-lineage-graph] canvas")).toHaveCount(0);
 });

@@ -35,7 +35,7 @@
     statusEl.classList.toggle("lib-status-error", !!isError);
     statusEl.textContent = message;
   }
-  function fail(message) { setStatus(message + "。未用示例内容替代。", true); }
+  function fail(message) { setStatus(message + "。未用虚假内容替代。", true); }
 
   function collectTags(items) {
     var seen = {};
