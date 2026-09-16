@@ -140,6 +140,11 @@
           node("p", "ev-lineage-meta", "来自：" + (fb.speaker && fb.speaker.name || fb.speaker_id) + " · 绑定 " + ef.experience_id + " / revision " + ef.revision + " · " + fb.created_at),
           node("p", null, fb.body), node("p", "ev-lineage-meta", "使用方式：" + (ef.usage || "未提供")),
           node("p", "ev-lineage-meta", "反馈关联旧版，不覆盖原方法；是否形成新版由用户审阅决定。"));
+          if (!demoMode && ef.outcome === "needs_changes" && ef.experience_id && ef.revision) {
+            var improveFromFeedback = node("a", "cm-button cm-button-primary", "基于此反馈发起候选改进 →");
+            improveFromFeedback.href = "/zh/board/?improve=" + encodeURIComponent(ef.experience_id) + "&revision=" + ef.revision + "&feedback=" + encodeURIComponent(fb.id) + "#library";
+            detailEl.appendChild(improveFromFeedback);
+          }
       } else {
         detailEl.append(node("p", "ev-tag", "被引用结果"), node("h3", null, "结果 " + n.id.slice(2)));
         n.refs.forEach(function (ref) {

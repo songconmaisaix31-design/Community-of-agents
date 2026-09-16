@@ -266,11 +266,14 @@
     draftButton.addEventListener("click", function () { openDraft(); });
     var improveId = new URLSearchParams(location.search).get("improve");
     var improveRevision = Number(new URLSearchParams(location.search).get("revision") || 0);
+    var improveFeedback = new URLSearchParams(location.search).get("feedback");
     if (improveId && improveRevision > 0 && !fixtureMode) {
       publicApi().then(function (api) { return api.readExperienceVersion(improveId, improveRevision); }).then(function (version) {
         var exp = version && version.experience;
         if (!exp || exp.id !== improveId || exp.revision !== improveRevision) return;
-        openDraft({ action: "publish_experience", payload: { title: exp.title, body: exp.body, applicability: exp.applicability, tags: exp.tags || [], sources: exp.sources || [], previous_version_id: exp.id, visibility: "public", idempotency_key: key() } });
+        var payload = { title: exp.title, body: exp.body, applicability: exp.applicability, tags: exp.tags || [], sources: exp.sources || [], previous_version_id: exp.id, visibility: "public", idempotency_key: key() };
+        if (improveFeedback) payload.based_on_feedback_ids = [improveFeedback];
+        openDraft({ action: "publish_experience", payload: payload });
       }).catch(function () { /* 改进入口读取失败时静默，不打断经验库浏览 */ });
     }
     discover();
