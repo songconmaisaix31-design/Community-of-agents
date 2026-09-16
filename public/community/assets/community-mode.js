@@ -4,14 +4,13 @@
   var url = new URL(location.href), params = url.searchParams;
   var staticHost = document.documentElement.dataset.host === "fixture-only";
   function explicitLive(p) { return p.has("auth") || p.get("view") === "live" || p.get("graph") === "registered" || p.get("graph") === "live"; }
-  var home = /^\/zh\/?$/.test(url.pathname) || url.pathname === "/community/zh/index.html";
   if (staticHost) {
     params.delete("auth"); params.delete("view");
     if (params.get("graph") === "registered" || params.get("graph") === "live") params.delete("graph");
     params.set("demo", "atlas");
   } else if (explicitLive(params)) {
     params.delete("demo"); params.set("view", "live");
-  } else if (home && !params.has("demo") && !params.has("speaker")) params.set("demo", "atlas");
+  }
   var demo = params.get("demo") === "atlas";
   // Persist explicit real selection in the URL after account.js consumes the auth notice.
   if (!demo && !staticHost) params.set("view", "live");
