@@ -11,7 +11,7 @@
     return modulePromise;
   }
   function publicApi() {
-    if (fixtureMode) return window.GongzhiAtlas ? Promise.resolve(window.GongzhiAtlas.client) : Promise.reject(new Error("Fixture 资源加载失败，未请求真实服务。"));
+    if (fixtureMode) return window.GongzhiAtlas ? Promise.resolve(window.GongzhiAtlas.client) : Promise.reject(new Error("演示资源加载失败，未连接真实服务。"));
     return shared().then(function (m) { return m.createApiClient("live"); });
   }
   function context() { return window.GongzhiAccount ? window.GongzhiAccount.context() : {}; }
@@ -210,7 +210,7 @@
     out.append(check, revoke);
   }
   async function openVersion(id, revision) {
-    var panel = C.openDialog("借用固定版本经验", window.GongzhiAtlas ? "Fixture：A 已离线，B 读取本地合成样本的固定版本。下载不等于执行，不自动运行脚本。" : "经验保存在云端，任务在你自己的电脑执行。作者离线仍可借用；下载不等于执行，也不会自动运行附带脚本。");
+    var panel = C.openDialog("借用固定版本经验", window.GongzhiAtlas ? "A 已离线，B 仍可读取固定版本。下载不等于执行，不自动运行脚本。" : "经验保存在云端，任务在你自己的电脑执行。作者离线仍可借用；下载不等于执行，也不会自动运行附带脚本。");
     panel.classList.add("ex-dialog");
     var status = node("p", "cm-sub", "正在读取第 " + revision + " 版…"); panel.append(status);
     try {
@@ -259,11 +259,20 @@
     var draftButton = root.querySelector("[data-ex-draft]");
     if (fixtureMode) {
       draftButton.hidden = true;
-      root.querySelector(".cm-eyebrow").textContent = "FIXTURE · 合成占位方法 · 本地演练";
+      root.querySelector(".cm-eyebrow").textContent = "方法库";
       root.querySelector(".ex-heading .cm-sub").textContent = "先让 A 分享，再由 B 搜索并选择固定第 1 版。没有真实作者或知乎引用，A 离线仍可借用。";
       window.addEventListener("gongzhi-atlas-change", discover);
     }
     draftButton.addEventListener("click", function () { openDraft(); });
+    var improveId = new URLSearchParams(location.search).get("improve");
+    var improveRevision = Number(new URLSearchParams(location.search).get("revision") || 0);
+    if (improveId && improveRevision > 0 && !fixtureMode) {
+      publicApi().then(function (api) { return api.readExperienceVersion(improveId, improveRevision); }).then(function (version) {
+        var exp = version && version.experience;
+        if (!exp || exp.id !== improveId || exp.revision !== improveRevision) return;
+        openDraft({ action: "publish_experience", payload: { title: exp.title, body: exp.body, applicability: exp.applicability, tags: exp.tags || [], sources: exp.sources || [], previous_version_id: exp.id, visibility: "public", idempotency_key: key() } });
+      }).catch(function () { /* 改进入口读取失败时静默，不打断经验库浏览 */ });
+    }
     discover();
   }
   window.GongzhiExperience = { openDraft: openDraft, openVersion: openVersion };
