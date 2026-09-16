@@ -167,7 +167,7 @@ test.describe("EvoMap 静态前端共治适配", () => {
     const external = watchExternal(page);
     await page.goto(`${origin}/zh/board/`);
     await expect(page.locator(".cm-error")).toBeVisible();
-    await expect(page.locator(".cm-error")).toContainText("没有用示例内容替代真实记录");
+    await expect(page.locator(".cm-error")).toContainText("没有用虚假内容替代真实记录");
     await expect(page.locator(".cm-record")).toHaveCount(0);
     await page.unroute("**/api/gongzhi/board?*");
     await page.route("**/api/gongzhi/board?*", r => r.fulfill({ json: { ok: true, mode: "live", data: { records, next_cursor: null, mode: "live" } } }));

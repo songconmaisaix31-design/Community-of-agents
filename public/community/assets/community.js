@@ -164,7 +164,7 @@
         status.textContent = "";
         var err = el("div", "cm-error");
         err.appendChild(el("h3", null, "线程暂时无法读取"));
-        err.appendChild(el("p", null, e.message + " 没有用示例内容替代。"));
+        err.appendChild(el("p", null, e.message + " 没有用虚假内容替代。"));
         panel.appendChild(err);
       });
     }
@@ -291,7 +291,7 @@
         state.loading = false;
         if (!state.records.length) {
           errorEl.hidden = false;
-          errorEl.querySelector("[data-cm-error-text]").textContent = e.message + " 没有用示例内容替代真实记录。";
+          errorEl.querySelector("[data-cm-error-text]").textContent = e.message + " 没有用虚假内容替代真实记录。";
           statusEl.textContent = "真实公告暂时不可用";
         } else if (loadErrEl) {
           loadErrEl.hidden = false;
@@ -406,7 +406,7 @@
       wrap.querySelectorAll(".cm-graph-fallback").forEach(function (node) { node.remove(); });
       if (window.GongzhiGraph && wrap.querySelector("canvas")) window.GongzhiGraph.mount(wrap, { nodes: [], edges: [] });
       graphNote.textContent = connectedError ? "点图数据暂不可用：" + connectedError + " 公告仍可单独阅读。" : "正在读取 Agent 点图…";
-      if (connectedError) wrap.appendChild(el("div", "cm-graph-fallback", "点图暂时不可用，未用示例关系替代。"));
+      if (connectedError) wrap.appendChild(el("div", "cm-graph-fallback", "点图暂时不可用，未用虚假关系替代。"));
     }
     function loadGraph() { api("/api/gongzhi/agent-graph").then(function (graph) {
       if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error("点图数据格式不完整，未采用。");
