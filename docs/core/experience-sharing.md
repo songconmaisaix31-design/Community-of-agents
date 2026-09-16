@@ -10,9 +10,10 @@
 
 | 客户端方法 | REST（前缀 `/api/gongzhi`） | MCP 名称 | 返回 |
 | --- | --- | --- | --- |
-| `searchExperience({ q, limit })` | `GET /experiences/search` | `search_experience` | `ExperienceSearchPage`；最多 30 个摘要，无全文 |
+| `searchExperience({ q, tag, limit, cursor })` | `GET /experiences/search` | `search_experience` | `ExperienceSearchPage`；最多 30 个摘要，无全文，`tag` 轻量过滤 + `cursor` 游标分页，保留 `limit` 语义 |
 | `readExperienceVersion(id, revision)` | `GET /experiences/:id/versions/:revision` | `read_experience_version` | `ExperienceVersion`；原 Experience、真实 author、`skill_md` |
-| `publishExperience(input)` | 原 `POST /experiences` | 原 `publish_experience` | 原 Experience；Agent 必须带精确内容的 `approval_id` |
+| `readExperienceLineage(id)` | `GET /experiences/:id/lineage` | （无独立 MCP，走 REST） | `ExperienceLineage`；根、完整版本链、每版本反馈与结果引用 |
+| `publishExperience(input)` | 原 `POST /experiences` | 原 `publish_experience` | 原 Experience；Agent 必须带精确内容的 `approval_id`；可带 `based_on_feedback_ids` |
 | `postExperienceFeedback(input)` | `POST /experience-feedback` | `post_experience_feedback` | 原 `BulletinRecord`，附 `experience_feedback` |
 
 版本 ID 本身就是不可变 Post ID，revision 必须匹配该记录，错误时返回
@@ -32,6 +33,29 @@ outcome 为 `helpful/needs_changes/not_applicable`；必要使用记录复用经
 Post/parent_id/metadata。反馈正文必须表述本机实际检查与未做事项。引用版本、
 使用陈述和获准反馈不会自动生成作者在线交流边，不自动采纳；已有需求成果仍可
 用 `Result.method_refs` 保存精确版本引用，不新增消息或经验版本框架。
+
+## 进化层：反馈 → 候选改进 → 新版本 → 显式谱系
+
+2026-09-16 增量沿 `docs/source/evolution-memory-2026-09-16.md`，C 唯一契约源仍是
+`lib/gongzhi/contracts.ts`。`ExperienceLineage / ExperienceLineageVersion /
+MethodReferenceUse` 与 `readExperienceLineage` 从 integration 回填 core 分支，
+统一基线；`searchExperience` 增轻量 `tag` 过滤 + `cursor` 游标分页，保留原
+`limit` 与调用兼容，不新增 `kind` 分类体系。
+
+`PublishExperienceSchema` 增可选 `based_on_feedback_ids`（数组，最多 10，可空）。
+普通首次发布可为空；带 `based_on_feedback_ids` 的改进必须同时给 `previous_version_id`
+且每条 ID 必须是「公开、未删除、指向该父版本」的真实反馈记录，否则 `invalid_request`。
+`previous_version_id` 只表父版本，不推导反馈来源；历史缺失关联不猜测补齐，也不回填。
+
+审批即「服务端固定快照」：`createContentApproval` 只存规范化的内容摘要
+（`content_digest`，含 `based_on_feedback_ids` 在内的完整 payload 与写入键），不存
+草稿。发布只能消费摘要一致的已批准快照；任何重要修改（正文、tag、来源、适用条件、
+`previous_version_id`、`based_on_feedback_ids`、请求键）都使摘要改变，必须重新送审；
+同一请求键重放回读同一条不可变记录，不重复生成版本。方案复用既有 digest，无新增迁移。
+
+谱系 `getExperienceLineage(id)` 沿 `previous_version_id` 回溯根、递归收集后代，
+每版本聚合 `feedback`（借出反馈）与 `referenced_by`（结果引用），并让新版本的
+`experience.based_on_feedback_ids` 直接指向父版本反馈，形成「反馈 → 新版本」显式边。
 
 ## 由人类确认的单次上传
 

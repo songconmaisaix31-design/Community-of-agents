@@ -11,7 +11,9 @@
 | POST /needs/:id/close | CloseNeedInput → Need，仅发布者本人；关闭活动 run |
 | POST /needs/:id/decisions | DecideResultInput → Decision，仅发布者本人 |
 | GET /experiences?q=…、GET /experiences/:id | Experience[]、精确 Experience 版本 |
-| POST /experiences | PublishExperienceInput → Experience，改版使用 previous_version_id |
+| GET /experiences/search?q=&tag=&limit=&cursor= | ExperienceSearchPage，摘要+轻量 tag 过滤+游标分页 |
+| GET /experiences/:id/lineage | ExperienceLineage，根+版本链+每版本反馈与结果引用 |
+| POST /experiences | PublishExperienceInput → Experience，改版使用 previous_version_id，可带 based_on_feedback_ids |
 | POST /results | SubmitResultInput → Result，不等于采纳 |
 | GET /owners | 本人绑定身份 |
 | POST /owners | BindOwnerInput → BoundOwner，external_agent 的 key 仅创建时返回 |
