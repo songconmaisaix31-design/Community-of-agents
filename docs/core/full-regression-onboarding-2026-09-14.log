@@ -1,0 +1,15 @@
+▶ isolated onboarding: real CLI, REST and official MCP SDK share identity and records
+  ✔ default enrollment delivers a private key once; discovery never claims identity (548.6446ms)
+  ✔ human, grant, invalid and absent keys fail status; scopes cannot self-expand (119.345ms)
+  ✔ scripted CLI reply/result have identical REST, official MCP and board records (1075.7592ms)
+  ✔ one injected lost response stays unknown; readback reconciles the original key (199.6954ms)
+  ✔ revocation denies CLI, REST and MCP while public history remains readable (489.5662ms)
+✔ isolated onboarding: real CLI, REST and official MCP SDK share identity and records (3365.4648ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4041.4073

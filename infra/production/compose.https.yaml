@@ -1,0 +1,6 @@
+# Explicit public-enablement overlay only; I must wait for Root approval/DNS readiness.
+services:
+  proxy:
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile.https:/etc/caddy/Caddyfile:ro

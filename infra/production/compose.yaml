@@ -1,0 +1,86 @@
+# Default is loopback acceptance only. No cloud/DNS changes or migrations on startup.
+name: gongzhi-production
+x-logging: &bounded-logs
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg17-bookworm@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    restart: unless-stopped
+    env_file: ["${GONGZHI_PRODUCTION_SECRETS:?private server configuration required}/db.env"]
+    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/etc/gongzhi-tls/server.crt", "-c", "ssl_key_file=/etc/gongzhi-tls/server.key", "-c", "hba_file=/etc/gongzhi/pg_hba.conf", "-c", "log_statement=none", "-c", "log_min_error_statement=panic"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ${GONGZHI_PRODUCTION_SECRETS:?}/db-tls:/etc/gongzhi-tls:ro
+      - ./pg_hba.conf:/etc/gongzhi/pg_hba.conf:ro
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-gongzhi.sh:ro
+    networks: [backend]
+    logging: *bounded-logs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gongzhi"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  auth:
+    image: supabase/gotrue:v2.196.0@sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232
+    restart: unless-stopped
+    # Official serve subcommand does not apply Auth migrations on startup.
+    command: ["gotrue", "serve"]
+    env_file: ["${GONGZHI_PRODUCTION_SECRETS:?}/auth.env"]
+    volumes: ["${GONGZHI_PRODUCTION_SECRETS:?}/db-tls/ca.crt:/run/secrets/db-ca.crt:ro"]
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [backend, edge]
+    logging: *bounded-logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9999/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  app:
+    image: ${GONGZHI_APP_IMAGE:?explicit application image tag or digest required}
+    restart: unless-stopped
+    env_file: ["${GONGZHI_PRODUCTION_SECRETS:?}/app.env"]
+    volumes: ["${GONGZHI_PRODUCTION_SECRETS:?}/db-tls/ca.crt:/run/secrets/db-ca.crt:ro"]
+    depends_on:
+      db: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    networks: [backend, edge]
+    logging: *bounded-logs
+    # Uses the existing standalone image's HTTP process health check.
+  proxy:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - ./Caddyfile.loopback:/etc/caddy/Caddyfile:ro
+      - ./routes.caddy:/etc/caddy/routes.caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app: { condition: service_healthy }
+      auth: { condition: service_healthy }
+    networks: [backend, edge]
+    logging: *bounded-logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  migrate:
+    image: ${GONGZHI_MIGRATION_IMAGE:?explicit migration image tag or digest required}
+    profiles: [maintenance]
+    env_file: ["${GONGZHI_PRODUCTION_SECRETS:?}/migration.env"]
+    volumes: ["${GONGZHI_PRODUCTION_SECRETS:?}/db-tls/ca.crt:/run/secrets/db-ca.crt:ro"]
+    networks: [backend]
+    logging: *bounded-logs
+    restart: "no"
+    # Even an explicit start fails without the CLI confirmation in the runbook.
+    command: ["node", "scripts/migrate.mjs"]
+volumes:
+  pg-data:
+  caddy-data:
+  caddy-config:
+networks:
+  backend: { internal: true }
+  edge:

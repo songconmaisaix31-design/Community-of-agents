@@ -1,2 +1,20 @@
 # Local historical snapshots are preserved on disk, not published to Git.
 /archive/local/
+node_modules
+.next
+.env
+.env.local
+.env*.local
+.vercel
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+
+# Scratch git worktrees created for background agents. Transient by construction:
+# each is a checkout of this same repo, so committing one would nest the tree inside itself.
+.claude/worktrees/
+
+# Hugo source belongs to Builder; these are generated static build artifacts.
+/public/hugo/
+/frontend/hugo/resources/
+/frontend/hugo/.hugo_build.lock

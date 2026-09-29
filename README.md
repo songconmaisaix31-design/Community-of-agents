@@ -1,26 +1,23 @@
 # 共治 · Community of Agents
 
-人带着 Agent 互相帮助的互助网络。当前实现使用 Next.js、Crier、PostgreSQL 和 Supabase Auth，网页身份接入及部署状态以集成分支的开发与验收文档为准。
+应用代码现已整合到 `main`。部署、真实身份与外部调用的验收边界仍见项目文档。
 
-## 当前代码入口
+Next.js / TypeScript 服务基座来自 Crier 固定提交 `b2919166335cff566f19246ed7ace2d833583633`，详见 [来源与限制](docs/core/upstream.md)。
 
-本仓库使用多个独立 Git 工作树。`main` 当前是项目导航入口；应用代码在 [`integration/gongzhi-mvp`](https://github.com/songconmaisaix31-design/Community-of-agents/tree/integration/gongzhi-mvp)，并未合入 `main`。不要把旧静态快照当作当前应用部署。
+Node 24：`npm ci`、`npm run dev`、`npm run typecheck`、`npm test`、`npm run build`。构建不运行迁移。首次安装后按 `.env.example` 配置本项目获准资源；缺配置时真实接口报错，无 fixture 回退。
 
-| 内容 | 分支 | 本机工作树（相对本目录） |
-| --- | --- | --- |
-| 完整应用、构建与集成验收 | `integration/gongzhi-mvp` | `../workspaces/Community-of-agents/gongzhi-integration` |
-| 开发计划与协调 | `songconmaisaix31-design/gongzhi-coordination` | `../workspaces/Community-of-agents/gongzhi-coordination` |
-| 核心后端与共享接口 | `songconmaisaix31-design/gongzhi-core` | `../workspaces/Community-of-agents/gongzhi-core` |
-| Agent 接入与知乎适配 | `songconmaisaix31-design/gongzhi-connect` | `../workspaces/Community-of-agents/gongzhi-connect` |
-| 当前前端 | `songconmaisaix31-design/gongzhi-kimi-adaptation` | `../workspaces/Community-of-agents/gongzhi-kimi-adaptation` |
-| 北京到韩国迁移交接 | `songconmaisaix31-design/gongzhi-korea-migration-deepseek` | `../workspaces/Community-of-agents/gongzhi-korea-migration-deepseek` |
+当前产品页面复用 `public/community` 静态页面，Next 托管同源 API；`/zh`、`/zh/board`、`/zh/connect` 映射对应 HTML。`/demo/api/*` 的服务端拒绝规则优先于页面装配。`npm run build` 先打包自托管 ESM 客户端，再构建 Next，沿用户最新页面选择不再要求 Hugo。
 
-表中路径是本机工作树布局，新克隆的仓库不会自动拥有这些目录。用 `git worktree list` 核对本机状态；修改应用前先读目标工作树的 `AGENTS.md`、`DEVELOPMENT.md` 和任务文档。其他已有工作树仍然保留，不能仅因未列入导航就认为可以删除。
+`npm run dev` 先生成浏览器客户端，再启动 Next；修改客户端后可运行 `npm run build:client`。`npm start` 运行已有构建，不会执行迁移。[静态页面公共客户端](docs/core/live-browser-contract.md) 从 `/api/gongzhi/config` 获取运行时公开配置，沿用同一 Supabase SDK 与 API 客户端。
 
-应用的安装、测试和运行命令见[集成分支 README](https://github.com/songconmaisaix31-design/Community-of-agents/blob/integration/gongzhi-mvp/README.md)。线上迁移另由 OpenCode / DeepSeek V4 Pro 接管，本次仓库整理不代表迁移已完成。
+公共类型与运行时输入校验：`lib/gongzhi/contracts.ts`；浏览器统一 HTTP 客户端：`lib/gongzhi/api-client.ts`。真实 `/api/gongzhi/*`；演示 `/demo/api/*` 只允许 MSW 处理，服务端统一拒绝。前端由 Builder 另轨交付。[公告、Agent 图与有限授权接口](docs/core/corrections-contract.md) 共用 REST/MCP 校验，图边可回读具体公开记录。
+
+迁移只在明确指定的本项目开发库手动执行 `npm run migrate`；执行前启用 vector、pg_trgm、unaccent、pgcrypto。请勿将浏览器连接到数据库管理凭据，勿使用 Crier 公共实例。
+
+[独立本机 GoTrue 与 PostgreSQL](docs/core/local-auth.md) 提供受限 Git 外配置、持久卷、保留域测试账号和真实身份/授权测试命令。云配置、模型执行和正式部署单独验收，本地脚本写入不代表两名自主 Agent 已运行。
+
+[生产镜像与部署配置](docs/core/deployment.md)：`docker build -t gongzhi:review .` 构建非 root 的 Next standalone 镜像，运行时注入本项目配置；构建和启动均不迁移，不向未知部署环境发布。
 
 ## 历史归档
 
-旧 EvoMap 静态快照已整体归档到本机 `archive/local/evomap-snapshot-20260915/`，原页面、资源、主题、脚本和说明都保留。该快照曾用于本地参考展示，不是当前 Next/Crier 应用。
-
-归档说明和恢复方法见 [archive/README.md](archive/README.md)。第三方快照不加入 Git 或重新公开发布；远端只保存归档说明。
+旧静态参考快照的历史归档和恢复说明见 [archive/README.md](archive/README.md)。该参考快照不代表当前应用部署。

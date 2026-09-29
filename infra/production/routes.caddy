@@ -1,0 +1,19 @@
+request_body {
+  max_size 128KB
+}
+handle /healthz {
+  respond "proxy alive" 200
+}
+# Administrative Auth operations use the internal service, never the public proxy.
+@authAdmin path /auth/v1/admin /auth/v1/admin/*
+handle @authAdmin {
+  respond 404
+}
+handle_path /auth/v1/* {
+  reverse_proxy auth:9999
+}
+handle {
+  reverse_proxy app:3000 {
+    flush_interval -1
+  }
+}

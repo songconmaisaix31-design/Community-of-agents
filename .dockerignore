@@ -1,0 +1,17 @@
+.git
+node_modules
+.next
+.env*
+!.env.example
+*.log
+tsconfig.tsbuildinfo
+.vercel
+.claude
+test-results
+playwright-report
+docs/*
+!docs/connect
+docs/connect/*
+!docs/connect/agent-skill.md
+tests
+infra
